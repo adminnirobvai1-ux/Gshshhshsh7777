@@ -1,144 +1,154 @@
-import sys
-import subprocess
 import os
 import time
-
-# --- প্রয়োজনীয় প্যাকেজ অটো-ইন্সটলার ---
-REQUIRED_PACKAGES = {
-    "pyTelegramBotAPI": "telebot",
-    "selenium": "selenium",
-    "webdriver-manager": "webdriver_manager"
-}
-
-for package, import_name in REQUIRED_PACKAGES.items():
-    try:
-        __import__(import_name)
-    except ImportError:
-        print(f"[{package}] প্যাকেজটি পাওয়া যায়নি। অটো-ইন্সটল হচ্ছে...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", package])
-
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 from selenium import webdriver
+from selenium.webdriver.firefox.options import Options
+from selenium.webdriver.firefox.service import Service
 from selenium.webdriver.common.by import By
-from selenium.webdriver.firefox.service import Service as FirefoxService
-from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.firefox import GeckoDriverManager
 
 # টেলিগ্রাম বট টোকেন
 TOKEN = "8955426078:AAFyefL1ul-qt6HtYhFOhuQVIW4_k47R7Pw"
 bot = telebot.TeleBot(TOKEN)
 
-# ওয়েবসাইটের ইউআরএল
+# সাইট লিংক
 URL_AMARCLUB = "https://amarclub1.com/#/login"
 URL_DKWIN = "https://dkwin6.com/#/login"
 
-# আপনার JS কোডের CSS সিলেক্টরগুলো
-SEL_PHONE = "body > div > div:nth-of-type(2) > div:nth-of-type(4) > div > div > div > div:nth-of-type(2) > input"
-SEL_PASS = "body > div > div:nth-of-type(2) > div:nth-of-type(4) > div > div > div:nth-of-type(2) > div:nth-of-type(2) > input"
-SEL_LOGIN_BTN = "body > div > div:nth-of-type(2) > div:nth-of-type(4) > div > div > div:nth-of-type(4) > button"
+# জাভাস্ক্রিপ্ট বুকমার্কলেট থেকে পাওয়া সিলেক্টর
+SEL_N = "body > div > div:nth-of-type(2) > div:nth-of-type(4) > div > div > div > div:nth-of-type(2) > input"
+SEL_P = "body > div > div:nth-of-type(2) > div:nth-of-type(4) > div > div > div:nth-of-type(2) > div:nth-of-type(2) > input"
+SEL_L = "body > div > div:nth-of-type(2) > div:nth-of-type(4) > div > div > div:nth-of-type(4) > button"
 
-# ইউজারের ডাটা সেভ রাখার জন্য ডিকশনারি
+# ইউজারের ডাটা এবং ব্রাউজার সেশন ট্র্যাক করার ডিকশনারি
 user_sessions = {}
 
-def run_selenium_automation(url, phone, password):
-    """ভার্চুয়াল ডেস্কটপ ডিসপ্লেতে ফায়ারফক্স ওপেন করে অটোমেটিক লগইন করার ফাংশন"""
-    env = os.environ.copy()
-    if "DISPLAY" not in env:
-        os.environ["DISPLAY"] = ":0"  # ডেক্সটপ ডিসপ্লে সেট করা
-
-    options = FirefoxOptions()
-    # options.add_argument("--headless") # ব্রাউজার না দেখিয়ে ব্যাকগ্রাউন্ডে চালাতে চাইলে এটি আনকমেন্ট করুন
-
-    service = FirefoxService(GeckoDriverManager().install())
-    driver = webdriver.Firefox(service=service, options=options)
-
-    try:
-        driver.maximize_window()
-        driver.get(url)
-        wait = WebDriverWait(driver, 20)
-
-        # ১. ফোন/ইউজারনেম (N) ফিল্ড খুঁজে মান বসানো
-        phone_input = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, SEL_PHONE)))
-        phone_input.click()
-        phone_input.clear()
-        phone_input.send_keys(phone)
-        time.sleep(0.5)
-
-        # ২. পাসওয়ার্ড (P) ফিল্ড খুঁজে মান বসানো
-        pass_input = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, SEL_PASS)))
-        pass_input.click()
-        pass_input.clear()
-        pass_input.send_keys(password)
-        time.sleep(0.5)
-
-        # ৩. লগইন বাটন (L) খুঁজে ক্লিক করা
-        login_btn = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, SEL_LOGIN_BTN)))
-        login_btn.click()
-
-        return True, "সফলভাবে লগইন ইনপুট সম্পন্ন হয়েছে!"
-    except Exception as e:
-        return False, f"সমস্যা হয়েছে: {str(e)}"
+def get_firefox_driver():
+    """VPS ডেস্কটপ স্ক্রিনে ফায়ারফক্স রান করার ড্রাইভার"""
+    os.environ["DISPLAY"] = ":0"  # ভার্চুয়াল ডেস্কটপের ডিসপ্লে
+    options = Options()
+    # options.add_argument("--headless") # ব্যাকগ্রাউন্ডে চালাতে চাইলে আনকমেন্ট করুন
+    driver = webdriver.Firefox(options=options)
+    driver.maximize_window()
+    return driver
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     markup = InlineKeyboardMarkup()
     markup.row_width = 2
     markup.add(
-        InlineKeyboardButton("Amarclub1", callback_data="site_amarclub"),
-        InlineKeyboardButton("Dkwin6", callback_data="site_dkwin")
+        InlineKeyboardButton("Amarclub1", callback_data="btn_amarclub"),
+        InlineKeyboardButton("Dkwin6", callback_data="btn_dkwin")
     )
     bot.send_message(
         message.chat.id, 
-        "লগইন করতে সাইট সিলেক্ট করুন:", 
+        "ডেস্কটপে সাইট ওপেন করতে নিচের বাটনে ক্লিক করুন:", 
         reply_markup=markup
     )
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("site_"))
-def handle_site_selection(call):
+@bot.callback_query_handler(func=lambda call: True)
+def handle_query(call):
     chat_id = call.message.chat.id
-    target_url = URL_AMARCLUB if call.data == "site_amarclub" else URL_DKWIN
-    user_sessions[chat_id] = {"url": target_url}
+    target_url = URL_AMARCLUB if call.data == "btn_amarclub" else URL_DKWIN
+    site_name = "Amarclub1" if call.data == "btn_amarclub" else "Dkwin6"
 
-    bot.answer_callback_query(call.id)
-    msg = bot.send_message(chat_id, "📱 অনুগ্রহ করে আপনার **নাম্বার (N)** টি পাঠান:")
-    bot.register_next_step_handler(msg, process_phone_step)
+    bot.answer_callback_query(call.id, f"{site_name} ওপেন করা হচ্ছে...")
+    msg = bot.send_message(chat_id, f"ব্রাউজারে {site_name} লোড হচ্ছে, অনুগ্রহ করে অপেক্ষা করুন...")
 
-def process_phone_step(message):
+    try:
+        driver = get_firefox_driver()
+        driver.get(target_url)
+        
+        # সেশন সেভ রাখা
+        user_sessions[chat_id] = {
+            "driver": driver,
+            "url": target_url
+        }
+        
+        time.sleep(2) # এনিমেশন ও লোডিংয়ের জন্য বিরতি
+        bot.edit_message_text(f"{site_name} সফলভাবে ওপেন হয়েছে।", chat_id, msg.message_id)
+        
+        # নাম্বার চাওয়ার প্রম্পট
+        next_msg = bot.send_message(chat_id, "লগইনের জন্য **নাম্বার (N)** প্রবেশ করান:")
+        bot.register_next_step_handler(next_msg, process_number_step)
+
+    except Exception as e:
+        bot.send_message(chat_id, f"ব্রাউজার ওপেন করতে সমস্যা হয়েছে: {str(e)}")
+
+def process_number_step(message):
     chat_id = message.chat.id
-    phone = message.text.strip()
-    user_sessions[chat_id]["phone"] = phone
+    number = message.text.strip()
 
-    msg = bot.send_message(chat_id, "🔑 এবার আপনার **পাসওয়ার্ড (P)** দিন:")
-    bot.register_next_step_handler(msg, process_password_step)
+    if chat_id not in user_sessions:
+        bot.send_message(chat_id, "সেশন পাওয়া যায়নি। অনুগ্রহ করে আবার /start দিন।")
+        return
+
+    user_sessions[chat_id]["number"] = number
+
+    next_msg = bot.send_message(chat_id, "এবার **পাসওয়ার্ড (P)** প্রবেশ করান:")
+    bot.register_next_step_handler(next_msg, process_password_step)
 
 def process_password_step(message):
     chat_id = message.chat.id
     password = message.text.strip()
-    session = user_sessions.get(chat_id)
 
-    if not session:
-        bot.send_message(chat_id, "সেশন পাওয়া যায়নি। অনুগ্রহ করে /start দিন।")
+    if chat_id not in user_sessions:
+        bot.send_message(chat_id, "সেশন পাওয়া যায়নি। অনুগ্রহ করে আবার /start দিন।")
         return
 
-    bot.send_message(chat_id, "⚙️ ব্রাউজার চালু হচ্ছে এবং স্বয়ংক্রিয়ভাবে তথ্য পূরণ করা হচ্ছে...")
+    session = user_sessions[chat_id]
+    driver = session["driver"]
+    number = session["number"]
 
-    success, status_msg = run_selenium_automation(
-        url=session["url"], 
-        phone=session["phone"], 
-        password=password
-    )
+    bot.send_message(chat_id, "তথ্য পাওয়া গেছে। সাইটে অটোমেশন শুরু হচ্ছে...")
 
-    if success:
-        bot.send_message(chat_id, "✅ তথ্য সাবমিট এবং লগইন বাটনে ক্লিক সম্পন্ন হয়েছে!")
-    else:
-        bot.send_message(chat_id, f"❌ ত্রুটি: {status_msg}")
+    try:
+        # ইনপুট ফিল্ড লোড হওয়া পর্যন্ত সর্বোচ্চ ২০ সেকেন্ড অপেক্ষা
+        wait = WebDriverWait(driver, 20)
+        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, SEL_N)))
 
-    # কাজ শেষে ইউজারের ডাটা পরিষ্কার করা
-    user_sessions.pop(chat_id, None)
+        # জাভাস্ক্রিপ্ট ইভেন্ট ট্রিগার করে নাম্বার ও পাসওয়ার্ড বসানো এবং বাটনে ক্লিক
+        js_script = """
+            let n_input = document.querySelector(arguments[0]);
+            let p_input = document.querySelector(arguments[1]);
+            let l_btn = document.querySelector(arguments[2]);
+
+            if (n_input && p_input && l_btn) {
+                // নাম্বার বসানো
+                n_input.focus();
+                n_input.value = arguments[3];
+                n_input.dispatchEvent(new Event('input', { bubbles: true }));
+                n_input.dispatchEvent(new Event('change', { bubbles: true }));
+
+                // পাসওয়ার্ড বসানো
+                p_input.focus();
+                p_input.value = arguments[4];
+                p_input.dispatchEvent(new Event('input', { bubbles: true }));
+                p_input.dispatchEvent(new Event('change', { bubbles: true }));
+
+                // লগইন বাটনে ক্লিক
+                setTimeout(() => {
+                    l_btn.click();
+                }, 500);
+
+                return { status: true };
+            } else {
+                return { status: false, msg: "উপাদান পাওয়া যায়নি।" };
+            }
+        """
+
+        res = driver.execute_script(js_script, SEL_N, SEL_P, SEL_L, number, password)
+
+        if res.get("status"):
+            bot.send_message(chat_id, "সফলভাবে নাম্বার ও পাসওয়ার্ড বসিয়ে লগইন বাটনে ক্লিক করা হয়েছে!")
+        else:
+            bot.send_message(chat_id, f"ইনপুট ফিল্ডে বসানো সম্ভব হয়নি: {res.get('msg')}")
+
+    except Exception as e:
+        bot.send_message(chat_id, f"অটোমেশনে সমস্যা দেখা দিয়েছে: {str(e)}")
 
 if __name__ == "__main__":
-    print("বট সফলভাবে চালু হয়েছে...")
+    print("টেলিগ্রাম অটোমেশন বট চালু হয়েছে...")
     bot.infinity_polling()
