@@ -5,15 +5,15 @@ import time
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-# আপনার টেলিগ্রাম বট টোকেন
+# টেলিগ্রাম বট টোকেন
 TOKEN = "8955426078:AAFyefL1ul-qt6HtYhFOhuQVIW4_k47R7Pw"
 bot = telebot.TeleBot(TOKEN)
 
-# ওয়েবসাইটের লিংক
+# সাইট লিংক
 URL_AMARCLUB = "https://amarclub1.com"
 URL_DKWIN = "https://dkwin6.com/#/login"
 
-# আপনার জাভাস্ক্রিপ্ট সেশন কোড (১ সেকেন্ড পর পর N -> P -> L অটো-প্লে হবে)
+# সম্পূর্ণ জাভাস্ক্রিপ্ট কোড (১ সেকেন্ড পর পর N -> P -> L অটো-প্লে হবে)
 JS_CODE = """
 (function(){
   if(document.getElementById('_run_box')) return;
@@ -43,11 +43,23 @@ JS_CODE = """
     else el.click();
   };
 
-  // ১ সেকেন্ড পর পর N -> P -> L এক্সিকিউট করার ফাংশন
-  const runAllSequence = () => {
-    d.forEach((x, i) => setTimeout(() => exec(x, false), i * 1000));
+  // ১ সেকেন্ড ব্যবধানে N -> P -> L অটো-রান করার ফাংশন
+  const runSequence = () => {
+    // ১. N বসানো
+    exec(d[0], false);
+
+    // ২. ১ সেকেন্ড পর P বসানো
+    setTimeout(() => {
+      exec(d[1], false);
+
+      // ৩. আরও ১ সেকেন্ড পর L বাটনে ক্লিক
+      setTimeout(() => {
+        exec(d[2], false);
+      }, 1000);
+    }, 1000);
   };
 
+  // স্ক্রিনের নিচের কন্ট্রোল বক্স
   const b = document.createElement('div');
   b.id = '_run_box';
   b.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#18181b;padding:6px 10px;border-radius:30px;display:flex;gap:6px;align-items:center;z-index:99999999;box-shadow:0 6px 16px rgba(0,0,0,0.3);font:12px sans-serif;';
@@ -55,7 +67,7 @@ JS_CODE = """
   const all = document.createElement('button');
   all.innerText = '▶ All';
   all.style.cssText = 'background:#f59e0b;color:#000;border:none;padding:4px 8px;border-radius:20px;cursor:pointer;font-weight:bold;font-size:11px;';
-  all.onclick = runAllSequence;
+  all.onclick = runSequence;
   b.appendChild(all);
 
   d.forEach(x => {
@@ -74,18 +86,19 @@ JS_CODE = """
 
   document.body.appendChild(b);
 
-  // ইনপুট ফিল্ডগুলো দৃশ্যমান হওয়া যাচাই এবং সম্পূর্ণ আসার ১ সেকেন্ড পর স্বয়ংক্রিয় প্লে
+  // ইনপুট ফিল্ড ও বাটন সম্পূর্ণ লোড হওয়া যাচাই এবং ১ সেকেন্ড পর অটো প্লে
   let attempts = 0;
   const timer = setInterval(() => {
     attempts++;
-    const elN = document.querySelector(d[0].sel);
-    const elP = document.querySelector(d[1].sel);
-    const elL = document.querySelector(d[2].sel);
+    const readyN = document.querySelector(d[0].sel);
+    const readyP = document.querySelector(d[1].sel);
+    const readyL = document.querySelector(d[2].sel);
 
-    if (elN && elP && elL) {
+    if (readyN && readyP && readyL) {
       clearInterval(timer);
+      // সাইট সম্পূর্ণ দৃশ্যমান হওয়ার ঠিক ১ সেকেন্ড পর প্লে শুরু হবে
       setTimeout(() => {
-        runAllSequence();
+        runSequence();
       }, 1000);
     } else if (attempts > 60) {
       clearInterval(timer);
@@ -96,7 +109,7 @@ JS_CODE = """
 """
 
 def open_firefox(url):
-    """অনলাইন ডেক্সটপের ডিসপ্লেতে ফায়ারফক্স ওপেন করার ফাংশন"""
+    """অনলাইন ডেক্সটপের ডিসপ্লেতে ফায়ারফক্স ওপেন করার মূল ফাংশন"""
     env = os.environ.copy()
     if "DISPLAY" not in env:
         env["DISPLAY"] = ":0"
@@ -107,45 +120,45 @@ def open_firefox(url):
         print(f"Error opening Firefox: {e}")
         return False
 
-def inject_javascript_to_browser():
-    """ব্রাউজারের কনসোলে স্বয়ংক্রিয়ভাবে জাভাস্ক্রিপ্ট কোডটি ইনজেক্ট করার ফাংশন"""
+def inject_and_run_javascript():
+    """ফায়ারফক্স ওপেন হওয়ার পর ব্রাউজারের ভেতর কোড ইনজেক্ট করার ফাংশন"""
     env = os.environ.copy()
     if "DISPLAY" not in env:
         env["DISPLAY"] = ":0"
 
-    # নতুন ট্যাব ও ভিপিএন কানেকশন নেওয়ার জন্য ৪ সেকেন্ড অপেক্ষা
+    # নতুন ট্যাব খোলা ও ভিপিএন কানেকশন নেওয়ার জন্য ৪ সেকেন্ড বিরতি
     time.sleep(4)
 
     try:
-        # ১. ক্লিপবোর্ডে জাভাস্ক্রিপ্ট কোড কপি করা
+        # জাভাস্ক্রিপ্ট কোড ক্লিপবোর্ডে কপি করা
         clip_proc = subprocess.Popen(["xclip", "-selection", "clipboard"], stdin=subprocess.PIPE, env=env)
         clip_proc.communicate(input=JS_CODE.encode("utf-8"))
 
-        # ২. ফায়ারফক্স উইন্ডো সামনে (Focus) আনা
+        # ফায়ারফক্স উইন্ডো সামনে ফোকাস করা
         subprocess.run(["xdotool", "search", "--onlyvisible", "--class", "firefox", "windowactivate"], env=env)
         time.sleep(0.5)
 
-        # ৩. ডেভেলপার কনসোল খোলা (Ctrl + Shift + K)
+        # ডেভেলপার কনসোল খোলা (Ctrl + Shift + K)
         subprocess.run(["xdotool", "key", "ctrl+shift+k"], env=env)
         time.sleep(0.8)
 
-        # ৪. ফায়ারফক্সের পেস্ট ব্লকার এড়াতে 'allow pasting' কমান্ড
+        # ফায়ারফক্সের পেস্ট ব্লকার অতিক্রমের কমান্ড
         subprocess.run(["xdotool", "type", "--delay", "5", "allow pasting"], env=env)
         subprocess.run(["xdotool", "key", "Return"], env=env)
         time.sleep(0.3)
 
-        # ৫. জাভাস্ক্রিপ্ট কোড পেস্ট করে রান করা
+        # কোড পেস্ট করে রান করা
         subprocess.run(["xdotool", "key", "ctrl+v"], env=env)
         time.sleep(0.3)
         subprocess.run(["xdotool", "key", "Return"], env=env)
         time.sleep(0.5)
 
-        # ৬. কনসোল উইন্ডো বন্ধ করে দেওয়া (যাতে স্ক্রিন পরিষ্কার থাকে)
+        # কনসোল উইন্ডো বন্ধ করা
         subprocess.run(["xdotool", "key", "ctrl+shift+k"], env=env)
-        print("জাভাস্ক্রিপ্ট সফলভাবে ব্রাউজারে রান হয়েছে।")
+        print("জাভাস্ক্রিপ্ট সেশন স্বয়ংক্রিয়ভাবে চালু হয়েছে।")
 
     except Exception as e:
-        print(f"JavaScript injection error: {e}")
+        print(f"Injection error: {e}")
 
 # /start কমান্ড হ্যান্ডলার
 @bot.message_handler(commands=['start'])
@@ -178,10 +191,10 @@ def handle_query(call):
     if target_url:
         if open_firefox(target_url):
             bot.answer_callback_query(call.id, f"{site_name} ওপেন করা হয়েছে!")
-            bot.send_message(call.message.chat.id, f"{site_name} ওপেন হচ্ছে এবং অটোমেশন কার্যকর হচ্ছে...")
+            bot.send_message(call.message.chat.id, f"{site_name} ওপেন হয়েছে এবং অটোমেশন কার্যকর হচ্ছে...")
 
-            # ব্যাকগ্রাউন্ডে পাইথন নিজেই জাভাস্ক্রিপ্ট কোড ব্রাউজারে ইনজেক্ট করবে
-            threading.Thread(target=inject_javascript_to_browser, daemon=True).start()
+            # ব্যাকগ্রাউন্ডে পাইথন স্বয়ংক্রিয়ভাবে জাভাস্ক্রিপ্ট ইনজেক্ট করবে
+            threading.Thread(target=inject_and_run_javascript, daemon=True).start()
         else:
             bot.answer_callback_query(call.id, "ফায়ারফক্স চালু করা সম্ভব হয়নি।")
 
