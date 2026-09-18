@@ -1,166 +1,156 @@
 import os
+import sys
 import subprocess
-import threading
 import time
+import threading
+import shutil
+import glob
+
+# ==========================================
+# ১. প্রয়োজনীয় প্যাকেজগুলো অটো-ইনস্টল করা
+# ==========================================
+def install_and_import(package_name, import_name=None):
+    if import_name is None:
+        import_name = package_name
+    try:
+        __import__(import_name)
+    except ImportError:
+        print(f"[*] প্যাকেজ নেই, ইনস্টল করা হচ্ছে: {package_name}...")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", package_name])
+
+install_and_import("pyTelegramBotAPI", "telebot")
+install_and_import("selenium")
+
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from selenium import webdriver
+from selenium.webdriver.firefox.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
-# টেলিগ্রাম বট টোকেন
+# ==========================================
+# ২. কনফিগারেশন
+# ==========================================
 TOKEN = "8955426078:AAFyefL1ul-qt6HtYhFOhuQVIW4_k47R7Pw"
 bot = telebot.TeleBot(TOKEN)
 
-# সাইট লিংক
-URL_AMARCLUB = "https://amarclub1.com"
+URL_AMARCLUB = "https://amarclub1.com/#/login"
 URL_DKWIN = "https://dkwin6.com/#/login"
 
-# সম্পূর্ণ জাভাস্ক্রিপ্ট কোড (১ সেকেন্ড পর পর N -> P -> L অটো-প্লে হবে)
-JS_CODE = """
-(function(){
-  if(document.getElementById('_run_box')) return;
+# ফায়ারফক্স প্রোফাইল স্বয়ংক্রিয়ভাবে খুঁজে নেওয়ার লজিক (VPN এক্সটেনশন পাওয়ার জন্য)
+def get_firefox_profile():
+    base_dir = os.path.expanduser("~/.mozilla/firefox/")
+    profiles = glob.glob(os.path.join(base_dir, "*default-release*")) or glob.glob(os.path.join(base_dir, "*.default*"))
+    if profiles:
+        return profiles[0]
+    return None
 
+# ==========================================
+# ৩. অটো-ফিল এবং বাটন ক্লিক স্ক্রিপ্ট
+# ==========================================
+# Vue/React ফ্রেমওয়ার্কে ইনপুট রেজিস্টার এবং ক্লিক নিশ্চিত করার শক্তিশালী লজিক
+AUTO_LOGIN_JS = """
+(function(){
   const setVal = (el, val) => {
     el.focus();
+    el.select();
     const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
     if (setter) setter.call(el, val);
     else el.value = val;
-    el.dispatchEvent(new Event('input', { bubbles: true }));
+    // Vue/UniApp এর স্টেট পরিবর্তনের জন্য সব ইভেন্ট ট্রিগার করা
+    document.execCommand('insertText', false, val);
+    el.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, data: val }));
     el.dispatchEvent(new Event('change', { bubbles: true }));
   };
 
-  const d = [
-    { name: 'N', sel: 'body > div > div:nth-of-type(2) > div:nth-of-type(4) > div > div > div > div:nth-of-type(2) > input', val: '1876685711' },
-    { name: 'P', sel: 'body > div > div:nth-of-type(2) > div:nth-of-type(4) > div > div > div:nth-of-type(2) > div:nth-of-type(2) > input', val: 'NAYYYY' },
-    { name: 'L', sel: 'body > div > div:nth-of-type(2) > div:nth-of-type(4) > div > div > div:nth-of-type(4) > button' }
-  ];
-
-  const exec = (x, showAlert) => {
-    const el = document.querySelector(x.sel);
-    if (!el) {
-      if (showAlert) alert(x.name + ' not found');
-      return;
-    }
-    if (x.val !== undefined) setVal(el, x.val);
-    else el.click();
+  const clickEl = (el) => {
+    el.focus();
+    ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach(evt => {
+      el.dispatchEvent(new MouseEvent(evt, { bubbles: true, cancelable: true, view: window }));
+    });
+    el.click();
   };
 
-  // ১ সেকেন্ড ব্যবধানে N -> P -> L অটো-রান করার ফাংশন
-  const runSequence = () => {
-    // ১. N বসানো
-    exec(d[0], false);
+  const selN = 'body > div > div:nth-of-type(2) > div:nth-of-type(4) > div > div > div > div:nth-of-type(2) > input';
+  const selP = 'body > div > div:nth-of-type(2) > div:nth-of-type(4) > div > div > div:nth-of-type(2) > div:nth-of-type(2) > input';
+  const selL = 'body > div > div:nth-of-type(2) > div:nth-of-type(4) > div > div > div:nth-of-type(4) > button';
 
-    // ২. ১ সেকেন্ড পর P বসানো
+  // ইনপুট বক্স এবং বাটন খোঁজা
+  let inputN = document.querySelector(selN) || document.querySelector('input[type="tel"]') || document.querySelector('input[type="text"]');
+  let inputP = document.querySelector(selP) || document.querySelector('input[type="password"]');
+  let btnL = document.querySelector(selL) || document.querySelector('button[type="submit"]') || document.querySelector('button');
+
+  if (!inputN || !inputP || !btnL) {
+    return "ELEMENTS_NOT_READY";
+  }
+
+  // ১. N ইনপুটে নাম্বার বসানো
+  setVal(inputN, '1876685711');
+
+  // ২. ১ সেকেন্ড পর P ইনপুটে পাসওয়ার্ড বসানো
+  setTimeout(() => {
+    setVal(inputP, 'NAYYYY');
+
+    // ৩. আরও ১ সেকেন্ড পর L বাটনে ক্লিক
     setTimeout(() => {
-      exec(d[1], false);
-
-      // ৩. আরও ১ সেকেন্ড পর L বাটনে ক্লিক
-      setTimeout(() => {
-        exec(d[2], false);
-      }, 1000);
+      clickEl(btnL);
     }, 1000);
-  };
+  }, 1000);
 
-  // স্ক্রিনের নিচের কন্ট্রোল বক্স
-  const b = document.createElement('div');
-  b.id = '_run_box';
-  b.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#18181b;padding:6px 10px;border-radius:30px;display:flex;gap:6px;align-items:center;z-index:99999999;box-shadow:0 6px 16px rgba(0,0,0,0.3);font:12px sans-serif;';
-
-  const all = document.createElement('button');
-  all.innerText = '▶ All';
-  all.style.cssText = 'background:#f59e0b;color:#000;border:none;padding:4px 8px;border-radius:20px;cursor:pointer;font-weight:bold;font-size:11px;';
-  all.onclick = runSequence;
-  b.appendChild(all);
-
-  d.forEach(x => {
-    const btn = document.createElement('button');
-    btn.innerText = x.name;
-    btn.style.cssText = 'background:#22c55e;color:#000;border:none;padding:4px 8px;border-radius:20px;cursor:pointer;font-weight:bold;font-size:11px;';
-    btn.onclick = () => exec(x, true);
-    b.appendChild(btn);
-  });
-
-  const close = document.createElement('span');
-  close.innerText = '✕';
-  close.style.cssText = 'cursor:pointer;color:#a1a1aa;margin-left:4px;font-weight:bold;';
-  close.onclick = () => b.remove();
-  b.appendChild(close);
-
-  document.body.appendChild(b);
-
-  // ইনপুট ফিল্ড ও বাটন সম্পূর্ণ লোড হওয়া যাচাই এবং ১ সেকেন্ড পর অটো প্লে
-  let attempts = 0;
-  const timer = setInterval(() => {
-    attempts++;
-    const readyN = document.querySelector(d[0].sel);
-    const readyP = document.querySelector(d[1].sel);
-    const readyL = document.querySelector(d[2].sel);
-
-    if (readyN && readyP && readyL) {
-      clearInterval(timer);
-      // সাইট সম্পূর্ণ দৃশ্যমান হওয়ার ঠিক ১ সেকেন্ড পর প্লে শুরু হবে
-      setTimeout(() => {
-        runSequence();
-      }, 1000);
-    } else if (attempts > 60) {
-      clearInterval(timer);
-    }
-  }, 400);
-
+  return "SUCCESS";
 })();
 """
 
-def open_firefox(url):
-    """অনলাইন ডেক্সটপের ডিসপ্লেতে ফায়ারফক্স ওপেন করার মূল ফাংশন"""
-    env = os.environ.copy()
-    if "DISPLAY" not in env:
-        env["DISPLAY"] = ":0"
+def launch_and_automate(url):
+    """ব্রাউজার ওপেন এবং নির্ভরযোগ্যভাবে ফর্ম পূরণ ও ক্লিক করার ফাংশন"""
+    if "DISPLAY" not in os.environ:
+        os.environ["DISPLAY"] = ":0"
+
+    options = Options()
+    profile_path = get_firefox_profile()
+
+    # আগের প্রোফাইলের লক এড়াতে টেম্প ফোল্ডারে কপি করে লোড করা (VPN এক্সটেনশন সহ)
+    if profile_path:
+        temp_profile = "/tmp/firefox_auto_profile"
+        if not os.path.exists(temp_profile):
+            try:
+                shutil.copytree(profile_path, temp_profile, ignore=shutil.ignore_patterns("lock", ".parentlock"))
+            except Exception:
+                pass
+        if os.path.exists(temp_profile):
+            options.add_argument("-profile")
+            options.add_argument(temp_profile)
+
+    driver = None
     try:
-        subprocess.Popen(["firefox", "--new-tab", url], env=env)
-        return True
-    except Exception as e:
-        print(f"Error opening Firefox: {e}")
-        return False
+        driver = webdriver.Firefox(options=options)
+        driver.maximize_window()
+        driver.get(url)
 
-def inject_and_run_javascript():
-    """ফায়ারফক্স ওপেন হওয়ার পর ব্রাউজারের ভেতর কোড ইনজেক্ট করার ফাংশন"""
-    env = os.environ.copy()
-    if "DISPLAY" not in env:
-        env["DISPLAY"] = ":0"
+        # পেজ এবং ইনপুট ফিল্ড সম্পূর্ণরূপে রেন্ডার হওয়ার অপেক্ষা করা
+        print("[*] সাইট লোড হচ্ছে...")
+        time.sleep(5)
 
-    # নতুন ট্যাব খোলা ও ভিপিএন কানেকশন নেওয়ার জন্য ৪ সেকেন্ড বিরতি
-    time.sleep(4)
+        # ইনপুট ফিল্ড তৈরি হওয়া পর্যন্ত প্রতি ৫০০ মিলি-সেকেন্ডে স্ক্রিপ্ট ট্রাই করবে (সর্বোচ্চ ২০ সেকেন্ড)
+        executed = False
+        for _ in range(40):
+            res = driver.execute_script(AUTO_LOGIN_JS)
+            if res == "SUCCESS":
+                print("[✓] ইনপুট পূরণ হয়েছে এবং ১ সেকেন্ড পর পর N -> P -> L সিকোয়েন্স চালু হয়েছে।")
+                executed = True
+                break
+            time.sleep(0.5)
 
-    try:
-        # জাভাস্ক্রিপ্ট কোড ক্লিপবোর্ডে কপি করা
-        clip_proc = subprocess.Popen(["xclip", "-selection", "clipboard"], stdin=subprocess.PIPE, env=env)
-        clip_proc.communicate(input=JS_CODE.encode("utf-8"))
-
-        # ফায়ারফক্স উইন্ডো সামনে ফোকাস করা
-        subprocess.run(["xdotool", "search", "--onlyvisible", "--class", "firefox", "windowactivate"], env=env)
-        time.sleep(0.5)
-
-        # ডেভেলপার কনসোল খোলা (Ctrl + Shift + K)
-        subprocess.run(["xdotool", "key", "ctrl+shift+k"], env=env)
-        time.sleep(0.8)
-
-        # ফায়ারফক্সের পেস্ট ব্লকার অতিক্রমের কমান্ড
-        subprocess.run(["xdotool", "type", "--delay", "5", "allow pasting"], env=env)
-        subprocess.run(["xdotool", "key", "Return"], env=env)
-        time.sleep(0.3)
-
-        # কোড পেস্ট করে রান করা
-        subprocess.run(["xdotool", "key", "ctrl+v"], env=env)
-        time.sleep(0.3)
-        subprocess.run(["xdotool", "key", "Return"], env=env)
-        time.sleep(0.5)
-
-        # কনসোল উইন্ডো বন্ধ করা
-        subprocess.run(["xdotool", "key", "ctrl+shift+k"], env=env)
-        print("জাভাস্ক্রিপ্ট সেশন স্বয়ংক্রিয়ভাবে চালু হয়েছে।")
+        if not executed:
+            print("[!] এলিমেন্ট নির্দিষ্ট সময়ে পাওয়া যায়নি।")
 
     except Exception as e:
-        print(f"Injection error: {e}")
+        print(f"[X] ত্রুটি: {e}")
 
-# /start কমান্ড হ্যান্ডলার
+# ==========================================
+# ৪. টেলিগ্রাম বট হ্যান্ডলার
+# ==========================================
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     markup = InlineKeyboardMarkup()
@@ -171,11 +161,10 @@ def send_welcome(message):
     )
     bot.send_message(
         message.chat.id, 
-        "ডেক্সটপে সাইট ওপেন করতে নিচের বাটনে ক্লিক করুন:", 
+        "ডেক্সটপে সাইট ওপেন এবং অটো-লগইন করতে নির্বাচন করুন:", 
         reply_markup=markup
     )
 
-# বাটন ক্লিক ইভেন্ট হ্যান্ডলার
 @bot.callback_query_handler(func=lambda call: True)
 def handle_query(call):
     target_url = None
@@ -189,15 +178,11 @@ def handle_query(call):
         site_name = "Dkwin6"
 
     if target_url:
-        if open_firefox(target_url):
-            bot.answer_callback_query(call.id, f"{site_name} ওপেন করা হয়েছে!")
-            bot.send_message(call.message.chat.id, f"{site_name} ওপেন হয়েছে এবং অটোমেশন কার্যকর হচ্ছে...")
+        bot.answer_callback_query(call.id, f"{site_name} চালু হচ্ছে...")
+        bot.send_message(call.message.chat.id, f"{site_name} লোড হচ্ছে। সাইট পুরোপুরি আসা মাত্রই ১ সেকেন্ড বিরতিতে N, P বসে L এ ক্লিক হবে।")
 
-            # ব্যাকগ্রাউন্ডে পাইথন স্বয়ংক্রিয়ভাবে জাভাস্ক্রিপ্ট ইনজেক্ট করবে
-            threading.Thread(target=inject_and_run_javascript, daemon=True).start()
-        else:
-            bot.answer_callback_query(call.id, "ফায়ারফক্স চালু করা সম্ভব হয়নি।")
+        threading.Thread(target=launch_and_automate, args=(target_url,), daemon=True).start()
 
 if __name__ == "__main__":
-    print("বট সফলভাবে চালু হয়েছে...")
+    print("[*] টেলিগ্রাম বট সফলভাবে চালু হয়েছে...")
     bot.infinity_polling()
