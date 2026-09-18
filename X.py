@@ -11,7 +11,7 @@ bot = telebot.TeleBot(TOKEN)
 
 # ওয়েবসাইটের লিংক
 URL_AMARCLUB = "https://amarclub1.com"
-URL_DKWIN = "https://dkwin6.com"
+URL_DKWIN = "https://dkwin6.com/#/login"
 
 def open_firefox(url):
     """অনলাইন ডেক্সটপের ডিসপ্লেতে ফায়ারফক্স ওপেন করার মূল ফাংশন"""
