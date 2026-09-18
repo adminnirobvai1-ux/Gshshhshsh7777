@@ -32,14 +32,14 @@ from selenium.webdriver.firefox.options import Options
 TOKEN = "8955426078:AAFyefL1ul-qt6HtYhFOhuQVIW4_k47R7Pw"
 bot = telebot.TeleBot(TOKEN)
 
+# উভয় সাইটেই সরাসরি লগইন পেজের লিংক
 URL_AMARCLUB = "https://amarclub1.com/#/login"
 URL_DKWIN = "https://dkwin6.com/#/login"
 
-# ব্যবহারকারীর সেশন ট্র্যাকিং ডিকশনারি
 user_sessions = {}
 
 def get_fast_profile_dir():
-    """ভারী ক্যাশে ছাড়া দ্রুত ফায়ারফক্স প্রোফাইল তৈরি ও লোড করার ফাংশন"""
+    """ভারী ক্যাশে ও পুরোনো লক ফাইল ছাড়া দ্রুত ফায়ারফক্স প্রোফাইল লোড করার ফাংশন"""
     base_dir = os.path.expanduser("~/.mozilla/firefox/")
     profiles = glob.glob(os.path.join(base_dir, "*default-release*")) or glob.glob(os.path.join(base_dir, "*.default*"))
     if not profiles:
@@ -48,25 +48,33 @@ def get_fast_profile_dir():
     src_profile = profiles[0]
     temp_profile = "/tmp/firefox_fast_profile"
 
-    # প্রোফাইল আগে কপি করা থাকলে সরাসরি ব্যবহার করবে (কোনো সময় নষ্ট হবে না)
+    # প্রোফাইল তৈরি না থাকলে অপ্টিমাইজ করে কপি করা
     if not os.path.exists(temp_profile):
         try:
-            print("[*] ফায়ারফক্স প্রোফাইল অপ্টিমাইজ করে প্রস্তুত করা হচ্ছে...")
-            # ভারী ক্যাশে ও স্টোরেজ ফোল্ডার বাদ দিয়ে শুধু এক্সটেনশন ও ভিপিএন সেটিংস নেওয়া
+            print("[*] ফায়ারফক্স প্রোফাইল অপ্টিমাইজ করা হচ্ছে...")
             ignore_list = shutil.ignore_patterns(
                 "cache2", "storage", "safebrowsing", "jumpListCache",
                 "datareporting", "minidumps", "saved-telemetry-pings",
-                "lock", ".parentlock"
+                "lock", ".parentlock", "parent.lock"
             )
             shutil.copytree(src_profile, temp_profile, ignore=ignore_list)
         except Exception as e:
             print(f"[!] প্রোফাইল কপি সতর্কবার্তা: {e}")
             return src_profile
 
+    # পুরোনো কোনো লক ফাইল বা সেশন হিস্ট্রি থাকলে তা মুছে দেওয়া যাতে ফ্রেশ উইন্ডো খোলে
+    for lock_name in [".parentlock", "lock", "parent.lock", "sessionstore.jsonlz4"]:
+        lock_path = os.path.join(temp_profile, lock_name)
+        if os.path.exists(lock_path):
+            try:
+                os.remove(lock_path)
+            except Exception:
+                pass
+
     return temp_profile
 
 # ==========================================
-# ৩. ব্রাউজার হ্যান্ডলিং ও ব্যাকগ্রাউন্ড লোডার
+# ৩. ব্রাউজার হ্যান্ডলিং
 # ==========================================
 def start_browser_for_user(chat_id, target_url):
     """সাইট সিলেক্ট করার সাথে সাথেই ব্রাউজার ওপেন করা শুরু করবে"""
@@ -100,59 +108,56 @@ AUTO_FILL_AND_CLICK_JS = """
 const phone = arguments[0];
 const pass = arguments[1];
 
-const setVal = (el, val) => {
-  el.focus();
-  el.select();
-  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-  if (setter) setter.call(el, val);
-  else el.value = val;
-  document.execCommand('insertText', false, val);
-  el.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, data: val }));
-  el.dispatchEvent(new Event('change', { bubbles: true }));
-};
-
-const clickEl = (el) => {
-  el.focus();
-  ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach(evt => {
-    el.dispatchEvent(new MouseEvent(evt, { bubbles: true, cancelable: true, view: window }));
-  });
-  el.click();
-};
+// হ্যাশ না থাকলে নিশ্চিতভাবে /login এ পাঠানো
+if (!window.location.hash.includes('login')) {
+  window.location.hash = '#/login';
+}
 
 const selN = 'body > div > div:nth-of-type(2) > div:nth-of-type(4) > div > div > div > div:nth-of-type(2) > input';
 const selP = 'body > div > div:nth-of-type(2) > div:nth-of-type(4) > div > div > div:nth-of-type(2) > div:nth-of-type(2) > input';
 const selL = 'body > div > div:nth-of-type(2) > div:nth-of-type(4) > div > div > div:nth-of-type(4) > button';
 
-let inputN = document.querySelector(selN) || document.querySelector('input[type="tel"]') || document.querySelector('input[type="text"]');
-let inputP = document.querySelector(selP) || document.querySelector('input[type="password"]');
-let btnL = document.querySelector(selL) || document.querySelector('button[type="submit"]') || document.querySelector('button');
+const elN = document.querySelector(selN);
+const elP = document.querySelector(selP);
+const elL = document.querySelector(selL);
 
-if (!inputN || !inputP || !btnL) {
-  return "WAITING_ELEMENTS";
+// যতক্ষণ তিনটি এলিমেন্ট পুরোপুরি লোড না হবে, ততক্ষণ কাজ শুরু করবে না
+if (!elN || !elP || !elL) {
+  return "NOT_READY";
 }
 
-// ১. নাম্বার বসানো
-setVal(inputN, phone);
+const setVal = (el, val) => {
+  el.focus();
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+  if (setter) setter.call(el, val);
+  else el.value = val;
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+};
 
-// ২. ৫০০ms পর পাসওয়ার্ড বসানো
+// ১. N ইনপুটে নাম্বার বসানো
+setVal(elN, phone);
+
+// ২. ১ সেকেন্ড পর P ইনপুটে পাসওয়ার্ড বসানো
 setTimeout(() => {
-  setVal(inputP, pass);
-  // ৩. ৫০০ms পর সাবমিট বাটনে ক্লিক
+  setVal(elP, pass);
+
+  // ৩. আরও ১ সেকেন্ড পর L বাটনে ক্লিক
   setTimeout(() => {
-    clickEl(btnL);
-  }, 500);
-}, 500);
+    elL.click();
+  }, 1000);
+}, 1000);
 
 return "SUCCESS";
 """
 
 def execute_login_process(chat_id, phone, password, status_msg_id):
-    """ডাটা ইনজেক্ট করা এবং টেলিগ্রামে লাইভ অ্যানিমেশন দেখানো"""
+    """ডাটা ইনজেক্ট করা এবং টেলিগ্রামে লাইভ স্পিনার দেখানো"""
     session = user_sessions.get(chat_id)
     if not session:
         return
 
-    # লোডিং স্পিনার অ্যানিমেশন থ্রেড
+    # টেলিগ্রামে লোডিং স্পিনার অ্যানিমেশন
     stop_animation = threading.Event()
     def spinner_animation():
         spinners = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
@@ -160,7 +165,7 @@ def execute_login_process(chat_id, phone, password, status_msg_id):
         while not stop_animation.is_set():
             try:
                 bot.edit_message_text(
-                    f"⏳ তথ্য পেজে সেট করা হচ্ছে... [ {spinners[idx % len(spinners)]} ]\nঅনুগ্রহ করে অপেক্ষা করুন...",
+                    f"⏳ সাইট লোড হওয়া এবং তথ্য পেজে সেট করার অপেক্ষা করা হচ্ছে... [ {spinners[idx % len(spinners)]} ]\nঅনুগ্রহ করে অপেক্ষা করুন...",
                     chat_id=chat_id,
                     message_id=status_msg_id
                 )
@@ -172,10 +177,10 @@ def execute_login_process(chat_id, phone, password, status_msg_id):
     anim_thread = threading.Thread(target=spinner_animation, daemon=True)
     anim_thread.start()
 
-    # ব্রাউজার ও ইনপুট রেডি হওয়া পর্যন্ত অপেক্ষা (সর্বোচ্চ ৩০ সেকেন্ড)
+    # সাইট ও ইনপুট ফিল্ড দৃশ্যমান হওয়া পর্যন্ত অপেক্ষা (সর্বোচ্চ ৬০ সেকেন্ড)
     driver = None
     success = False
-    for _ in range(60):
+    for _ in range(120):
         if session.get("error"):
             break
         driver = session.get("driver")
@@ -184,6 +189,8 @@ def execute_login_process(chat_id, phone, password, status_msg_id):
                 res = driver.execute_script(AUTO_FILL_AND_CLICK_JS, phone, password)
                 if res == "SUCCESS":
                     success = True
+                    # জাভাস্ক্রিপ্টের ১ সেকেন্ড বিরতিতে P এবং L ক্লিকের কাজ শেষ হতে ২.৫ সেকেন্ড অপেক্ষা
+                    time.sleep(2.5)
                     break
             except Exception:
                 pass
@@ -192,21 +199,20 @@ def execute_login_process(chat_id, phone, password, status_msg_id):
     stop_animation.set()
     anim_thread.join()
 
-    # কাজ সম্পন্ন হলে ডান (Done) টেক্সট দেখানো
+    # কাজ সম্পন্ন হলে ডান (Done) মেসেজ দেখানো
     if success:
-        time.sleep(1) # ক্লিকের কাজ শেষ হওয়ার জন্য ১ সেকেন্ড বিরতি
         bot.edit_message_text(
             f"✅ **Done!**\n\n"
             f"🌐 **সাইট:** {session.get('site_name')}\n"
             f"📱 **নাম্বার (N):** `{phone}`\n"
             f"🔑 **পাসওয়ার্ড (P):** `••••••••`\n\n"
-            f"সফলভাবে ডাটা বসিয়ে লগইন বাটনে ক্লিক সম্পন্ন হয়েছে!",
+            f"সাইট পুরোপুরি লোড হয়ে ১ সেকেন্ড বিরতিতে N, P বসেছে এবং L বাটনে ক্লিক সম্পন্ন হয়েছে!",
             chat_id=chat_id,
             message_id=status_msg_id,
             parse_mode="Markdown"
         )
     else:
-        err_msg = session.get("error", "নির্দিষ্ট সময়ে পেজের ইনপুট বক্স পাওয়া যায়নি।")
+        err_msg = session.get("error", "নির্দিষ্ট সময়ে সাইটের ইনপুট বক্স খুঁজে পাওয়া যায়নি।")
         bot.edit_message_text(
             f"❌ ব্যর্থ হয়েছে!\nকারণ: {err_msg}",
             chat_id=chat_id,
@@ -244,14 +250,13 @@ def handle_query(call):
         site_name = "Dkwin6"
 
     if target_url:
-        # পুরানো সেশন থাকলে ড্রাইভার বন্ধ করা
+        # আগের কোনো খোলা ব্রাউজার থাকলে বন্ধ করা
         if chat_id in user_sessions and user_sessions[chat_id].get("driver"):
             try:
                 user_sessions[chat_id]["driver"].quit()
             except Exception:
                 pass
 
-        # নতুন সেশন রেজিস্টার
         user_sessions[chat_id] = {
             "site_url": target_url,
             "site_name": site_name,
@@ -263,10 +268,10 @@ def handle_query(call):
 
         bot.answer_callback_query(call.id, f"{site_name} লোড হচ্ছে...")
 
-        # সাথে সাথে ব্যাকগ্রাউন্ডে সাইটটি ওপেন হওয়া শুরু করবে
+        # ব্যাকগ্রাউন্ডে ব্রাউজার ওপেন শুরু করা
         threading.Thread(target=start_browser_for_user, args=(chat_id, target_url), daemon=True).start()
 
-        # ব্যবহারকারীর কাছে ম্যানুয়ালি নাম্বার চাওয়া
+        # ব্যবহারকারীর কাছে নাম্বার চাওয়া
         bot.send_message(
             chat_id, 
             f"🌐 **{site_name}** ব্রাউজারে লোড হচ্ছে...\n\n"
@@ -281,7 +286,7 @@ def handle_user_input(message):
     step = session.get("step")
     text = message.text.strip()
 
-    # ধাপ ১: নাম্বার গ্রহণ এবং পাসওয়ার্ড চাওয়া
+    # ধাপ ১: নাম্বার গ্রহণ
     if step == "WAITING_PHONE":
         session["phone"] = text
         session["step"] = "WAITING_PASSWORD"
@@ -292,14 +297,13 @@ def handle_user_input(message):
             parse_mode="Markdown"
         )
 
-    # ধাপ ২: পাসওয়ার্ড গ্রহণ এবং স্বয়ংক্রিয় প্রসেসিং শুরু
+    # ধাপ ২: পাসওয়ার্ড গ্রহণ ও প্রসেসিং শুরু
     elif step == "WAITING_PASSWORD":
         session["password"] = text
         session["step"] = "PROCESSING"
 
-        loading_msg = bot.send_message(chat_id, "⏳ তথ্য পেজে সেট করা হচ্ছে... [ ⠋ ]")
+        loading_msg = bot.send_message(chat_id, "⏳ সাইট লোড হওয়া এবং তথ্য পেজে সেট করার অপেক্ষা করা হচ্ছে... [ ⠋ ]")
 
-        # ব্যাকগ্রাউন্ডে জাভাস্ক্রিপ্ট ইনপুট এবং বাটন ক্লিক এক্সিকিউট করা
         threading.Thread(
             target=execute_login_process, 
             args=(chat_id, session["phone"], session["password"], loading_msg.message_id),
