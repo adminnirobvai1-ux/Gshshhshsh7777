@@ -1,96 +1,59 @@
 import os
+import subprocess
 import threading
 import time
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-from selenium import webdriver
-from selenium.webdriver.firefox.options import Options
 
-# আপনার নতুন টেলিগ্রাম বট টোকেন
+# আপনার টেলিগ্রাম বট টোকেন
 TOKEN = "8955426078:AAFyefL1ul-qt6HtYhFOhuQVIW4_k47R7Pw"
 bot = telebot.TeleBot(TOKEN)
 
-# সাইট লিংক
-URL_AMARCLUB = "https://amarclub1.com/#/login"
-URL_DKWIN = "https://dkwin6.com/#/login"
+# ওয়েবসাইটের লিংক
+URL_AMARCLUB = "https://amarclub1.com"
+URL_DKWIN = "https://dkwin6.com"
 
-# ফায়ারফক্স প্রোফাইল পাথ (VPN চালু রাখার জন্য জরুরি)
-# ফায়ারফক্সের অ্যাড্রেস বারে about:profiles লিখে পাথটি সংগ্রহ করে এখানে বসান
-FIREFOX_PROFILE_PATH = "/home/username/.mozilla/firefox/xxxxxxxx.default-release"
+def open_firefox(url):
+    """অনলাইন ডেক্সটপের ডিসপ্লেতে ফায়ারফক্স ওপেন করার মূল ফাংশন"""
+    env = os.environ.copy()
+    if "DISPLAY" not in env:
+        env["DISPLAY"] = ":0"
+    try:
+        subprocess.Popen(["firefox", "--new-tab", url], env=env)
+        return True
+    except Exception as e:
+        print(f"Error opening Firefox: {e}")
+        return False
 
-# স্বয়ংক্রিয়ভাবে N, P বসিয়ে L এ ক্লিক করার জাভাস্ক্রিপ্ট কোড
-AUTO_PLAY_JS = """
-(function autoFillAndClick() {
-  const setVal = (el, val) => {
-    el.focus();
-    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-    if (setter) setter.call(el, val);
-    else el.value = val;
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-    el.dispatchEvent(new Event('change', { bubbles: true }));
-  };
+def auto_run_bookmarklet():
+    """লিংক ওপেন হওয়ার পর স্বয়ংক্রিয়ভাবে বুকমার্কলেট ট্রিগার করার ফাংশন"""
+    env = os.environ.copy()
+    if "DISPLAY" not in env:
+        env["DISPLAY"] = ":0"
 
-  const selN = 'body > div > div:nth-of-type(2) > div:nth-of-type(4) > div > div > div > div:nth-of-type(2) > input';
-  const selP = 'body > div > div:nth-of-type(2) > div:nth-of-type(4) > div > div > div:nth-of-type(2) > div:nth-of-type(2) > input';
-  const selL = 'body > div > div:nth-of-type(2) > div:nth-of-type(4) > div > div > div:nth-of-type(4) > button';
-
-  let attempts = 0;
-  // পেজের ইনপুট লোড হওয়া পর্যন্ত প্রতি ৫০০ মিলি-সেকেন্ড পর পর চেক করবে
-  const timer = setInterval(() => {
-    attempts++;
-    const elN = document.querySelector(selN);
-    const elP = document.querySelector(selP);
-    const elL = document.querySelector(selL);
-
-    if (elN && elP && elL) {
-      clearInterval(timer);
-
-      // ১. N ইনপুট বসানো
-      setVal(elN, '1876685711');
-
-      // ২. ৪০০ মিলি-সেকেন্ড পর P ইনপুট বসানো
-      setTimeout(() => {
-        setVal(elP, 'NAYYYY');
-
-        // ৩. আরও ৪০০ মিলি-সেকেন্ড পর L বাটনে ক্লিক
-        setTimeout(() => {
-          elL.click();
-        }, 400);
-      }, 400);
-
-    } else if (attempts > 40) { // ২০ সেকেন্ডের মধ্যে না পেলে থামবে
-      clearInterval(timer);
-      console.log('Login selectors not found.');
-    }
-  }, 500);
-})();
-"""
-
-def launch_browser_and_automate(url):
-    """ব্রাউজার ওপেন এবং স্বয়ংক্রিয় জাভাস্ক্রিপ্ট রান করার ফাংশন"""
-    if "DISPLAY" not in os.environ:
-        os.environ["DISPLAY"] = ":0"
-
-    options = Options()
-    if os.path.exists(FIREFOX_PROFILE_PATH):
-        options.add_argument("-profile")
-        options.add_argument(FIREFOX_PROFILE_PATH)
+    # পেজ ও ভিপিএন পুরোপুরি লোড হওয়ার জন্য ৫ সেকেন্ড অপেক্ষা
+    time.sleep(5)
 
     try:
-        driver = webdriver.Firefox(options=options)
-        driver.maximize_window()
-        driver.get(url)
+        # ১. ফায়ারফক্স উইন্ডোটি সামনে (Focus) আনা
+        subprocess.run(["xdotool", "search", "--onlyvisible", "--class", "firefox", "windowactivate"], env=env)
+        time.sleep(0.5)
 
-        # প্রাথমিক পেজ লোড হওয়ার জন্য কিছুটা সময়
-        time.sleep(3)
+        # ২. অ্যাড্রেস বার ফোকাস করা (Ctrl + L)
+        subprocess.run(["xdotool", "key", "ctrl+l"], env=env)
+        time.sleep(0.3)
 
-        # জাভাস্ক্রিপ্ট অটোমেশন রান করা
-        driver.execute_script(AUTO_PLAY_JS)
+        # ৩. বুকমার্কলেটের কি-ওয়ার্ড টাইপ করা (যেমন: run)
+        subprocess.run(["xdotool", "type", "run"], env=env)
+        time.sleep(0.3)
 
+        # ৪. এন্টার চাপ দেওয়া (যাতে বুকমার্কলেট কার্যকর হয়)
+        subprocess.run(["xdotool", "key", "Return"], env=env)
+        print("অটো-প্লে স্ক্রিপ্ট রান হয়েছে।")
     except Exception as e:
-        print(f"Error during automation: {e}")
+        print(f"Auto-run error: {e}")
 
-# /start হ্যান্ডলার
+# /start কমান্ড হ্যান্ডলার
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     markup = InlineKeyboardMarkup()
@@ -101,11 +64,11 @@ def send_welcome(message):
     )
     bot.send_message(
         message.chat.id, 
-        "ডেক্সটপে সাইট ওপেন এবং অটো-লগইন করতে নির্বাচন করুন:", 
+        "ডেক্সটপে সাইট ওপেন করতে নিচের বাটনে ক্লিক করুন:", 
         reply_markup=markup
     )
 
-# বাটন অ্যাকশন হ্যান্ডলার
+# বাটন ক্লিক ইভেন্ট হ্যান্ডলার
 @bot.callback_query_handler(func=lambda call: True)
 def handle_query(call):
     target_url = None
@@ -119,12 +82,15 @@ def handle_query(call):
         site_name = "Dkwin6"
 
     if target_url:
-        bot.answer_callback_query(call.id, f"{site_name} প্রসেস শুরু হয়েছে")
-        bot.send_message(call.message.chat.id, f"{site_name} ওপেন হচ্ছে এবং অটোমেশন কার্যকর হচ্ছে...")
+        if open_firefox(target_url):
+            bot.answer_callback_query(call.id, f"{site_name} ওপেন করা হয়েছে!")
+            bot.send_message(call.message.chat.id, f"{site_name} ওপেন হয়েছে এবং অটো-প্লে শুরু হচ্ছে...")
 
-        # ব্যাকগ্রাউন্ড থ্রেডে অটোমেশন চালানো
-        threading.Thread(target=launch_browser_and_automate, args=(target_url,), daemon=True).start()
+            # ব্যাকগ্রাউন্ডে বুকমার্কলেট অটো-রান করানো
+            threading.Thread(target=auto_run_bookmarklet, daemon=True).start()
+        else:
+            bot.answer_callback_query(call.id, "ফায়ারফক্স চালু করা সম্ভব হয়নি।")
 
 if __name__ == "__main__":
-    print("বট নতুন টোকেন সহ সফলভাবে চালু হয়েছে...")
+    print("বট সফলভাবে চালু হয়েছে...")
     bot.infinity_polling()
