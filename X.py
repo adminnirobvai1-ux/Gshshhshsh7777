@@ -4,7 +4,7 @@ import subprocess
 import time
 import threading
 import shutil
-import glob
+import tempfile
 
 # ==========================================
 # ১. প্রয়োজনীয় প্যাকেজ অটো-ইনস্টল
@@ -27,65 +27,48 @@ from selenium import webdriver
 from selenium.webdriver.firefox.options import Options
 
 # ==========================================
-# ২. কনফিগারেশন ও সেশন ডাটা
+# ২. কনফিগারেশন ও প্রোফাইল স্টোরেজ ডিরেক্টরি
 # ==========================================
 TOKEN = "8955426078:AAFyefL1ul-qt6HtYhFOhuQVIW4_k47R7Pw"
 bot = telebot.TeleBot(TOKEN)
 
-# উভয় সাইটেই সরাসরি লগইন পেজের লিংক
 URL_AMARCLUB = "https://amarclub1.com/#/login"
 URL_DKWIN = "https://dkwin6.com/#/login"
 
+# ফিক্সড প্রোফাইল সংরক্ষণের মূল ফোল্ডার
+PROFILES_BASE_DIR = os.path.expanduser("~/.ff_bot_fixed_profiles")
+os.makedirs(PROFILES_BASE_DIR, exist_ok=True)
+
+# প্রতিটি ইউজারের রানিং সেশন ট্র্যাক করার ডিকশনারি
 user_sessions = {}
 
-def get_fast_profile_dir():
-    """ভারী ক্যাশে ও পুরোনো লক ফাইল ছাড়া দ্রুত ফায়ারফক্স প্রোফাইল লোড করার ফাংশন"""
-    base_dir = os.path.expanduser("~/.mozilla/firefox/")
-    profiles = glob.glob(os.path.join(base_dir, "*default-release*")) or glob.glob(os.path.join(base_dir, "*.default*"))
-    if not profiles:
-        return None
-    
-    src_profile = profiles[0]
-    temp_profile = "/tmp/firefox_fast_profile"
-
-    # প্রোফাইল তৈরি না থাকলে অপ্টিমাইজ করে কপি করা
-    if not os.path.exists(temp_profile):
-        try:
-            print("[*] ফায়ারফক্স প্রোফাইল অপ্টিমাইজ করা হচ্ছে...")
-            ignore_list = shutil.ignore_patterns(
-                "cache2", "storage", "safebrowsing", "jumpListCache",
-                "datareporting", "minidumps", "saved-telemetry-pings",
-                "lock", ".parentlock", "parent.lock"
-            )
-            shutil.copytree(src_profile, temp_profile, ignore=ignore_list)
-        except Exception as e:
-            print(f"[!] প্রোফাইল কপি সতর্কবার্তা: {e}")
-            return src_profile
-
-    # পুরোনো কোনো লক ফাইল বা সেশন হিস্ট্রি থাকলে তা মুছে দেওয়া যাতে ফ্রেশ উইন্ডো খোলে
-    for lock_name in [".parentlock", "lock", "parent.lock", "sessionstore.jsonlz4"]:
-        lock_path = os.path.join(temp_profile, lock_name)
-        if os.path.exists(lock_path):
-            try:
-                os.remove(lock_path)
-            except Exception:
-                pass
-
-    return temp_profile
+def get_user_profiles(chat_id):
+    """ইউজারের সেভ করা ফিক্সড প্রোফাইলের তালিকা রিটার্ন করে"""
+    user_dir = os.path.join(PROFILES_BASE_DIR, str(chat_id))
+    if not os.path.exists(user_dir):
+        return []
+    return [d for d in os.listdir(user_dir) if os.path.isdir(os.path.join(user_dir, d))]
 
 # ==========================================
-# ৩. ব্রাউজার হ্যান্ডলিং
+# ৩. ব্রাউজার হ্যান্ডলিং ও প্রোফাইল সেটআপ
 # ==========================================
-def start_browser_for_user(chat_id, target_url):
-    """সাইট সিলেক্ট করার সাথে সাথেই ব্রাউজার ওপেন করা শুরু করবে"""
+def start_browser_instance(chat_id, target_url, profile_path):
+    """নির্দিষ্ট বা টেম্পোরারি প্রোফাইল দিয়ে ফায়ারফক্স রান করে"""
     if "DISPLAY" not in os.environ:
         os.environ["DISPLAY"] = ":0"
 
+    # লক ফাইল থাকলে ক্লিয়ার করা যাতে ক্র্যাশ বা ওপেনিং ইরোর না হয়
+    for lock in [".parentlock", "lock", "parent.lock", "sessionstore.jsonlz4"]:
+        lp = os.path.join(profile_path, lock)
+        if os.path.exists(lp):
+            try:
+                os.remove(lp)
+            except Exception:
+                pass
+
     options = Options()
-    profile_path = get_fast_profile_dir()
-    if profile_path and os.path.exists(profile_path):
-        options.add_argument("-profile")
-        options.add_argument(profile_path)
+    options.add_argument("-profile")
+    options.add_argument(profile_path)
 
     try:
         driver = webdriver.Firefox(options=options)
@@ -95,20 +78,19 @@ def start_browser_for_user(chat_id, target_url):
         if chat_id in user_sessions:
             user_sessions[chat_id]["driver"] = driver
             user_sessions[chat_id]["driver_ready"] = True
-            print(f"[✓] চ্যাট {chat_id}-এর জন্য সাইট লোড সফল।")
+            print(f"[✓] চ্যাট {chat_id}-এর জন্য প্রোফাইলসহ সাইট লোড সম্পন্ন।")
     except Exception as e:
         print(f"[X] ব্রাউজার চালুর ত্রুটি: {e}")
         if chat_id in user_sessions:
             user_sessions[chat_id]["error"] = str(e)
 
 # ==========================================
-# ৪. ডায়নামিক অটো-ফিল ও ক্লিক জাভাস্ক্রিপ্ট
+# ৪. ইনপুট বক্স ক্লিয়ার, অটো-ফিল ও ক্লিক জাভাস্ক্রিপ্ট
 # ==========================================
 AUTO_FILL_AND_CLICK_JS = """
 const phone = arguments[0];
 const pass = arguments[1];
 
-// হ্যাশ না থাকলে নিশ্চিতভাবে /login এ পাঠানো
 if (!window.location.hash.includes('login')) {
   window.location.hash = '#/login';
 }
@@ -121,28 +103,32 @@ const elN = document.querySelector(selN);
 const elP = document.querySelector(selP);
 const elL = document.querySelector(selL);
 
-// যতক্ষণ তিনটি এলিমেন্ট পুরোপুরি লোড না হবে, ততক্ষণ কাজ শুরু করবে না
 if (!elN || !elP || !elL) {
   return "NOT_READY";
 }
 
-const setVal = (el, val) => {
+// পূর্বের কোনো টেক্সট বা নাম্বার থাকলে তা পুরোপুরি মুছে নতুন ভ্যালু বসানোর ফাংশন
+const clearAndSetVal = (el, val) => {
   el.focus();
+  el.value = '';
   const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-  if (setter) setter.call(el, val);
-  else el.value = val;
+  if (setter) {
+    setter.call(el, val);
+  } else {
+    el.value = val;
+  }
   el.dispatchEvent(new Event('input', { bubbles: true }));
   el.dispatchEvent(new Event('change', { bubbles: true }));
 };
 
-// ১. N ইনপুটে নাম্বার বসানো
-setVal(elN, phone);
+// ১. আগের নাম্বার ক্লিয়ার করে নতুন নাম্বার বসানো
+clearAndSetVal(elN, phone);
 
-// ২. ১ সেকেন্ড পর P ইনপুটে পাসওয়ার্ড বসানো
+// ২. ১ সেকেন্ড পর পাসওয়ার্ড ক্লিয়ার করে নতুন পাসওয়ার্ড বসানো
 setTimeout(() => {
-  setVal(elP, pass);
+  clearAndSetVal(elP, pass);
 
-  // ৩. আরও ১ সেকেন্ড পর L বাটনে ক্লিক
+  // ৩. আরও ১ সেকেন্ড পর লগইন বাটনে ক্লিক
   setTimeout(() => {
     elL.click();
   }, 1000);
@@ -151,13 +137,28 @@ setTimeout(() => {
 return "SUCCESS";
 """
 
+CHECK_LOGIN_STATUS_JS = """
+const currentHash = window.location.hash;
+
+// ১. লগইন সফল হলে হ্যাশ পরিবর্তন হয়ে যায় (যেমন: #/main, #/home, ইত্যাদি)
+if (!currentHash.includes('login') && currentHash.length > 2) {
+    return { status: "SUCCESS" };
+}
+
+// ২. পাসওয়ার্ড বা অ্যাকাউন্ট ভুল হলে টোস্ট বা পপআপ বার্তা চেক করা
+const toast = document.querySelector('.van-toast, .uni-toast, [class*="toast"], [class*="dialog"], [class*="alert"]');
+if (toast && toast.innerText && toast.innerText.trim().length > 0) {
+    return { status: "ERROR", message: toast.innerText.trim() };
+}
+
+return { status: "PENDING" };
+"""
+
 def execute_login_process(chat_id, phone, password, status_msg_id):
-    """ডাটা ইনজেক্ট করা এবং টেলিগ্রামে লাইভ স্পিনার দেখানো"""
     session = user_sessions.get(chat_id)
     if not session:
         return
 
-    # টেলিগ্রামে লোডিং স্পিনার অ্যানিমেশন
     stop_animation = threading.Event()
     def spinner_animation():
         spinners = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
@@ -165,7 +166,7 @@ def execute_login_process(chat_id, phone, password, status_msg_id):
         while not stop_animation.is_set():
             try:
                 bot.edit_message_text(
-                    f"⏳ সাইট লোড হওয়া এবং তথ্য পেজে সেট করার অপেক্ষা করা হচ্ছে... [ {spinners[idx % len(spinners)]} ]\nঅনুগ্রহ করে অপেক্ষা করুন...",
+                    f"⏳ Logging in to {session.get('site_name')}... [ {spinners[idx % len(spinners)]} ]\nChecking fields and submitting credentials...",
                     chat_id=chat_id,
                     message_id=status_msg_id
                 )
@@ -177,10 +178,11 @@ def execute_login_process(chat_id, phone, password, status_msg_id):
     anim_thread = threading.Thread(target=spinner_animation, daemon=True)
     anim_thread.start()
 
-    # সাইট ও ইনপুট ফিল্ড দৃশ্যমান হওয়া পর্যন্ত অপেক্ষা (সর্বোচ্চ ৬০ সেকেন্ড)
     driver = None
-    success = False
-    for _ in range(120):
+    input_success = False
+
+    # ইনপুট ফিল্ড পেয়ে ডাটা সাবমিট করা পর্যন্ত অপেক্ষা (সর্বোচ্চ ৪০ সেকেন্ড)
+    for _ in range(80):
         if session.get("error"):
             break
         driver = session.get("driver")
@@ -188,69 +190,131 @@ def execute_login_process(chat_id, phone, password, status_msg_id):
             try:
                 res = driver.execute_script(AUTO_FILL_AND_CLICK_JS, phone, password)
                 if res == "SUCCESS":
-                    success = True
-                    # জাভাস্ক্রিপ্টের ১ সেকেন্ড বিরতিতে P এবং L ক্লিকের কাজ শেষ হতে ২.৫ সেকেন্ড অপেক্ষা
-                    time.sleep(2.5)
+                    input_success = True
+                    time.sleep(2.5) # ক্লিক এবং পেজ রেসপন্সের জন্য অপেক্ষা
                     break
             except Exception:
                 pass
         time.sleep(0.5)
 
+    if not input_success:
+        stop_animation.set()
+        anim_thread.join()
+        err_msg = session.get("error", "Timeout! Login input fields not found.")
+        bot.edit_message_text(f"❌ Login Failed!\nReason: {err_msg}", chat_id=chat_id, message_id=status_msg_id)
+        return
+
+    # লগইন সফল নাকি পাসওয়ার্ড ভুল তা যাচাই করার লুপ (সর্বোচ্চ ১৫ সেকেন্ড)
+    login_result = "PENDING"
+    error_detail = ""
+    for _ in range(30):
+        try:
+            status_data = driver.execute_script(CHECK_LOGIN_STATUS_JS)
+            if status_data.get("status") == "SUCCESS":
+                login_result = "SUCCESS"
+                break
+            elif status_data.get("status") == "ERROR":
+                login_result = "ERROR"
+                error_detail = status_data.get("message", "Incorrect password or account credentials.")
+                break
+        except Exception:
+            pass
+        time.sleep(0.5)
+
     stop_animation.set()
     anim_thread.join()
 
-    # কাজ সম্পন্ন হলে ডান (Done) মেসেজ দেখানো
-    if success:
+    # ফলাফল অনুযায়ী টেলিগ্রামে রেসপন্স প্রদান
+    if login_result == "SUCCESS":
         bot.edit_message_text(
-            f"✅ **Done!**\n\n"
-            f"🌐 **সাইট:** {session.get('site_name')}\n"
-            f"📱 **নাম্বার (N):** `{phone}`\n"
-            f"🔑 **পাসওয়ার্ড (P):** `••••••••`\n\n"
-            f"সাইট পুরোপুরি লোড হয়ে ১ সেকেন্ড বিরতিতে N, P বসেছে এবং L বাটনে ক্লিক সম্পন্ন হয়েছে!",
+            f"🎉 **Your account login successfully!**\n\n"
+            f"🌐 **Site:** {session.get('site_name')}\n"
+            f"📱 **Account:** `{phone}`\n"
+            f"📁 **Profile:** `{session.get('profile_name')}`\n"
+            f"Status: Logged in and active.",
+            chat_id=chat_id,
+            message_id=status_msg_id,
+            parse_mode="Markdown"
+        )
+    elif login_result == "ERROR":
+        bot.edit_message_text(
+            f"⚠️ **Login Failed!**\n\n"
+            f"🌐 **Site:** {session.get('site_name')}\n"
+            f"📱 **Account:** `{phone}`\n"
+            f"❌ **Error Message:** {error_detail}\n\n"
+            f"Please verify your phone number and password.",
             chat_id=chat_id,
             message_id=status_msg_id,
             parse_mode="Markdown"
         )
     else:
-        err_msg = session.get("error", "নির্দিষ্ট সময়ে সাইটের ইনপুট বক্স খুঁজে পাওয়া যায়নি।")
         bot.edit_message_text(
-            f"❌ ব্যর্থ হয়েছে!\nকারণ: {err_msg}",
+            f"⚠️ **Notice:** Login submitted, but session confirmation timed out.\n"
+            f"Please check your browser window to verify if verification/captcha is required.",
             chat_id=chat_id,
             message_id=status_msg_id
         )
 
 # ==========================================
-# ৫. টেলিগ্রাম বট হ্যান্ডলারসমূহ
+# ৫. টেলিগ্রাম মেনু ও কাস্টম বাটন বিল্ডার
+# ==========================================
+def show_profile_menu(chat_id, message_id=None):
+    profiles = get_user_profiles(chat_id)
+    markup = InlineKeyboardMarkup()
+
+    # যদি আগে থেকে সেভ করা ফিক্সড প্রোফাইল থাকে
+    if profiles:
+        for p in profiles:
+            markup.add(InlineKeyboardButton(f"📁 Fix: {p}", callback_data=f"selprof_{p}"))
+
+    # নতুন ফিক্সড প্রোফাইল এবং স্কিপ প্রোফাইল বাটন
+    markup.add(
+        InlineKeyboardButton("➕ Create Fix Profile", callback_data="btn_create_fix"),
+        InlineKeyboardButton("⚡ Skip Profile", callback_data="btn_skip_prof")
+    )
+
+    # প্রোফাইল ডিলিটের জন্য বাটন
+    if profiles:
+        markup.add(InlineKeyboardButton("🗑️ Delete a Fix Profile", callback_data="btn_del_menu"))
+
+    text = "⚙️ **প্রোফাইল মোড নির্বাচন করুন:**\n\n" \
+           "• **Fix Profile:** পার্মানেন্ট সেশন যা সবসময় সেভ থাকবে।\n" \
+           "• **Skip Profile:** প্রতিবার ফ্রেশ আলাদা প্রোফাইল (আগের ডাটা কানেক্ট হবে না)।"
+
+    if message_id:
+        bot.edit_message_text(text, chat_id=chat_id, message_id=message_id, reply_markup=markup, parse_mode="Markdown")
+    else:
+        bot.send_message(chat_id, text, reply_markup=markup, parse_mode="Markdown")
+
+# ==========================================
+# ৬. টেলিগ্রাম বট হ্যান্ডলারসমূহ
 # ==========================================
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     markup = InlineKeyboardMarkup()
     markup.row_width = 2
     markup.add(
-        InlineKeyboardButton("Amarclub1", callback_data="btn_amarclub"),
-        InlineKeyboardButton("Dkwin6", callback_data="btn_dkwin")
+        InlineKeyboardButton("Amarclub1", callback_data="site_amarclub"),
+        InlineKeyboardButton("Dkwin6", callback_data="site_dkwin")
     )
     bot.send_message(
         message.chat.id, 
-        "লগইন করতে নিচের সাইট নির্বাচন করুন:", 
-        reply_markup=markup
+        "🚀 **লগইন অটোমেশন প্যানেল**\n\nঅনুগ্রহ করে প্রথমে কাঙ্ক্ষিত সাইট নির্বাচন করুন:", 
+        reply_markup=markup,
+        parse_mode="Markdown"
     )
 
 @bot.callback_query_handler(func=lambda call: True)
-def handle_query(call):
+def handle_callbacks(call):
     chat_id = call.message.chat.id
-    target_url = None
-    site_name = ""
+    data = call.data
 
-    if call.data == "btn_amarclub":
-        target_url = URL_AMARCLUB
-        site_name = "Amarclub1"
-    elif call.data == "btn_dkwin":
-        target_url = URL_DKWIN
-        site_name = "Dkwin6"
+    # ১. সাইট নির্বাচন
+    if data in ["site_amarclub", "site_dkwin"]:
+        site_url = URL_AMARCLUB if data == "site_amarclub" else URL_DKWIN
+        site_name = "Amarclub1" if data == "site_amarclub" else "Dkwin6"
 
-    if target_url:
-        # আগের কোনো খোলা ব্রাউজার থাকলে বন্ধ করা
+        # আগের ব্রাউজার চললে বন্ধ করা
         if chat_id in user_sessions and user_sessions[chat_id].get("driver"):
             try:
                 user_sessions[chat_id]["driver"].quit()
@@ -258,55 +322,156 @@ def handle_query(call):
                 pass
 
         user_sessions[chat_id] = {
-            "site_url": target_url,
+            "site_url": site_url,
             "site_name": site_name,
+            "step": "WAITING_PROFILE_CHOICE"
+        }
+        bot.answer_callback_query(call.id)
+        show_profile_menu(chat_id, call.message.message_id)
+
+    # ২. স্কিপ প্রোফাইল (সম্পূর্ণ আলাদা ও ফ্রেশ টেম্পোরারি প্রোফাইল)
+    elif data == "btn_skip_prof":
+        temp_dir = tempfile.mkdtemp(prefix=f"ff_skip_{chat_id}_")
+        session = user_sessions.get(chat_id, {})
+        session.update({
+            "profile_path": temp_dir,
+            "profile_name": "Temporary (Skipped)",
+            "is_temp": True,
             "step": "WAITING_PHONE",
             "driver": None,
             "driver_ready": False,
             "error": None
-        }
+        })
+        user_sessions[chat_id] = session
 
-        bot.answer_callback_query(call.id, f"{site_name} লোড হচ্ছে...")
-
-        # ব্যাকগ্রাউন্ডে ব্রাউজার ওপেন শুরু করা
-        threading.Thread(target=start_browser_for_user, args=(chat_id, target_url), daemon=True).start()
-
-        # ব্যবহারকারীর কাছে নাম্বার চাওয়া
-        bot.send_message(
-            chat_id, 
-            f"🌐 **{site_name}** ব্রাউজারে লোড হচ্ছে...\n\n"
+        bot.answer_callback_query(call.id, "নতুন ফ্রেশ প্রোফাইল প্রস্তুত হচ্ছে...")
+        bot.edit_message_text(
+            f"⚡ **Skip Profile মোড সক্রিয়!**\n"
+            f"একটি সম্পূর্ণ নতুন ও ফ্রেশ ফায়ারফক্স ব্রাউজার ওপেন হচ্ছে...\n\n"
             f"📱 অনুগ্রহ করে আপনার **ফোন নাম্বার (N)** লিখে পাঠান:",
+            chat_id=chat_id,
+            message_id=call.message.message_id,
+            parse_mode="Markdown"
+        )
+        threading.Thread(target=start_browser_instance, args=(chat_id, session["site_url"], temp_dir), daemon=True).start()
+
+    # ৩. নতুন ফিক্সড প্রোফাইল নাম গ্রহণ
+    elif data == "btn_create_fix":
+        user_sessions[chat_id]["step"] = "WAITING_NEW_PROFILE_NAME"
+        bot.answer_callback_query(call.id)
+        bot.edit_message_text(
+            "✍️ অনুগ্রহ করে আপনার ফিক্সড প্রোফাইলের জন্য একটি **নাম** লিখে পাঠান (যেমন: MyProfile1):",
+            chat_id=chat_id,
+            message_id=call.message.message_id,
             parse_mode="Markdown"
         )
 
+    # ৪. সেভ করা ফিক্সড প্রোফাইল নির্বাচন
+    elif data.startswith("selprof_"):
+        prof_name = data.split("selprof_")[1]
+        prof_path = os.path.join(PROFILES_BASE_DIR, str(chat_id), prof_name)
+
+        session = user_sessions.get(chat_id, {})
+        session.update({
+            "profile_path": prof_path,
+            "profile_name": prof_name,
+            "is_temp": False,
+            "step": "WAITING_PHONE",
+            "driver": None,
+            "driver_ready": False,
+            "error": None
+        })
+        user_sessions[chat_id] = session
+
+        bot.answer_callback_query(call.id, f"Profile: {prof_name}")
+        bot.edit_message_text(
+            f"📁 **Fixed Profile:** `{prof_name}`\n"
+            f"ব্রাউজার লোড হচ্ছে...\n\n"
+            f"📱 অনুগ্রহ করে আপনার **ফোন নাম্বার (N)** লিখে পাঠান:",
+            chat_id=chat_id,
+            message_id=call.message.message_id,
+            parse_mode="Markdown"
+        )
+        threading.Thread(target=start_browser_instance, args=(chat_id, session["site_url"], prof_path), daemon=True).start()
+
+    # ৫. প্রোফাইল ডিলিট মেনু
+    elif data == "btn_del_menu":
+        profiles = get_user_profiles(chat_id)
+        markup = InlineKeyboardMarkup()
+        for p in profiles:
+            markup.add(InlineKeyboardButton(f"❌ Delete: {p}", callback_data=f"dodel_{p}"))
+        markup.add(InlineKeyboardButton("🔙 Back", callback_data="btn_back_to_prof"))
+        bot.edit_message_text("🗑️ যে প্রোফাইলটি চিরতরে ডিলিট করতে চান তা নির্বাচন করুন:", chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup)
+
+    elif data.startswith("dodel_"):
+        p_name = data.split("dodel_")[1]
+        target_path = os.path.join(PROFILES_BASE_DIR, str(chat_id), p_name)
+        if os.path.exists(target_path):
+            shutil.rmtree(target_path, ignore_errors=True)
+        bot.answer_callback_query(call.id, f"{p_name} ডিলিট সম্পন্ন!")
+        show_profile_menu(chat_id, call.message.message_id)
+
+    elif data == "btn_back_to_prof":
+        show_profile_menu(chat_id, call.message.message_id)
+
+# ==========================================
+# ৭. টেক্সট ইনপুট প্রসেসিং
+# ==========================================
 @bot.message_handler(func=lambda msg: msg.chat.id in user_sessions)
-def handle_user_input(message):
+def handle_text_inputs(message):
     chat_id = message.chat.id
     session = user_sessions[chat_id]
     step = session.get("step")
     text = message.text.strip()
 
-    # ধাপ ১: নাম্বার গ্রহণ
-    if step == "WAITING_PHONE":
+    # কাস্টম প্রোফাইল নাম সেভ করা
+    if step == "WAITING_NEW_PROFILE_NAME":
+        clean_name = "".join([c for c in text if c.isalnum() or c in ('_', '-')]).strip()
+        if not clean_name:
+            bot.send_message(chat_id, "❌ প্রোফাইল নামে কোনো অবৈধ চিহ্ন ব্যবহার করবেন না। আবার লিখুন:")
+            return
+
+        user_dir = os.path.join(PROFILES_BASE_DIR, str(chat_id), clean_name)
+        os.makedirs(user_dir, exist_ok=True)
+
+        session["profile_path"] = user_dir
+        session["profile_name"] = clean_name
+        session["is_temp"] = False
+        session["step"] = "WAITING_PHONE"
+        session["driver"] = None
+        session["driver_ready"] = False
+        session["error"] = None
+
+        bot.send_message(
+            chat_id,
+            f"✅ ফিক্সড প্রোফাইল `{clean_name}` সফলভাবে তৈরি হয়েছে!\n"
+            f"🌐 ব্রাউজার রান করা হচ্ছে...\n\n"
+            f"📱 অনুগ্রহ করে আপনার **ফোন নাম্বার (N)** লিখে পাঠান:",
+            parse_mode="Markdown"
+        )
+        threading.Thread(target=start_browser_instance, args=(chat_id, session["site_url"], user_dir), daemon=True).start()
+
+    # ফোন নাম্বার গ্রহণ
+    elif step == "WAITING_PHONE":
         session["phone"] = text
         session["step"] = "WAITING_PASSWORD"
         bot.send_message(
-            chat_id, 
+            chat_id,
             f"📱 নাম্বার: `{text}` সংরক্ষিত হয়েছে।\n\n"
             f"🔑 এবার আপনার **পাসওয়ার্ড (P)** লিখে পাঠান:",
             parse_mode="Markdown"
         )
 
-    # ধাপ ২: পাসওয়ার্ড গ্রহণ ও প্রসেসিং শুরু
+    # পাসওয়ার্ড গ্রহণ ও প্রসেস এক্সেকিউশন
     elif step == "WAITING_PASSWORD":
         session["password"] = text
         session["step"] = "PROCESSING"
 
-        loading_msg = bot.send_message(chat_id, "⏳ সাইট লোড হওয়া এবং তথ্য পেজে সেট করার অপেক্ষা করা হচ্ছে... [ ⠋ ]")
+        status_msg = bot.send_message(chat_id, "⏳ Preparing login session... [ ⠋ ]")
 
         threading.Thread(
-            target=execute_login_process, 
-            args=(chat_id, session["phone"], session["password"], loading_msg.message_id),
+            target=execute_login_process,
+            args=(chat_id, session["phone"], session["password"], status_msg.message_id),
             daemon=True
         ).start()
 
