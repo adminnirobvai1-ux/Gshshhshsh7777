@@ -32,28 +32,20 @@ from selenium.webdriver.firefox.service import Service as FirefoxService
 # 2. Mathematical Bold Unicode & System Utils
 # ==========================================
 def to_bold(text: str) -> str:
-    """ASCII টেক্সটকে প্রিমিয়াম ম্যাথমেটিক্যাল বোল্ড ইউনিকোডে রূপান্তর করে (A->𝐀, 0->𝟎)"""
     res = []
     for c in str(text):
         n = ord(c)
-        if 65 <= n <= 90:      # A-Z
+        if 65 <= n <= 90:      
             res.append(chr(n + 119743))
-        elif 97 <= n <= 122:   # a-z
+        elif 97 <= n <= 122:   
             res.append(chr(n + 119737))
-        elif 48 <= n <= 57:    # 0-9
+        elif 48 <= n <= 57:    
             res.append(chr(n + 120764))
         else:
             res.append(c)
     return "".join(res)
 
-def find_free_port():
-    """মারিওনেট সকেটের জন্য ফ্রি লোকাল নেটওয়ার্ক পোর্ট প্রদান করে"""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(('', 0))
-        return s.getsockname()[1]
-
 def safe_delete_message(chat_id, message_id):
-    """মেসেজ ডিলিট করার নিরাপদ ফাংশন"""
     if not message_id:
         return
     try:
@@ -62,7 +54,7 @@ def safe_delete_message(chat_id, message_id):
         pass
 
 # ==========================================
-# 3. Configuration & Multi-Tab State
+# 3. Configuration & State Management
 # ==========================================
 TOKEN = "8808949150:AAF236nZ7xG3kPxlxubELHqChpn4IPycFL4"
 bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
@@ -76,171 +68,88 @@ URL_DKWIN_WINGO = "https://dkwin6.com/#/saasLottery/WinGo?gameCode=WinGo_30S&lot
 PROFILES_BASE_DIR = os.path.expanduser("~/.ff_bot_profiles")
 os.makedirs(PROFILES_BASE_DIR, exist_ok=True)
 
-# User Sessions: chat_id -> Session State
 user_sessions = {}
-
-# Active Sessions: session_id -> Session State & Window Handles
 active_sessions = {}
 
-# ক্লিন ব্ল্যাক অ্যান্ড হোয়াইট স্পিনার ফ্রেম
 SPINNER_FRAMES = ["◴", "◷", "◶", "◵"]
 
-# মারিওনেট সকেট সুরক্ষিত রাখার জন্য গ্লোবাল থ্রেড লক
-DRIVER_LOCK = threading.RLock()
-
-# মাস্টার ব্রাউজার ইনস্ট্যান্স ভেরিয়েবল
-MASTER_DRIVER = None
-
-# প্রতিটি ট্যাবের আলাদা আইসোলেটেড স্টোরেজ/কুকিজ নিশ্চিত করার জন্য কনটেইনার আইডি কাউন্টার
-CONTAINER_COUNTER = 0
-
 # ==========================================
-# 4. Master Firefox Browser & Isolated Container Multi-Tab Engine
+# 4. TRUE ISOLATION: One Driver per Session
 # ==========================================
-def get_or_create_master_driver():
-    """
-    একটি মাস্টার ব্রাউজার তৈরি করে এবং এতে Firefox Container Tab (Contextual Identity) সক্রিয় করে।
-    ফলে প্রতিটি ট্যাবের জন্য আলাদা কুকিজ ও স্টোরেজ তৈরি করা সম্ভব হয়।
-    """
-    global MASTER_DRIVER
-    with DRIVER_LOCK:
-        if MASTER_DRIVER is not None:
-            try:
-                _ = MASTER_DRIVER.current_window_handle
-                return MASTER_DRIVER
-            except Exception:
-                MASTER_DRIVER = None
-
-        master_profile_dir = os.path.join(PROFILES_BASE_DIR, "master_tab_profile")
-        os.makedirs(master_profile_dir, exist_ok=True)
-
-        gecko_port = find_free_port()
-        marionette_port = find_free_port()
-
-        options = Options()
-        options.add_argument("-no-remote")
-        options.add_argument(f"--marionette-port={marionette_port}")
-        options.add_argument("-profile")
-        options.add_argument(master_profile_dir)
-
-        if "DISPLAY" not in os.environ or not os.environ["DISPLAY"]:
-            os.environ["DISPLAY"] = ":0"
-
-        # ফায়ারফক্সের Multi-Account Container Tabs (Contextual Identity) সক্রিয়করণ
-        options.set_preference("privacy.userContext.enabled", True)
-        options.set_preference("privacy.userContext.ui.enabled", True)
-        options.set_preference("privacy.userContext.longPressBehavior", 2)
-
-        # ক্র্যাশ রিকভারি (about:sessionrestore) বন্ধ রাখা
-        options.set_preference("browser.sessionstore.resume_from_crash", False)
-        options.set_preference("browser.sessionstore.max_resumed_crashes", 0)
-        options.set_preference("browser.tabs.warnOnClose", False)
-        # ব্যাকগ্রাউন্ড ট্যাব মেমোরি থেকে আনলোড হওয়া বন্ধ রাখা
-        options.set_preference("browser.tabs.unloadOnLowMemory", False)
-        options.set_preference("dom.ipc.processCount", 1)
-        options.set_preference("dom.webnotifications.enabled", False)
-        options.set_preference("dom.push.enabled", False)
-        options.set_preference("browser.shell.checkDefaultBrowser", False)
-
-        service = FirefoxService(
-            port=gecko_port,
-            service_args=["--marionette-port", str(marionette_port)]
-        )
-        driver = webdriver.Firefox(service=service, options=options)
-        try:
-            driver.maximize_window()
-        except Exception:
-            pass
-
-        MASTER_DRIVER = driver
-        return MASTER_DRIVER
-
 def allocate_session_tab(session_id, target_url):
     """
-    প্রতিটি অ্যাকাউন্টের জন্য একটি সম্পূর্ণ স্বাধীন Container Tab খোলে।
-    এর ফলে ট্যাব-১ এর কুকি/স্টোরেজ ট্যাব-২ এর সাথে কখনো মিশবে না।
+    প্রতিটি সেশনের জন্য সম্পূর্ণ আলাদা ফায়ারফক্স প্রোফাইল এবং ইন্সট্যান্স তৈরি করে।
+    এটি ১০০% কুকিজ এবং লোকাল স্টোরেজ আইসোলেশন নিশ্চিত করে।
     """
-    global MASTER_DRIVER, CONTAINER_COUNTER
-    driver = get_or_create_master_driver()
-    with DRIVER_LOCK:
-        CONTAINER_COUNTER += 1
-        cid = CONTAINER_COUNTER
-        before_handles = set(driver.window_handles)
-        opened_via_container = False
+    sess = active_sessions.get(session_id)
+    if not sess:
+        raise Exception("Session data not found.")
 
-        # ফায়ারফক্স ক্রোম কনটেক্সট ব্যবহার করে স্বতন্ত্র Container Tab ওপেন করা
-        try:
-            with driver.context("chrome"):
-                driver.execute_script("""
-                    let uri = arguments[0];
-                    let cid = arguments[1];
-                    let tab = gBrowser.addTab(uri, {
-                        userContextId: cid,
-                        triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal()
-                    });
-                    gBrowser.selectedTab = tab;
-                """, target_url, cid)
-            opened_via_container = True
-        except Exception:
-            opened_via_container = False
+    profile_dir = os.path.join(PROFILES_BASE_DIR, f"profile_{session_id}")
+    os.makedirs(profile_dir, exist_ok=True)
 
-        if opened_via_container:
-            target_handle = None
-            for _ in range(20):
-                after_handles = set(driver.window_handles)
-                diff = after_handles - before_handles
-                if diff:
-                    target_handle = list(diff)[0]
-                    break
-                time.sleep(0.2)
-            if not target_handle:
-                target_handle = driver.current_window_handle
-            driver.switch_to.window(target_handle)
-        else:
-            all_handles = driver.window_handles
-            if len(all_handles) == 1 and (driver.current_url == "about:blank" or "about:newtab" in driver.current_url):
-                target_handle = all_handles[0]
-                driver.switch_to.window(target_handle)
-            else:
-                driver.switch_to.new_window('tab')
-                target_handle = driver.current_window_handle
-            driver.get(target_url)
+    options = Options()
+    options.add_argument("--headless") # ব্যাকগ্রাউন্ডে চলার জন্য
+    options.add_argument("-profile")
+    options.add_argument(profile_dir)
+    
+    # মেমোরি অপ্টিমাইজেশন
+    options.set_preference("browser.cache.disk.enable", False)
+    options.set_preference("browser.cache.memory.enable", True)
+    options.set_preference("network.http.use-cache", False)
 
-        return driver, target_handle
+    # লগ অফ করা যাতে টার্মিনাল পরিষ্কার থাকে
+    service = FirefoxService(log_output=os.devnull)
+    
+    driver = webdriver.Firefox(service=service, options=options)
+    driver.set_window_size(390, 844) # মোবাইল ভিউ (iPhone 12) যাতে সাইট ঠিকমতো লোড হয়
+    
+    driver.get(target_url)
+    
+    sess["driver"] = driver
+    sess["window_handle"] = driver.current_window_handle
+    return driver, sess["window_handle"]
 
 def safe_tab_execute(sid, task_fn):
-    """নির্দিষ্ট ট্যাবে থ্রেড-সেফ পদ্ধতিতে কাজ সম্পন্ন করে"""
+    """নির্দিষ্ট সেশনের ব্রাউজারে থ্রেড-সেফ পদ্ধতিতে কাজ সম্পন্ন করে"""
     sess = active_sessions.get(sid)
     if not sess:
         return None
-    handle = sess.get("window_handle")
+        
+    lock = sess.get("lock")
     driver = sess.get("driver")
-    if not driver or not handle:
+    
+    if not driver or not lock:
         return None
 
-    with DRIVER_LOCK:
+    with lock:
         try:
-            if handle in driver.window_handles:
-                driver.switch_to.window(handle)
-                return task_fn(driver)
+            return task_fn(driver)
         except Exception as e:
-            print(f"[*] Tab execute error: {e}")
+            print(f"[*] Execute error for {sid}: {e}")
             return None
 
 def close_session_tab(session_id):
-    """ট্রেডিং স্টপ করে কিন্তু ব্রাউজারের ট্যাব ওপেন রাখে যাতে হিস্ট্রি অক্ষুণ্ণ থাকে"""
+    """সেশন মুছে ফেলে, ব্রাউজার বন্ধ করে এবং প্রোফাইল ফোল্ডার ডিলিট করে র‍্যাম ফ্রি করে"""
     sess = active_sessions.pop(session_id, None)
     if sess:
         sess["is_trading"] = False
+        driver = sess.get("driver")
+        if driver:
+            try:
+                driver.quit()
+            except:
+                pass
+        
+        # ক্লিনআপ প্রোফাইল ডিরেক্টরি
+        profile_dir = os.path.join(PROFILES_BASE_DIR, f"profile_{session_id}")
+        if os.path.exists(profile_dir):
+            shutil.rmtree(profile_dir, ignore_errors=True)
 
 # ==========================================
 # 5. Smart Telegram Image Replacement Engine
 # ==========================================
 def display_or_replace_photo(chat_id, session_id, image_path, caption_text, reply_markup=None):
-    """
-    পূর্বের ছবির মেসেজেই নতুন ছবি প্রতিস্থাপন করে (edit_message_media)।
-    মেসেজ ডুপ্লিকেট হয় না।
-    """
     sess = active_sessions.get(session_id, {})
     last_photo_msg_id = sess.get("live_photo_message_id")
     replaced = False
@@ -476,7 +385,6 @@ for (let i = 0; i < els.length; i++) {
 return 0;
 """
 
-# সম্পূর্ণ আদি WINGO_CORE_JS: ড্র্যাগ মুভ হ্যান্ডলার, সিএসএস অ্যানিমেশন, লেজার স্ক্যানার এবং ভয়েস ইঞ্জিন সহ অপরিবর্তিত
 WINGO_CORE_JS = """
 const autoTargetProfit = arguments[0];
 const autoTotalSteps = arguments[1];
@@ -1201,12 +1109,12 @@ def get_trading_control_keyboard(sid):
     return markup
 
 # ==========================================
-# 9. Clean Login Animation & Tab Login
+# 9. Clean Login Animation & Engine Auth
 # ==========================================
 def play_clean_login_animation(chat_id, msg_id):
     frames = [
-        "<b>CONNECTING REMOTE TAB</b>\n<code>▰▱▱▱▱▱▱▱▱▱ 10% Allocating persistent browser tab...</code>",
-        "<b>INITIALIZING TARGET PLATFORM</b>\n<code>▰▰▰▱▱▱▱▱▱▱ 35% Loading isolated tab environment...</code>",
+        "<b>CONNECTING REMOTE ENGINE</b>\n<code>▰▱▱▱▱▱▱▱▱▱ 10% Allocating isolated profile...</code>",
+        "<b>INITIALIZING TARGET PLATFORM</b>\n<code>▰▰▰▱▱▱▱▱▱▱ 35% Securing connection instance...</code>",
         "<b>INJECTING AUTHENTICATION DATA</b>\n<code>▰▰▰▰▰▰▱▱▱▱ 65% Auto-filling credentials...</code>",
         "<b>VERIFYING ACTIVE SESSION</b>\n<code>▰▰▰▰▰▰▰▰▰▰ 100% Login verification complete!</code>"
     ]
@@ -1215,7 +1123,7 @@ def play_clean_login_animation(chat_id, msg_id):
             bot.edit_message_text(frame, chat_id=chat_id, message_id=msg_id)
         except Exception:
             pass
-        time.sleep(0.35)
+        time.sleep(0.4)
 
 def process_login(chat_id, sid, phone, password, anim_msg_id):
     sess = active_sessions.get(sid, {})
@@ -1226,8 +1134,6 @@ def process_login(chat_id, sid, phone, password, anim_msg_id):
 
     try:
         driver, handle = allocate_session_tab(sid, login_url)
-        sess["driver"] = driver
-        sess["window_handle"] = handle
     except Exception as e:
         safe_delete_message(chat_id, anim_msg_id)
         bot.send_message(chat_id, get_text(chat_id, "login_failed", site_name=site_name, error=str(e)))
@@ -1443,7 +1349,6 @@ def monitor_trading_progress(chat_id, sid):
         time.sleep(4)
 
 def continuous_24h_watchdog():
-    """২৪ ঘণ্টা পর্যন্ত ট্যাবকে সচল রাখে এবং সময় পার হলে সেশন ফ্ল্যাগ আপডেট করে"""
     while True:
         try:
             now = time.time()
@@ -1453,7 +1358,7 @@ def continuous_24h_watchdog():
                     print(f"[*] 24-hour lifetime reached for session: {sid}")
                     close_session_tab(sid)
         except Exception as e:
-            print(f"[*] Watchdog note: {e}")
+            pass
         time.sleep(1800)
 
 threading.Thread(target=continuous_24h_watchdog, daemon=True).start()
@@ -1521,7 +1426,8 @@ def handle_callbacks(call):
             "total_steps": 7,
             "is_trading": False,
             "created_at": time.time(),
-            "anim_tick": 0
+            "anim_tick": 0,
+            "lock": threading.RLock() # নতুন সেশনের জন্য আলাদা লক
         }
 
         user_sessions[chat_id]["active_sid"] = sid
@@ -1733,15 +1639,12 @@ def handle_user_text(message):
     sess = active_sessions[sid]
     input_mode = sess.get("input_mode")
 
-    # পাঠানো মেসেজ সাথে সাথে ডিলিট হবে
     safe_delete_message(chat_id, message.message_id)
 
-    # বটের প্রম্পট মেসেজ মুছে ফেলা হবে
     if sess.get("temp_prompt_id"):
         safe_delete_message(chat_id, sess["temp_prompt_id"])
         sess["temp_prompt_id"] = None
 
-    # ফোন নম্বর ইনপুট
     if input_mode == "WAITING_PHONE":
         sess["phone"] = text
         sess["input_mode"] = None
@@ -1764,7 +1667,6 @@ def handle_user_text(message):
             except Exception:
                 pass
 
-    # পাসওয়ার্ড ইনপুট
     elif input_mode == "WAITING_PASS":
         sess["password"] = text
         sess["input_mode"] = None
@@ -1773,14 +1675,13 @@ def handle_user_text(message):
             safe_delete_message(chat_id, sess["cred_card_msg_id"])
             sess["cred_card_msg_id"] = None
 
-        anim_msg = bot.send_message(chat_id, "<b>CONNECTING REMOTE TAB</b>")
+        anim_msg = bot.send_message(chat_id, "<b>CONNECTING REMOTE ENGINE</b>")
         threading.Thread(
             target=process_login,
             args=(chat_id, sid, sess["phone"], sess["password"], anim_msg.message_id),
             daemon=True
         ).start()
 
-    # টার্গেট প্রফিট ইনপুট
     elif input_mode == "WAITING_TARGET":
         try:
             val = float(text)
@@ -1808,7 +1709,6 @@ def handle_user_text(message):
             p_msg = bot.send_message(chat_id, "দয়া করে সঠিক সংখ্যা লিখুন (যেমন: 500):")
             sess["temp_prompt_id"] = p_msg.message_id
 
-    # স্টেপস ইনপুট
     elif input_mode == "WAITING_STEPS":
         try:
             steps_val = int(text)
@@ -1840,7 +1740,7 @@ def handle_user_text(message):
 # 14. Main Execution
 # ==========================================
 if __name__ == "__main__":
-    print(f"[*] {to_bold('WINGO VIP BOT MULTI-TAB READY')}...")
+    print(f"[*] {to_bold('WINGO VIP BOT MULTI-INSTANCE READY')}...")
     try:
         bot.remove_webhook()
     except Exception:
