@@ -29,7 +29,7 @@ from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.firefox.service import Service as FirefoxService
 
 # ==========================================
-# 2. Premium Mathematical Bold Unicode Converter
+# 2. Premium Mathematical Bold Unicode Converter (Clean, No Brackets)
 # ==========================================
 def to_bold(text: str) -> str:
     """Converts ASCII letters and digits to Mathematical Bold Unicode (A->𝐀, a->𝐚, 0->𝟎)"""
@@ -47,13 +47,13 @@ def to_bold(text: str) -> str:
     return "".join(res)
 
 def find_free_port():
-    """Finds an available local network port to completely isolate WebDriver instances."""
+    """Finds an available local network port to isolate WebDriver instances."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(('', 0))
         return s.getsockname()[1]
 
 # ==========================================
-# 3. Configuration & Constants
+# 3. Configuration & URLs
 # ==========================================
 TOKEN = "8808949150:AAF236nZ7xG3kPxlxubELHqChpn4IPycFL4"
 bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
@@ -71,19 +71,23 @@ os.makedirs(PROFILES_BASE_DIR, exist_ok=True)
 user_sessions = {}
 
 # ==========================================
-# 4. Completely Isolated Multi-User Firefox Launcher
+# 4. Multi-User Firefox Clone & Absolute Isolation
 # ==========================================
 def launch_firefox_instance(chat_id, target_url):
     """
-    Launches an independent Firefox instance for EACH user.
-    Uses separate profile folders, separate Geckodriver ports, and separate Marionette ports.
-    Allows 100+ concurrent instances without closing or interfering with one another.
+    Launches a dedicated cloned Firefox instance for EACH user.
+    Uses:
+    1. Separate persistent profile folder per chat_id.
+    2. Completely unique Geckodriver port per user.
+    3. Dedicated, unique Marionette port passed to Geckodriver and Firefox.
+    4. Independent TMPDIR and MOZ_NO_REMOTE environment variables.
+    This guarantees 100+ users can run simultaneously without closing or overriding each other.
     """
     user_profile_dir = os.path.join(PROFILES_BASE_DIR, f"user_{chat_id}")
     os.makedirs(user_profile_dir, exist_ok=True)
 
     # Clean old stale locks for this specific user profile only
-    for lock_name in [".parentlock", "parent.lock", "lock"]:
+    for lock_name in [".parentlock", "parent.lock", "lock", "sessionstore.jsonlz4"]:
         lp = os.path.join(user_profile_dir, lock_name)
         if os.path.exists(lp):
             try:
@@ -94,17 +98,26 @@ def launch_firefox_instance(chat_id, target_url):
     gecko_port = find_free_port()
     marionette_port = find_free_port()
 
+    # Isolated temporary directory per user to avoid shared-memory collisions
+    user_tmp_dir = os.path.join(PROFILES_BASE_DIR, f"tmp_{chat_id}")
+    os.makedirs(user_tmp_dir, exist_ok=True)
+
+    env = os.environ.copy()
+    env["MOZ_NO_REMOTE"] = "1"
+    env["TMPDIR"] = user_tmp_dir
+
+    if "DISPLAY" not in env or not env["DISPLAY"]:
+        env["DISPLAY"] = ":0"
+
     options = Options()
     options.add_argument("-no-remote")
     options.add_argument("-new-instance")
     options.add_argument("-profile")
     options.add_argument(user_profile_dir)
+    options.add_argument("--marionette-port")
+    options.add_argument(str(marionette_port))
 
-    # Ensure DISPLAY is set for Linux GUI/Xvfb
-    if "DISPLAY" not in os.environ or not os.environ["DISPLAY"]:
-        os.environ["DISPLAY"] = ":0"
-
-    # Multi-instance isolation and stability preferences
+    # Multi-instance isolation preferences
     options.set_preference("marionette.port", marionette_port)
     options.set_preference("dom.webnotifications.enabled", False)
     options.set_preference("dom.push.enabled", False)
@@ -112,7 +125,12 @@ def launch_firefox_instance(chat_id, target_url):
     options.set_preference("browser.tabs.remote.autostart", False)
     options.set_preference("browser.shell.checkDefaultBrowser", False)
 
-    service = FirefoxService(port=gecko_port)
+    # Launch geckodriver with dedicated port AND dedicated marionette-port
+    service = FirefoxService(
+        port=gecko_port,
+        service_args=["--marionette-port", str(marionette_port), "--connect-existing=false"],
+        env=env
+    )
     driver = webdriver.Firefox(service=service, options=options)
 
     try:
@@ -124,7 +142,7 @@ def launch_firefox_instance(chat_id, target_url):
     return driver, user_profile_dir
 
 def close_user_browser(chat_id):
-    """Safely closes ONLY this user's browser without affecting other active users."""
+    """Safely closes ONLY this user's browser without touching other active users' browsers."""
     sess = user_sessions.get(chat_id)
     if not sess:
         return
@@ -236,7 +254,7 @@ const hash = window.location.hash || '';
 const href = window.location.href || '';
 const bodyText = document.body ? document.body.innerText : '';
 
-if (hash.includes('WinGo') || href.includes('WinGo') || bodyText.includes('Win Go') || bodyText.includes('30S')) {
+if (hash.includes('WinGo') || href.includes('WinGo') || bodyText.includes('Win Go') || bodyText.includes('30S') || bodyText.includes('Lottery')) {
     return true;
 }
 return false;
@@ -794,7 +812,7 @@ const autoTotalSteps = arguments[1];
 """
 
 # ==========================================
-# 7. Multi-Language Messages (Strictly No Emojis, Pure VIP Bold)
+# 7. Multi-Language Messages (Strictly Clean, NO BRACKETS, Pure VIP Bold)
 # ==========================================
 def get_text(chat_id, key, **kwargs):
     sess = user_sessions.get(chat_id, {})
@@ -803,168 +821,207 @@ def get_text(chat_id, key, **kwargs):
     messages = {
         "bn": {
             "welcome": (
-                f"<b>[ {to_bold('WINGO 30S VIP AUTOMATION')} ]</b>\n\n"
-                f"স্বাগতম আপনাকে প্রিমিয়াম উইনগো ট্রেডিং অটোমেশন সিস্টেমে।\n"
-                f"দয়া করে আপনার পছন্দের ভাষা নির্বাচন করুন:"
+                f"<b>{to_bold('WINGO 30S VIP AUTOMATION')}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"স্বাগতম! এটি একটি সম্পূর্ণ স্বয়ংক্রিয় ও হাই-স্পিড ভিআইপি উইনগো ট্রেডিং সিস্টেম।\n\n"
+                f"অনুগ্রহ করে আপনার পছন্দের ভাষা নির্বাচন করুন:"
             ),
             "choose_site": (
-                f"<b>[ {to_bold('SELECT PLATFORM')} ]</b>\n\n"
-                f"প্ল্যাটফর্ম নির্বাচন করুন:"
+                f"<b>{to_bold('SELECT PLATFORM')}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"আপনি কোন সাইটে অটো ট্রেড করতে চান? নিচে থেকে প্ল্যাটফর্ম নির্বাচন করুন:"
             ),
             "input_phone": (
-                f"<b>[ {to_bold('ACCOUNT NUMBER')} ]</b>\n\n"
-                f"আপনার একাউন্ট নাম্বার (ফোন নাম্বার) লিখে পাঠান:"
+                f"<b>{to_bold('ACCOUNT NUMBER')}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"প্ল্যাটফর্ম: <b>{kwargs.get('site_name', '')}</b>\n\n"
+                f"আপনার রেজিস্টার্ড একাউন্ট নম্বর (ফোন নম্বর) লিখে সেন্ড করুন:"
             ),
             "input_pass": (
-                f"<b>[ {to_bold('ACCOUNT PASSWORD')} ]</b>\n\n"
-                f"একাউন্ট: <code>{kwargs.get('phone', '')}</code>\n"
-                f"এবার আপনার পাসওয়ার্ড টি লিখে পাঠান:"
+                f"<b>{to_bold('ACCOUNT PASSWORD')}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"একাউন্ট নম্বর: <code>{kwargs.get('phone', '')}</code>\n\n"
+                f"এবার আপনার একাউন্টের সঠিক পাসওয়ার্ড লিখে সেন্ড করুন:"
             ),
             "login_wait": (
-                f"<b>[ {to_bold('CONNECTING')} ]</b>\n\n"
-                f"প্ল্যাটফর্ম: <b>{kwargs.get('site_name', '')}</b>\n"
-                f"ব্রাউজার চালু করে লগইন সম্পন্ন করা হচ্ছে..."
+                f"<b>{to_bold('CONNECTING TO SERVER')}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"প্ল্যাটফর্ম: <b>{kwargs.get('site_name', '')}</b>\n\n"
+                f"আপনার জন্য একটি সম্পূর্ণ পৃথক ফায়ারফক্স ব্রাউজার চালু করে একাউন্টে লগইন করা হচ্ছে..."
             ),
             "login_success_redirecting": (
-                f"<b>[ {to_bold('LOGIN COMPLETED')} ]</b>\n\n"
+                f"<b>{to_bold('LOGIN COMPLETED')}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"প্ল্যাটফর্ম: <b>{kwargs.get('site_name', '')}</b>\n"
-                f"একাউন্ট: <code>{kwargs.get('phone', '')}</code>\n\n"
-                f"স্বয়ংক্রিয়ভাবে উইনগো ৩০এস পেজে রিডাইরেক্ট করা হচ্ছে..."
+                f"একাউন্ট নম্বর: <code>{kwargs.get('phone', '')}</code>\n\n"
+                f"লগইন সফল হয়েছে! এখন স্বয়ংক্রিয়ভাবে উইনগো ৩০এস (WinGo 30S) মূল গেম পেজে প্রবেশ করা হচ্ছে..."
             ),
             "login_failed": (
-                f"<b>[ {to_bold('LOGIN FAILED')} ]</b>\n\n"
+                f"<b>{to_bold('LOGIN FAILED')}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"প্ল্যাটফর্ম: <b>{kwargs.get('site_name', '')}</b>\n"
-                f"কারণ: <i>{kwargs.get('error', 'ভুল তথ্য বা সংযোগ সমস্যা')}</i>\n\n"
-                f"পুনরায় চেষ্টা করার জন্য /start পাঠান।"
+                f"সমস্যা: <i>{kwargs.get('error', 'ভুল তথ্য বা নেটওয়ার্ক সমস্যা')}</i>\n\n"
+                f"পুনরায় চেষ্টা করতে /start লিখে সেন্ড করুন।"
             ),
             "wingo_ready": (
-                f"<b>[ {to_bold('WINGO 30S TRIGGERED')} ]</b>\n\n"
+                f"<b>{to_bold('WINGO 30S READY')}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"প্ল্যাটফর্ম: <b>{kwargs.get('site_name', '')}</b> (WinGo 30S)\n"
-                f"বর্তমান ব্যালেন্স: <code>৳ {kwargs.get('balance', '0.00')}</code>\n\n"
-                f"ট্রেডিং শুরু করতে [ 𝐒𝐓𝐀𝐑𝐓 ] বা ব্রাউজার বন্ধ করতে [ 𝐂𝐀𝐍𝐂𝐄𝐋 ] চাপুন:"
+                f"আপনার বর্তমান ওয়ালেট ব্যালেন্স: <code>৳ {kwargs.get('balance', '0.00')}</code>\n\n"
+                f"উইনগো ৩০এস পেজ প্রস্তুত হয়েছে।\n"
+                f"ট্রেডিং শুরু করতে নিচে {to_bold('START')} চাপুন, অথবা ব্রাউজারটি বন্ধ করতে {to_bold('CANCEL')} চাপুন:"
             ),
             "input_target": (
-                f"<b>[ {to_bold('TARGET PROFIT')} ]</b>\n\n"
+                f"<b>{to_bold('SET TARGET PROFIT')}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"বর্তমান ব্যালেন্স: <code>৳ {kwargs.get('balance', '0.00')}</code>\n\n"
-                f"আপনি কত টাকা প্রফিট করতে চান? সংখ্যাটি লিখে পাঠান (যেমন: <code>500</code>):"
+                f"আপনি কত টাকা মোট প্রফিট (লাভ) করতে চান? লাভ অর্জিত হওয়া মাত্রই অটোমেশন নিজে থেকেই ট্রেড থামিয়ে দেবে।\n"
+                f"আপনার টার্গেট অ্যামাউন্টটি লিখে সেন্ড করুন (যেমন: <code>500</code>):"
             ),
             "input_steps": (
-                f"<b>[ {to_bold('MARTINGALE STEPS')} ]</b>\n\n"
-                f"টার্গেট প্রফিট: <code>৳ {kwargs.get('target', 0)}</code>\n\n"
-                f"মার্টিনগেল ব্যাকআপ স্টেপ সংখ্যা লিখে পাঠান (যেমন: <code>7</code> বা <code>10</code>):"
+                f"<b>{to_bold('SET MARTINGALE STEPS')}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"টার্গেট প্রফিট: <code>৳ {kwargs.get('target', 0)}</code> সংরক্ষিত হয়েছে।\n\n"
+                f"মার্টিনগেল ব্যাকআপের জন্য আপনি কতটি স্টেপ রাখতে চান?\n"
+                f"স্টেপ সংখ্যা লিখে সেন্ড করুন (যেমন: <code>7</code> বা <code>10</code>):"
             ),
             "starting_trade": (
-                f"<b>[ {to_bold('STARTING TRADING ENGINE')} ]</b>\n\n"
-                f"অটো ট্রেডিং স্ক্রিপ্ট রান হচ্ছে...\n"
-                f"ব্রাউজারের লাইভ ফুটেজ নিচে পাঠানো হচ্ছে..."
+                f"<b>{to_bold('STARTING TRADING ENGINE')}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"টার্গেট ও স্টেপ সফলভাবে সেট করা হয়েছে।\n"
+                f"স্ক্রিন হার্ড-লক সহ ভিআইপি সিগন্যাল অ্যালগরিদম সক্রিয় করা হচ্ছে...\n"
+                f"নিচে ব্রাউজারের লাইভ স্ক্রিন ফুটেজ পাঠানো হচ্ছে।"
             ),
             "running_dashboard": (
-                f"<b>[ {to_bold('AUTOMATION ACTIVE 24/7')} ]</b>\n\n"
+                f"<b>{to_bold('AUTOMATION ACTIVE 24/7')}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"প্ল্যাটফর্ম: <b>{kwargs.get('site_name', '')}</b>\n"
                 f"শুরুর ব্যালেন্স: <code>৳ {kwargs.get('start_bal', '0.00')}</code>\n"
                 f"টার্গেট ব্যালেন্স: <code>৳ {kwargs.get('target_bal', '0.00')}</code>\n"
-                f"মোট স্টেপ: <b>{kwargs.get('steps', 7)}</b>\n\n"
-                f"সার্বক্ষণিক ব্যাকগ্রাউন্ডে ভিআইপি অ্যালগরিদমে ট্রেড চলছে।"
+                f"মোট ব্যাকআপ স্টেপ: <b>{kwargs.get('steps', 7)} Steps</b>\n\n"
+                f"ব্রাউজারটি নিরবচ্ছিন্নভাবে ব্যাকগ্রাউন্ডে ট্রেড পরিচালনা করছে।"
             ),
             "cancelled": (
-                f"<b>[ {to_bold('SESSION CANCELLED')} ]</b>\n\n"
-                f"আপনার ব্রাউজার উইন্ডো সফলভাবে বন্ধ করা হয়েছে।\n"
-                f"নতুন সেশন শুরু করতে /start পাঠান।"
+                f"<b>{to_bold('SESSION TERMINATED')}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"আপনার ফায়ারফক্স ব্রাউজার উইন্ডোটি সম্পূর্ণভাবে বন্ধ করা হয়েছে।\n"
+                f"অন্যদের ব্রাউজারে কোনো প্রভাব পড়েনি।\n"
+                f"নতুন সেশন চালু করতে চাইলে /start লিখে সেন্ড করুন।"
             ),
             "target_achieved": (
-                f"<b>[ {to_bold('TARGET ACHIEVED SUCCESSFULLY')} ]</b>\n\n"
-                f"কাঙ্ক্ষিত টার্গেট সম্পূর্ণ সফলভাবে পূরণ হয়েছে।\n\n"
-                f"রিপোর্ট:\n"
+                f"<b>{to_bold('CONGRATULATIONS TARGET ACHIEVED')}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"আলহামদুলিল্লাহ! আপনার কাঙ্ক্ষিত টার্গেট সম্পূর্ণ সফলভাবে পূরণ হয়েছে।\n\n"
+                f"চূড়ান্ত ট্রেডিং রিপোর্ট:\n"
                 f"শুরুর ব্যালেন্স: <code>৳ {kwargs.get('start_bal', '0.00')}</code>\n"
                 f"শেষ ব্যালেন্স: <code>৳ {kwargs.get('cur_bal', '0.00')}</code>\n"
                 f"মোট প্রফিট: <code>+৳ {kwargs.get('profit', '0.00')}</code>\n\n"
-                f"মোট উইন: <b>{kwargs.get('wins', 0)}</b>\n"
-                f"মোট লস: <b>{kwargs.get('losses', 0)}</b>\n"
-                f"টানা সর্বোচ্চ উইন: <b>{kwargs.get('max_w', 0)}</b>\n"
-                f"টানা সর্বোচ্চ লস: <b>{kwargs.get('max_l', 0)}</b>"
+                f"মোট উইন: <b>{kwargs.get('wins', 0)}</b> বার\n"
+                f"মোট লস: <b>{kwargs.get('losses', 0)}</b> বার\n"
+                f"টানা সর্বোচ্চ উইন: <b>{kwargs.get('max_w', 0)}</b> বার\n"
+                f"টানা সর্বোচ্চ লস: <b>{kwargs.get('max_l', 0)}</b> বার\n\n"
+                f"নিচে সমাপ্তির লাইভ স্ক্রিন ফুটেজ সংযুক্ত করা হলো:"
             )
         },
         "en": {
             "welcome": (
-                f"<b>[ {to_bold('WINGO 30S VIP AUTOMATION')} ]</b>\n\n"
-                f"Welcome to the Premium WinGo Auto-Trading Platform.\n"
-                f"Please select your language:"
+                f"<b>{to_bold('WINGO 30S VIP AUTOMATION')}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"Welcome to the Premium WinGo 30S Auto-Trading Platform.\n\n"
+                f"Please select your preferred language:"
             ),
             "choose_site": (
-                f"<b>[ {to_bold('SELECT PLATFORM')} ]</b>\n\n"
-                f"Choose Platform:"
+                f"<b>{to_bold('SELECT PLATFORM')}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"Which platform do you want to automate? Select below:"
             ),
             "input_phone": (
-                f"<b>[ {to_bold('ACCOUNT NUMBER')} ]</b>\n\n"
-                f"Enter your account phone number:"
+                f"<b>{to_bold('ACCOUNT NUMBER')}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"Platform: <b>{kwargs.get('site_name', '')}</b>\n\n"
+                f"Please enter your account / phone number:"
             ),
             "input_pass": (
-                f"<b>[ {to_bold('ACCOUNT PASSWORD')} ]</b>\n\n"
-                f"Account: <code>{kwargs.get('phone', '')}</code>\n"
-                f"Now enter your password:"
+                f"<b>{to_bold('ACCOUNT PASSWORD')}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"Account: <code>{kwargs.get('phone', '')}</code>\n\n"
+                f"Now enter your account password:"
             ),
             "login_wait": (
-                f"<b>[ {to_bold('CONNECTING')} ]</b>\n\n"
-                f"Platform: <b>{kwargs.get('site_name', '')}</b>\n"
+                f"<b>{to_bold('CONNECTING TO SERVER')}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"Platform: <b>{kwargs.get('site_name', '')}</b>\n\n"
                 f"Launching isolated browser and logging in..."
             ),
             "login_success_redirecting": (
-                f"<b>[ {to_bold('LOGIN COMPLETED')} ]</b>\n\n"
+                f"<b>{to_bold('LOGIN COMPLETED')}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"Platform: <b>{kwargs.get('site_name', '')}</b>\n"
                 f"Account: <code>{kwargs.get('phone', '')}</code>\n\n"
-                f"Redirecting automatically to WinGo 30S page..."
+                f"Login successful! Auto-redirecting to WinGo 30S game page..."
             ),
             "login_failed": (
-                f"<b>[ {to_bold('LOGIN FAILED')} ]</b>\n\n"
+                f"<b>{to_bold('LOGIN FAILED')}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"Platform: <b>{kwargs.get('site_name', '')}</b>\n"
                 f"Reason: <i>{kwargs.get('error', 'Invalid credentials or timeout')}</i>\n\n"
-                f"Type /start to try again."
+                f"Send /start to try again."
             ),
             "wingo_ready": (
-                f"<b>[ {to_bold('WINGO 30S TRIGGERED')} ]</b>\n\n"
+                f"<b>{to_bold('WINGO 30S READY')}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"Platform: <b>{kwargs.get('site_name', '')}</b> (WinGo 30S)\n"
-                f"Current Balance: <code>৳ {kwargs.get('balance', '0.00')}</code>\n\n"
-                f"Press [ 𝐒𝐓𝐀𝐑𝐓 ] to configure trading or [ 𝐂𝐀𝐍𝐂𝐄𝐋 ] to exit:"
+                f"Wallet Balance: <code>৳ {kwargs.get('balance', '0.00')}</code>\n\n"
+                f"WinGo 30S page is ready.\n"
+                f"Press {to_bold('START')} to begin trading or {to_bold('CANCEL')} to close this browser:"
             ),
             "input_target": (
-                f"<b>[ {to_bold('TARGET PROFIT')} ]</b>\n\n"
+                f"<b>{to_bold('SET TARGET PROFIT')}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"Current Balance: <code>৳ {kwargs.get('balance', '0.00')}</code>\n\n"
-                f"Enter Target Profit Amount (e.g. <code>500</code>):"
+                f"Enter your Target Profit amount (e.g. <code>500</code>):"
             ),
             "input_steps": (
-                f"<b>[ {to_bold('MARTINGALE STEPS')} ]</b>\n\n"
-                f"Target Profit: <code>৳ {kwargs.get('target', 0)}</code>\n\n"
-                f"Enter total Martingale steps (e.g. <code>7</code> or <code>10</code>):"
+                f"<b>{to_bold('SET MARTINGALE STEPS')}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"Target Profit: <code>৳ {kwargs.get('target', 0)}</code> saved.\n\n"
+                f"Enter total Martingale backup steps (e.g. <code>7</code> or <code>10</code>):"
             ),
             "starting_trade": (
-                f"<b>[ {to_bold('STARTING TRADING ENGINE')} ]</b>\n\n"
-                f"Automation script running...\n"
-                f"Live browser footage attached below..."
+                f"<b>{to_bold('STARTING TRADING ENGINE')}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"Target and steps successfully registered.\n"
+                f"Screen hard-lock and VIP algorithm activated...\n"
+                f"Live browser footage attached below."
             ),
             "running_dashboard": (
-                f"<b>[ {to_bold('AUTOMATION ACTIVE 24/7')} ]</b>\n\n"
+                f"<b>{to_bold('AUTOMATION ACTIVE 24/7')}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
                 f"Platform: <b>{kwargs.get('site_name', '')}</b>\n"
                 f"Starting Balance: <code>৳ {kwargs.get('start_bal', '0.00')}</code>\n"
                 f"Target Balance: <code>৳ {kwargs.get('target_bal', '0.00')}</code>\n"
-                f"Total Steps: <b>{kwargs.get('steps', 7)}</b>\n\n"
-                f"Trading automatically in background 24/7."
+                f"Total Steps: <b>{kwargs.get('steps', 7)} Steps</b>\n\n"
+                f"Browser is running trades 24/7 in background."
             ),
             "cancelled": (
-                f"<b>[ {to_bold('SESSION CANCELLED')} ]</b>\n\n"
-                f"Your browser session has been cleanly terminated.\n"
+                f"<b>{to_bold('SESSION TERMINATED')}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"Your browser session has been cleanly closed.\n"
                 f"Send /start to begin a new session."
             ),
             "target_achieved": (
-                f"<b>[ {to_bold('TARGET ACHIEVED SUCCESSFULLY')} ]</b>\n\n"
-                f"Target profit reached.\n\n"
+                f"<b>{to_bold('CONGRATULATIONS TARGET ACHIEVED')}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"Your requested target profit has been successfully reached.\n\n"
                 f"Performance Report:\n"
-                f"Start Balance: <code>৳ {kwargs.get('start_bal', '0.00')}</code>\n"
+                f"Starting Balance: <code>৳ {kwargs.get('start_bal', '0.00')}</code>\n"
                 f"Final Balance: <code>৳ {kwargs.get('cur_bal', '0.00')}</code>\n"
                 f"Net Profit: <code>+৳ {kwargs.get('profit', '0.00')}</code>\n\n"
                 f"Total Wins: <b>{kwargs.get('wins', 0)}</b>\n"
                 f"Total Losses: <b>{kwargs.get('losses', 0)}</b>\n"
                 f"Max Win Streak: <b>{kwargs.get('max_w', 0)}</b>\n"
-                f"Max Loss Streak: <b>{kwargs.get('max_l', 0)}</b>"
+                f"Max Loss Streak: <b>{kwargs.get('max_l', 0)}</b>\n\n"
+                f"Live final footage attached below:"
             )
         }
     }
@@ -972,30 +1029,46 @@ def get_text(chat_id, key, **kwargs):
     return messages.get(lang, messages["bn"]).get(key, "")
 
 # ==========================================
-# 8. Keyboard Controls (Strictly Pure VIP Bold, No Emojis)
+# 8. Keyboard Controls (Strictly NO BRACKETS, Pure VIP Bold)
 # ==========================================
+def get_language_keyboard():
+    markup = InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        InlineKeyboardButton(f"{to_bold('ENGLISH')}", callback_data="lang_en"),
+        InlineKeyboardButton(f"{to_bold('BANGLA')}", callback_data="lang_bn")
+    )
+    return markup
+
+def get_platform_keyboard():
+    markup = InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        InlineKeyboardButton(f"{to_bold('AMAR CLUB')}", callback_data="site_amarclub"),
+        InlineKeyboardButton(f"{to_bold('DK WIN')}", callback_data="site_dkwin")
+    )
+    return markup
+
 def get_start_or_cancel_keyboard():
     markup = InlineKeyboardMarkup(row_width=2)
     markup.add(
-        InlineKeyboardButton(f"[ {to_bold('START')} ]", callback_data="btn_start_flow"),
-        InlineKeyboardButton(f"[ {to_bold('CANCEL')} ]", callback_data="btn_cancel_flow")
+        InlineKeyboardButton(f"{to_bold('START')}", callback_data="btn_start_flow"),
+        InlineKeyboardButton(f"{to_bold('CANCEL')}", callback_data="btn_cancel_flow")
     )
     return markup
 
 def get_trading_control_keyboard():
     markup = InlineKeyboardMarkup(row_width=2)
     markup.add(
-        InlineKeyboardButton(f"[ {to_bold('LIVE FOOTAGE')} ]", callback_data="btn_screenshot"),
-        InlineKeyboardButton(f"[ {to_bold('LIVE BALANCE')} ]", callback_data="btn_live_balance")
+        InlineKeyboardButton(f"{to_bold('LIVE FOOTAGE')}", callback_data="btn_screenshot"),
+        InlineKeyboardButton(f"{to_bold('LIVE BALANCE')}", callback_data="btn_live_balance")
     )
     markup.add(
-        InlineKeyboardButton(f"[ {to_bold('STATS REPORT')} ]", callback_data="btn_stats_report"),
-        InlineKeyboardButton(f"[ {to_bold('STOP TRADING')} ]", callback_data="btn_stop_trade")
+        InlineKeyboardButton(f"{to_bold('STATS REPORT')}", callback_data="btn_stats_report"),
+        InlineKeyboardButton(f"{to_bold('STOP TRADING')}", callback_data="btn_stop_trade")
     )
     return markup
 
 # ==========================================
-# 9. Background Progress & Target Monitor
+# 9. Background Progress & 24-Hour Persistence Monitor
 # ==========================================
 def monitor_trading_progress(chat_id):
     """Background monitor thread: checks balance, records streaks, sends completion alert."""
@@ -1073,12 +1146,13 @@ def monitor_trading_progress(chat_id):
 
         time.sleep(4)
 
-# 24-Hour Idle Cleaner: automatically shuts down browsers that have had no trading activity for 24 hours
+# 24-Hour Idle Cleaner: only closes an abandoned browser if completely idle with NO trading for a full 24 hours
 def idle_session_reaper():
     while True:
         try:
             now = time.time()
             for cid, sess in list(user_sessions.items()):
+                # Never kill an actively running trading session!
                 if not sess.get("is_trading"):
                     last_active = sess.get("last_active", now)
                     if now - last_active > 86400: # 24 hours idle
@@ -1091,27 +1165,30 @@ def idle_session_reaper():
 threading.Thread(target=idle_session_reaper, daemon=True).start()
 
 # ==========================================
-# 10. Login & WinGo 30S Auto-Trigger Executor
+# 10. Login & Direct WinGo 30S Navigation Executor
 # ==========================================
 def process_login(chat_id, phone, password, status_msg_id):
     sess = user_sessions.get(chat_id, {})
     sess["last_active"] = time.time()
     site_name = sess.get("site_name", "Amar Club")
 
+    # Step 1: Login URL
     login_url = URL_AMARCLUB_LOGIN if "AMAR" in site_name.upper() else URL_DKWIN_LOGIN
+    # Step 2: Real WinGo 30S URL
     wingo_url = URL_AMARCLUB_WINGO if "AMAR" in site_name.upper() else URL_DKWIN_WINGO
 
-    # Animated progress indicator
+    # Animated progress indicator (Clean, No Brackets)
     stop_spinner = threading.Event()
     def spinner_task():
-        spinners = ["[ - ]", "[ \ ]", "[ | ]", "[ / ]"]
+        spinners = ["-", "\\", "|", "/"]
         i = 0
         while not stop_spinner.is_set():
             try:
                 bot.edit_message_text(
-                    f"<b>[ {to_bold('CONNECTING TO SERVER')} ] {spinners[i % len(spinners)]}</b>\n\n"
+                    f"<b>{to_bold('CONNECTING TO SERVER')} {spinners[i % len(spinners)]}</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
                     f"প্ল্যাটফর্ম: <b>{site_name}</b>\n"
-                    f"আইসোলেটেড ব্রাউজার তৈরি হচ্ছে...",
+                    f"আইসোলেটেড ফায়ারফক্স তৈরি হচ্ছে...",
                     chat_id=chat_id,
                     message_id=status_msg_id
                 )
@@ -1152,7 +1229,7 @@ def process_login(chat_id, phone, password, status_msg_id):
     if not fill_ok:
         stop_spinner.set()
         bot.edit_message_text(
-            get_text(chat_id, "login_failed", site_name=site_name, error="লগইন ইনপুট ফিল্ড পাওয়া যায়নি"),
+            get_text(chat_id, "login_failed", site_name=site_name, error="লগইন ইনপুট ফিল্ড পাওয়া যায়নি"),
             chat_id=chat_id,
             message_id=status_msg_id
         )
@@ -1170,7 +1247,7 @@ def process_login(chat_id, phone, password, status_msg_id):
                 break
             elif res.get("status") == "ERROR":
                 login_status = "ERROR"
-                err_detail = res.get("message", "ভুল ফোন বা পাসওয়ার্ড")
+                err_detail = res.get("message", "ভুল ফোন বা পাসওয়ার্ড")
                 break
         except Exception:
             pass
@@ -1194,28 +1271,47 @@ def process_login(chat_id, phone, password, status_msg_id):
         message_id=status_msg_id
     )
 
-    # 2. Strict Requirement: Wait ~1s and automatically open WinGo 30S in that SAME browser page!
-    time.sleep(1.2)
-    try:
-        driver.get(wingo_url)
-    except Exception as e:
-        print(f"[*] Navigation error: {e}")
+    # 2. Strict Requirement: Immediately open the Real WinGo 30S Game Link!
+    # Multiple fallback strategies to ensure hash-router single page apps transition without fail:
+    nav_script = """
+    const targetUrl = arguments[0];
+    try {
+        // Dismiss any modal overlays or daily bonus dialogs
+        document.querySelectorAll('.van-dialog__confirm, .van-overlay, button[class*="confirm"], button[class*="close"], .van-popup__close-icon').forEach(el => {
+            try { el.click(); } catch(e){}
+        });
+    } catch(e){}
 
-    # 3. Wait UNTIL the WinGo 30S page is fully opened and ready!
+    const parts = targetUrl.split('#');
+    if (parts.length > 1) {
+        window.location.hash = parts[1];
+    }
+    window.location.href = targetUrl;
+    """
+
+    time.sleep(1.2)
     wingo_ready = False
-    for _ in range(30):
+    for attempt in range(8):
         try:
-            ready_res = driver.execute_script(CHECK_WINGO_READY_JS)
-            if ready_res:
+            driver.execute_script(nav_script, wingo_url)
+        except Exception:
+            pass
+        try:
+            driver.get(wingo_url)
+        except Exception:
+            pass
+
+        time.sleep(2)
+        try:
+            if driver.execute_script(CHECK_WINGO_READY_JS):
                 wingo_ready = True
                 break
         except Exception:
             pass
-        time.sleep(1)
 
-    time.sleep(2)
+    time.sleep(2.5)
 
-    # 4. Read the live balance from the WinGo 30S page
+    # 3. Read the live balance from the WinGo 30S page
     current_bal = 0.0
     for _ in range(15):
         try:
@@ -1230,7 +1326,7 @@ def process_login(chat_id, phone, password, status_msg_id):
     sess["current_balance"] = current_bal
     sess["step"] = "WINGO_TRIGGERED_READY"
 
-    # 5. Send message with balance and two buttons: [ START ] and [ CANCEL ]
+    # 4. Send message with balance and two clean buttons: START and CANCEL
     bot.send_message(
         chat_id,
         get_text(chat_id, "wingo_ready", site_name=site_name, balance=f"{current_bal:.2f}"),
@@ -1243,18 +1339,32 @@ def process_login(chat_id, phone, password, status_msg_id):
 @bot.message_handler(commands=['start'])
 def handle_start(message):
     chat_id = message.chat.id
+    # If user already has an active trading driver, do not destroy it!
+    existing_sess = user_sessions.get(chat_id)
+    if existing_sess and existing_sess.get("is_trading"):
+        bot.send_message(
+            chat_id,
+            f"<b>{to_bold('TRADING IS ALREADY RUNNING')}</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"আপনার ট্রেডিং ব্যাকগ্রাউন্ডে সক্রিয় রয়েছে। লাইভ কন্ট্রোল প্যানেল নিচে পাঠানো হলো:",
+            reply_markup=get_trading_control_keyboard()
+        )
+        return
+
+    # Initialize / reset session for this specific chat_id
     user_sessions[chat_id] = {
         "step": "CHOOSE_LANGUAGE",
         "lang": "bn",
-        "last_active": time.time()
+        "last_active": time.time(),
+        "driver": existing_sess.get("driver") if existing_sess else None,
+        "profile_dir": existing_sess.get("profile_dir") if existing_sess else None
     }
 
-    markup = InlineKeyboardMarkup(row_width=2)
-    markup.add(
-        InlineKeyboardButton(f"[ {to_bold('ENGLISH')} ]", callback_data="lang_en"),
-        InlineKeyboardButton(f"[ {to_bold('BANGLA')} ]", callback_data="lang_bn")
+    bot.send_message(
+        chat_id,
+        get_text(chat_id, "welcome"),
+        reply_markup=get_language_keyboard()
     )
-    bot.send_message(chat_id, get_text(chat_id, "welcome"), reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callbacks(call):
@@ -1268,18 +1378,12 @@ def handle_callbacks(call):
         sess["lang"] = "en" if data == "lang_en" else "bn"
         sess["step"] = "CHOOSE_SITE"
 
-        # Explicit user requirement: Button names strictly "AMAR CLUB" and "DK WIN" in bold
-        markup = InlineKeyboardMarkup(row_width=2)
-        markup.add(
-            InlineKeyboardButton(f"[ {to_bold('AMAR CLUB')} ]", callback_data="site_amarclub"),
-            InlineKeyboardButton(f"[ {to_bold('DK WIN')} ]", callback_data="site_dkwin")
-        )
         bot.answer_callback_query(call.id)
         bot.edit_message_text(
             get_text(chat_id, "choose_site"),
             chat_id=chat_id,
             message_id=call.message.message_id,
-            reply_markup=markup
+            reply_markup=get_platform_keyboard()
         )
 
     # 2. Platform Selection
@@ -1290,7 +1394,7 @@ def handle_callbacks(call):
 
         bot.answer_callback_query(call.id, site_name)
         bot.edit_message_text(
-            get_text(chat_id, "input_phone"),
+            get_text(chat_id, "input_phone", site_name=site_name),
             chat_id=chat_id,
             message_id=call.message.message_id
         )
@@ -1325,7 +1429,7 @@ def handle_callbacks(call):
                 with open(temp_shot, "rb") as p:
                     bot.send_photo(
                         chat_id, p,
-                        caption=f"<b>[ {to_bold('LIVE BROWSER FOOTAGE')} ]</b>\nসময়: <code>{time.strftime('%H:%M:%S')}</code>"
+                        caption=f"<b>{to_bold('LIVE BROWSER FOOTAGE')}</b>\nসময়: <code>{time.strftime('%H:%M:%S')}</code>"
                     )
                 os.remove(temp_shot)
             except Exception as e:
@@ -1365,11 +1469,12 @@ def handle_callbacks(call):
                 """)
                 if data_rep:
                     stat_txt = (
-                        f"<b>[ {to_bold('LIVE TRADING STATS')} ]</b>\n\n"
+                        f"<b>{to_bold('LIVE TRADING STATS')}</b>\n"
+                        f"━━━━━━━━━━━━━━━━━━━━\n"
                         f"বর্তমান ব্যালেন্স: <code>৳ {data_rep['curBal']:.2f}</code>\n"
                         f"টার্গেট: <code>৳ {data_rep['tgtAmt']:.2f}</code>\n"
                         f"মার্টিনগেল স্টেপ: <b>Step {data_rep['step']}/{data_rep['maxStep']}</b>\n"
-                        f"উইন: <b>{data_rep['w']}</b> | লস: <b>{data_rep['l']}</b>"
+                        f"উইন: <b>{data_rep['w']}</b> বার | লস: <b>{data_rep['l']}</b> বার"
                     )
                     bot.send_message(chat_id, stat_txt)
                 else:
@@ -1387,7 +1492,12 @@ def handle_callbacks(call):
                 driver.execute_script("let btn = document.querySelector('#sys-core-fin button'); if(btn) btn.click();")
                 sess["is_trading"] = False
                 bot.answer_callback_query(call.id, "Trading paused.", show_alert=True)
-                bot.send_message(chat_id, f"<b>[ {to_bold('TRADING PAUSED')} ]</b>\nট্রেডিং সাময়িকভাবে থামানো হয়েছে।")
+                bot.send_message(
+                    chat_id,
+                    f"<b>{to_bold('TRADING PAUSED')}</b>\n"
+                    f"━━━━━━━━━━━━━━━━━━━━\n"
+                    f"ট্রেডিং সাময়িকভাবে থামানো হয়েছে।"
+                )
             except Exception:
                 bot.answer_callback_query(call.id, "Error executing stop.", show_alert=True)
         else:
@@ -1430,7 +1540,7 @@ def handle_user_text(message):
             if val <= 0:
                 raise ValueError()
         except ValueError:
-            bot.send_message(chat_id, "দয়া করে একটি সঠিক পজিটিভ অ্যামাউন্ট লিখুন (যেমন: <code>500</code>):")
+            bot.send_message(chat_id, "দয়া করে একটি সঠিক পজিটিভ অ্যামাউন্ট লিখুন (যেমন: <code>500</code>):")
             return
 
         sess["target_profit"] = val
@@ -1448,7 +1558,7 @@ def handle_user_text(message):
             if steps_val <= 0:
                 raise ValueError()
         except ValueError:
-            bot.send_message(chat_id, "দয়া করে সঠিক পূর্ণসংখ্যা লিখুন (যেমন: <code>7</code>):")
+            bot.send_message(chat_id, "দয়া করে সঠিক পূর্ণসংখ্যা লিখুন (যেমন: <code>7</code>):")
             return
 
         sess["total_steps"] = steps_val
@@ -1457,7 +1567,7 @@ def handle_user_text(message):
 
         driver = sess.get("driver")
         if not driver:
-            bot.send_message(chat_id, "ব্রাউজার সংযোগ নেই। /start দিয়ে পুনরায় শুরু করুন।")
+            bot.send_message(chat_id, "ব্রাউজার সংযোগ নেই। /start দিয়ে পুনরায় শুরু করুন।")
             return
 
         bot.send_message(chat_id, get_text(chat_id, "starting_trade"))
@@ -1478,7 +1588,11 @@ def handle_user_text(message):
             with open(start_snap, "rb") as ph:
                 bot.send_photo(
                     chat_id, ph,
-                    caption=f"<b>[ {to_bold('LIVE BROWSER FOOTAGE')} ]</b>\nটার্গেট প্রফিট: <code>৳ {sess['target_profit']}</code> | ব্যাকআপ: <code>{sess['total_steps']} Steps</code>"
+                    caption=(
+                        f"<b>{to_bold('LIVE BROWSER FOOTAGE')}</b>\n"
+                        f"━━━━━━━━━━━━━━━━━━━━\n"
+                        f"টার্গেট প্রফিট: <code>৳ {sess['target_profit']}</code> | ব্যাকআপ: <code>{sess['total_steps']} Steps</code>"
+                    )
                 )
             os.remove(start_snap)
         except Exception as e:
@@ -1507,5 +1621,5 @@ def handle_user_text(message):
 # 12. Main Runner
 # ==========================================
 if __name__ == "__main__":
-    print(f"[*] [ {to_bold('WINGO VIP BOT MULTI-INSTANCE READY')} ]...")
+    print(f"[*] {to_bold('WINGO VIP BOT MULTI-INSTANCE READY')}...")
     bot.infinity_polling()
