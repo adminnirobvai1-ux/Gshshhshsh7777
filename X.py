@@ -70,27 +70,28 @@ os.makedirs(PROFILES_BASE_DIR, exist_ok=True)
 # User Session Database: chat_id -> Session Dictionary
 user_sessions = {}
 
+# Global Active WebDriver Instances Database: session_id -> Instance Dictionary
+# Stores each active webdriver instance keyed by unique session ID so Python's garbage collector
+# does NOT close older running browsers, keeping previous windows open alongside new ones.
+active_drivers = {}
+
 # ==========================================
 # 4. Multi-Instance Isolated Firefox Launcher
 # ==========================================
 def launch_firefox_instance(chat_id, target_url):
     """
-    Launches an independent Firefox clone instance for each user.
-    Uses separate profile folders, separate ports, and avoids session clashing.
-    Keeps each user's browser completely isolated and running.
+    Launches a completely new, independent Firefox instance for every login or new session.
+    Uses dynamic unique profile directory paths (f'{chat_id}_{int(time.time())}_{port}')
+    so that existing/previous Firefox sessions and profiles are never overwritten or deleted.
+    Ensures previous browser windows stay open alongside new ones with -no-remote and -new-instance.
+    Stores each active webdriver instance in the active_drivers global dictionary.
+    Each session remains completely isolated without sharing or resetting history/cookies.
     """
-    user_profile_dir = os.path.join(PROFILES_BASE_DIR, f"user_{chat_id}")
+    session_id = f"{chat_id}_{int(time.time())}_{find_free_port()}"
+    user_profile_dir = os.path.join(PROFILES_BASE_DIR, f"user_{session_id}")
     os.makedirs(user_profile_dir, exist_ok=True)
 
-    # Clean old stale locks for this specific user profile only
-    for lock_name in [".parentlock", "parent.lock", "lock"]:
-        lp = os.path.join(user_profile_dir, lock_name)
-        if os.path.exists(lp):
-            try:
-                os.remove(lp)
-            except Exception:
-                pass
-
+    # Dynamic port allocation for complete Marionette & Geckodriver isolation
     gecko_port = find_free_port()
     marionette_port = find_free_port()
 
@@ -119,33 +120,46 @@ def launch_firefox_instance(chat_id, target_url):
     except Exception:
         pass
 
-    driver.get(target_url)
-    return driver, user_profile_dir
+    # Store in global dictionary to retain strong references and prevent garbage collection
+    active_drivers[session_id] = {
+        "driver": driver,
+        "profile_dir": user_profile_dir,
+        "chat_id": chat_id,
+        "created_at": time.time(),
+        "session_id": session_id
+    }
 
-def close_user_browser(chat_id):
-    """Safely closes ONLY this user's browser without terminating other active users."""
+    driver.get(target_url)
+    return driver, user_profile_dir, session_id
+
+def close_user_browser(chat_id, session_id=None):
+    """
+    Safely closes ONLY the designated session browser when explicitly cancelled,
+    leaving any other previous or concurrent browser windows open and untouched.
+    """
     sess = user_sessions.get(chat_id)
-    if not sess:
-        return
-    sess["is_trading"] = False
-    driver = sess.get("driver")
-    if driver:
+    target_sid = session_id or (sess.get("session_id") if sess else None)
+
+    if target_sid and target_sid in active_drivers:
+        active_item = active_drivers.pop(target_sid, None)
+        if active_item:
+            driver = active_item.get("driver")
+            if driver:
+                try:
+                    driver.quit()
+                except Exception:
+                    pass
+    elif sess and sess.get("driver"):
+        driver = sess.get("driver")
         try:
             driver.quit()
         except Exception:
             pass
-        sess["driver"] = None
-    sess["step"] = "IDLE"
 
-    prof_dir = sess.get("profile_dir")
-    if prof_dir and os.path.exists(prof_dir):
-        for lock_name in [".parentlock", "parent.lock", "lock"]:
-            lp = os.path.join(prof_dir, lock_name)
-            if os.path.exists(lp):
-                try:
-                    os.remove(lp)
-                except Exception:
-                    pass
+    if sess:
+        sess["is_trading"] = False
+        sess["driver"] = None
+        sess["step"] = "IDLE"
 
 # ==========================================
 # 5. In-Browser JavaScript Automation Code (With Error 22 Auto-Confirm)
@@ -1081,7 +1095,8 @@ def monitor_trading_progress(chat_id):
                     start_b = sess.get("start_bal", 0)
                     profit = sess["cur_bal"] - start_b
 
-                    screen_path = os.path.join(PROFILES_BASE_DIR, f"win_{chat_id}.png")
+                    sid = sess.get("session_id", chat_id)
+                    screen_path = os.path.join(PROFILES_BASE_DIR, f"win_{sid}.png")
                     try:
                         driver.save_screenshot(screen_path)
                     except Exception:
@@ -1118,12 +1133,17 @@ def idle_session_reaper():
     while True:
         try:
             now = time.time()
-            for cid, sess in list(user_sessions.items()):
-                if not sess.get("is_trading"):
-                    last_active = sess.get("last_active", now)
-                    if now - last_active > 86400:  # 24 hours retention
-                        print(f"[*] Cleaning up 24h idle browser session for {cid}")
-                        close_user_browser(cid)
+            for sid, active_item in list(active_drivers.items()):
+                created_at = active_item.get("created_at", now)
+                if now - created_at > 86400:  # 24 hours retention
+                    print(f"[*] Cleaning up 24h idle browser session for {sid}")
+                    driver = active_item.get("driver")
+                    if driver:
+                        try:
+                            driver.quit()
+                        except Exception:
+                            pass
+                    active_drivers.pop(sid, None)
         except Exception:
             pass
         time.sleep(3600)
@@ -1142,10 +1162,12 @@ def process_login(chat_id, phone, password, status_msg_id):
     wingo_url = URL_AMARCLUB_WINGO if "AMAR" in site_name.upper() else URL_DKWIN_WINGO
 
     driver = None
+    session_id = None
     try:
-        driver, prof_dir = launch_firefox_instance(chat_id, login_url)
+        driver, prof_dir, session_id = launch_firefox_instance(chat_id, login_url)
         sess["driver"] = driver
         sess["profile_dir"] = prof_dir
+        sess["session_id"] = session_id
     except Exception as e:
         bot.edit_message_text(
             get_text(chat_id, "login_failed", site_name=site_name, error=str(e)),
@@ -1173,7 +1195,7 @@ def process_login(chat_id, phone, password, status_msg_id):
             chat_id=chat_id,
             message_id=status_msg_id
         )
-        close_user_browser(chat_id)
+        close_user_browser(chat_id, session_id)
         return
 
     # Verify login success, auto-handling "already logged in somewhere else"
@@ -1208,7 +1230,7 @@ def process_login(chat_id, phone, password, status_msg_id):
         pass
 
     if login_status == "ERROR":
-        close_user_browser(chat_id)
+        close_user_browser(chat_id, session_id)
         bot.edit_message_text(
             get_text(chat_id, "login_failed", site_name=site_name, error=err_detail),
             chat_id=chat_id,
@@ -1271,7 +1293,7 @@ def process_login(chat_id, phone, password, status_msg_id):
     sess["step"] = "WINGO_TRIGGERED_READY"
 
     # 5. Take a LIVE SCREENSHOT of the WinGo 30S market page right upon entering!
-    wingo_snap = os.path.join(PROFILES_BASE_DIR, f"wingo_market_{chat_id}.png")
+    wingo_snap = os.path.join(PROFILES_BASE_DIR, f"wingo_market_{session_id}.png")
     snap_ok = False
     try:
         driver.save_screenshot(wingo_snap)
@@ -1367,7 +1389,8 @@ def handle_callbacks(call):
 
     elif data == "btn_cancel_flow":
         bot.answer_callback_query(call.id, "Session Cancelled")
-        close_user_browser(chat_id)
+        curr_sid = sess.get("session_id")
+        close_user_browser(chat_id, curr_sid)
         bot.edit_message_text(
             get_text(chat_id, "cancelled"),
             chat_id=chat_id,
@@ -1379,7 +1402,8 @@ def handle_callbacks(call):
         driver = sess.get("driver")
         if driver:
             bot.answer_callback_query(call.id, "Capturing live footage...")
-            temp_shot = os.path.join(PROFILES_BASE_DIR, f"live_{chat_id}.png")
+            sid = sess.get("session_id", chat_id)
+            temp_shot = os.path.join(PROFILES_BASE_DIR, f"live_{sid}.png")
             try:
                 driver.save_screenshot(temp_shot)
                 with open(temp_shot, "rb") as p:
@@ -1532,7 +1556,8 @@ def handle_user_text(message):
         time.sleep(2)
 
         # Initial live screenshot
-        start_snap = os.path.join(PROFILES_BASE_DIR, f"start_{chat_id}.png")
+        sid = sess.get("session_id", chat_id)
+        start_snap = os.path.join(PROFILES_BASE_DIR, f"start_{sid}.png")
         try:
             driver.save_screenshot(start_snap)
             with open(start_snap, "rb") as ph:
