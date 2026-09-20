@@ -29,7 +29,7 @@ from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.firefox.service import Service as FirefoxService
 
 # ==========================================
-# 2. Premium Mathematical Bold Unicode Converter
+# 2. Mathematical Bold Unicode Converter
 # ==========================================
 def to_bold(text: str) -> str:
     """Converts ASCII letters and digits to Mathematical Bold Unicode (A->𝐀, a->𝐚, 0->𝟎)"""
@@ -70,10 +70,17 @@ os.makedirs(PROFILES_BASE_DIR, exist_ok=True)
 # User Session Database: chat_id -> Session Dictionary
 user_sessions = {}
 
-# Payment Details (Change these numbers to your real numbers)
-PAYMENT_NUMBERS = {
-    "BKASH": "01700000000", # আপনার বিকাশ পার্সোনাল নাম্বার দিন
-    "NAGAD": "01800000000"  # আপনার নগদ পার্সোনাল নাম্বার দিন
+# Subscription Pricing Configuration
+SUBSCRIPTION_PLANS = {
+    "plan_1": {"name": "1 Day VIP Access", "days": 1, "price": 150},
+    "plan_7": {"name": "7 Days VIP Access", "days": 7, "price": 800},
+    "plan_30": {"name": "30 Days VIP Access", "days": 30, "price": 2500}
+}
+
+# Payment Wallet Numbers (Personal)
+PAYMENT_WALLETS = {
+    "bKash": "017XXXXXXXX",   # আপনার বিকাশ পার্সোনাল নাম্বার দিন
+    "Nagad": "018XXXXXXXX"    # আপনার নগদ পার্সোনাল নাম্বার দিন
 }
 
 # ==========================================
@@ -793,7 +800,7 @@ const autoTotalSteps = arguments[1];
 """
 
 # ==========================================
-# 6. Messaging Templates (Organized & Updated)
+# 6. Messaging Templates (With Subscription Flow)
 # ==========================================
 def get_text(chat_id, key, **kwargs):
     sess = user_sessions.get(chat_id, {})
@@ -803,41 +810,44 @@ def get_text(chat_id, key, **kwargs):
         "bn": {
             "welcome": (
                 f"<b>{to_bold('WINGO 30S VIP AUTOMATION')}</b>\n\n"
-                f"স্বাগতম আপনাকে প্রিমিয়াম উইনগো ট্রেডিং অটোমেশন সিস্টেমে।\n"
-                f"দয়া করে আপনার পছন্দের ভাষা নির্বাচন করুন:"
+                f"স্বাগতম আপনাকে উইনগো ৩০এস লাইভ অটোমেশন প্ল্যাটফর্মে।\n"
+                f"বটটি ব্যবহার করার জন্য আপনার পছন্দের ভাষা নির্বাচন করুন:"
             ),
-            # --- New Subscription Flow Texts ---
             "choose_plan": (
-                f"<b>{to_bold('SUBSCRIPTION PLAN')}</b>\n\n"
-                f"আমাদের প্রিমিয়াম বটটি ব্যবহার করার জন্য আপনাকে সাবস্ক্রিপশন নিতে হবে।\n"
-                f"দয়া করে নিচে থেকে আপনার পছন্দের প্যাকেজটি সিলেক্ট করুন:"
+                f"<b>{to_bold('VIP SUBSCRIPTION PLANS')}</b>\n\n"
+                f"সিস্টেমটি সম্পূর্ণ স্বয়ংক্রিয়ভাবে মার্টিনগেল সিকোয়েন্স অনুযায়ী কাজ করে।\n"
+                f"বটটি আপনি কতদিনের জন্য নিতে চান? নিচের তালিকা থেকে সিলেক্ট করুন:"
             ),
             "choose_payment": (
-                f"<b>{to_bold('PAYMENT METHOD')}</b>\n\n"
-                f"আপনি <b>{kwargs.get('days', 0)} দিনের</b> প্যাকেজ সিলেক্ট করেছেন।\n"
-                f"প্যাকেজ মূল্য: <b>৳ {kwargs.get('price', 0)}</b>\n\n"
-                f"দয়া করে আপনার পেমেন্ট মেথড নির্বাচন করুন:"
+                f"<b>{to_bold('PAYMENT GATEWAY')}</b>\n\n"
+                f"প্যাকেজ: <b>{kwargs.get('plan_name', '')}</b>\n"
+                f"মেয়াদ: <b>{kwargs.get('days', 1)} দিন</b>\n"
+                f"মূল্য: <b>৳ {kwargs.get('price', 0)}</b>\n\n"
+                f"আপনি কোন মাধ্যমে পেমেন্ট করতে চান? বিকাশ অথবা নগদ সিলেক্ট করুন:"
             ),
             "payment_instruction": (
-                f"<b>{to_bold('SEND MONEY')}</b>\n\n"
-                f"নিচের <b>{kwargs.get('method_name', '')}</b> নাম্বারে <b>৳ {kwargs.get('price', 0)}</b> সেন্ড মানি করুন।\n\n"
-                f"💳 নাম্বার: <code>{kwargs.get('number', '')}</code> (Personal)\n\n"
-                f"টাকা পাঠানোর পর আপনার <b>Transaction ID (TrxID)</b> টি মেসেজে লিখে পাঠান:"
+                f"<b>{to_bold('PAYMENT INSTRUCTIONS')}</b>\n\n"
+                f"পদ্ধতি: <b>{kwargs.get('method', '')} (Personal)</b>\n"
+                f"নাম্বার: <code>{kwargs.get('number', '')}</code>\n"
+                f"টাকার পরিমাণ: <code>৳ {kwargs.get('price', 0)}</code>\n\n"
+                f"📌 <b>নির্দেশনা:</b>\n"
+                f"১. উপরের নাম্বারে উল্লেখিত টাকা <b>Send Money</b> করুন।\n"
+                f"২. সফলভাবে টাকা পাঠানোর পর ফিরতি মেসেজের <b>Transaction ID (TrxID)</b> টি নিচে লিখে পাঠান।"
             ),
-            "payment_verifying": (
+            "trx_verifying": (
                 f"<b>{to_bold('VERIFYING PAYMENT')}</b>\n\n"
-                f"আপনার TrxID: <code>{kwargs.get('trx', '')}</code> যাচাই করা হচ্ছে। একটু অপেক্ষা করুন..."
+                f"Transaction ID: <code>{kwargs.get('trx', '')}</code>\n\n"
+                f"আপনার পেমেন্ট যাচাই করা হচ্ছে, অনুগ্রহ করে কয়েক সেকেন্ড অপেক্ষা করুন..."
             ),
             "payment_success": (
-                f"<b>{to_bold('PAYMENT SUCCESSFUL')}</b>\n\n"
-                f"✅ ধন্যবাদ! আপনার পেমেন্ট সফল হয়েছে।\n"
-                f"আপনার <b>{kwargs.get('days', 0)} দিনের</b> প্রিমিয়াম অ্যাক্সেস চালু হয়েছে।\n\n"
-                f"এখন চলুন ট্রেডিং শুরু করা যাক।"
+                f"<b>{to_bold('VIP ACTIVATION SUCCESSFUL')}</b>\n\n"
+                f"অভিনন্দন! আপনার পেমেন্ট সফলভাবে ভেরিফাই করা হয়েছে।\n"
+                f"আপনার <b>{kwargs.get('days', 1)} দিনের VIP এক্সেস</b> সফলভাবে সক্রিয় করা হয়েছে।\n\n"
+                f"এখন আপনার ট্রেডিং প্ল্যাটফর্ম নির্বাচন করুন।"
             ),
-            # -----------------------------------
             "choose_site": (
                 f"<b>{to_bold('SELECT PLATFORM')}</b>\n\n"
-                f"আপনার ট্রেডিং প্ল্যাটফর্ম নির্বাচন করুন:"
+                f"যে প্ল্যাটফর্মে অটোমেশন রান করতে চান তা নির্বাচন করুন:"
             ),
             "input_phone": (
                 f"<b>{to_bold('ACCOUNT NUMBER')}</b>\n\n"
@@ -915,35 +925,40 @@ def get_text(chat_id, key, **kwargs):
         "en": {
             "welcome": (
                 f"<b>{to_bold('WINGO 30S VIP AUTOMATION')}</b>\n\n"
-                f"Welcome to the Premium WinGo Auto-Trading Platform.\n"
-                f"Please select your language:"
+                f"Welcome to the WinGo 30S live auto-trading system.\n"
+                f"Please choose your language to continue:"
             ),
             "choose_plan": (
-                f"<b>{to_bold('SUBSCRIPTION PLAN')}</b>\n\n"
-                f"You need an active subscription to use this premium bot.\n"
-                f"Please select a package from below:"
+                f"<b>{to_bold('VIP SUBSCRIPTION PLANS')}</b>\n\n"
+                f"Fully automated Martingale recovery protocol.\n"
+                f"Select your desired access duration from below:"
             ),
             "choose_payment": (
-                f"<b>{to_bold('PAYMENT METHOD')}</b>\n\n"
-                f"You selected the <b>{kwargs.get('days', 0)} Days</b> package.\n"
+                f"<b>{to_bold('PAYMENT GATEWAY')}</b>\n\n"
+                f"Plan: <b>{kwargs.get('plan_name', '')}</b>\n"
+                f"Duration: <b>{kwargs.get('days', 1)} Day(s)</b>\n"
                 f"Price: <b>৳ {kwargs.get('price', 0)}</b>\n\n"
-                f"Please choose your payment method:"
+                f"Select your preferred payment method:"
             ),
             "payment_instruction": (
-                f"<b>{to_bold('SEND MONEY')}</b>\n\n"
-                f"Please Send Money <b>৳ {kwargs.get('price', 0)}</b> to the <b>{kwargs.get('method_name', '')}</b> number below.\n\n"
-                f"💳 Number: <code>{kwargs.get('number', '')}</code> (Personal)\n\n"
-                f"After sending money, reply with your <b>Transaction ID (TrxID)</b>:"
+                f"<b>{to_bold('PAYMENT INSTRUCTIONS')}</b>\n\n"
+                f"Method: <b>{kwargs.get('method', '')} (Personal)</b>\n"
+                f"Wallet Number: <code>{kwargs.get('number', '')}</code>\n"
+                f"Payable Amount: <code>৳ {kwargs.get('price', 0)}</code>\n\n"
+                f"📌 <b>Steps:</b>\n"
+                f"1. Make a <b>Send Money</b> of the exact amount.\n"
+                f"2. Send your <b>Transaction ID (TrxID)</b> here in chat."
             ),
-            "payment_verifying": (
+            "trx_verifying": (
                 f"<b>{to_bold('VERIFYING PAYMENT')}</b>\n\n"
-                f"Verifying your TrxID: <code>{kwargs.get('trx', '')}</code>. Please wait..."
+                f"TrxID: <code>{kwargs.get('trx', '')}</code>\n\n"
+                f"Validating your transaction. Please wait a few seconds..."
             ),
             "payment_success": (
-                f"<b>{to_bold('PAYMENT SUCCESSFUL')}</b>\n\n"
-                f"✅ Thank you! Payment successful.\n"
-                f"Your <b>{kwargs.get('days', 0)} Days</b> premium access is now active.\n\n"
-                f"Let's start trading."
+                f"<b>{to_bold('VIP ACTIVATION SUCCESSFUL')}</b>\n\n"
+                f"Congratulations! Your payment has been confirmed.\n"
+                f"VIP active for <b>{kwargs.get('days', 1)} Day(s)</b>.\n\n"
+                f"Now choose your platform to proceed."
             ),
             "choose_site": (
                 f"<b>{to_bold('SELECT PLATFORM')}</b>\n\n"
@@ -1027,23 +1042,24 @@ def get_text(chat_id, key, **kwargs):
     return messages.get(lang, messages["bn"]).get(key, "")
 
 # ==========================================
-# 7. Keyboards Management
+# 7. Keyboard Controls
 # ==========================================
-def get_subscription_keyboard():
+def get_plans_keyboard():
     markup = InlineKeyboardMarkup(row_width=1)
     markup.add(
-        InlineKeyboardButton(f"🟢 1 Day Premium - ৳150", callback_data="plan_1"),
-        InlineKeyboardButton(f"🟡 7 Days Premium - ৳800", callback_data="plan_7"),
-        InlineKeyboardButton(f"🔴 30 Days Premium - ৳2500", callback_data="plan_30")
+        InlineKeyboardButton(f"⭐ 1 Day Access - ৳ 150", callback_data="buy_plan_1"),
+        InlineKeyboardButton(f"💎 7 Days Access - ৳ 800", callback_data="buy_plan_7"),
+        InlineKeyboardButton(f"👑 30 Days Access - ৳ 2500", callback_data="buy_plan_30")
     )
     return markup
 
-def get_payment_method_keyboard():
+def get_payment_methods_keyboard():
     markup = InlineKeyboardMarkup(row_width=2)
     markup.add(
         InlineKeyboardButton(f"🟣 bKash", callback_data="pay_bkash"),
         InlineKeyboardButton(f"🟠 Nagad", callback_data="pay_nagad")
     )
+    markup.add(InlineKeyboardButton(f"🔙 Back to Plans", callback_data="back_to_plans"))
     return markup
 
 def get_site_keyboard():
@@ -1283,27 +1299,36 @@ def process_login(chat_id, phone, password, status_msg_id):
         reply_markup=get_start_or_cancel_keyboard()
     )
 
+def verify_payment_simulation(chat_id, trx_id):
+    """Simulates checking TrxID and auto-activates subscription."""
+    sess = user_sessions.get(chat_id, {})
+    time.sleep(3.5)  # Simulate checking network
+    sess["is_vip"] = True
+    sess["step"] = "CHOOSE_SITE"
+    
+    bot.send_message(
+        chat_id,
+        get_text(chat_id, "payment_success", days=sess.get("plan_days", 1))
+    )
+    time.sleep(1)
+    bot.send_message(
+        chat_id,
+        get_text(chat_id, "choose_site"),
+        reply_markup=get_site_keyboard()
+    )
+
 # ==========================================
 # 10. Telegram Handlers
 # ==========================================
 @bot.message_handler(commands=['start'])
 def handle_start(message):
     chat_id = message.chat.id
-    
-    # Initialize session, keep payment status if already paid
-    if chat_id not in user_sessions:
-        user_sessions[chat_id] = {}
-        
-    sess = user_sessions[chat_id]
-    sess["step"] = "CHOOSE_LANGUAGE"
-    sess["lang"] = "bn"
-    sess["last_active"] = time.time()
-    
-    # If already paid, skip to site selection directly
-    if sess.get("is_paid"):
-        sess["step"] = "CHOOSE_SITE"
-        bot.send_message(chat_id, get_text(chat_id, "choose_site"), reply_markup=get_site_keyboard())
-        return
+    user_sessions[chat_id] = {
+        "step": "CHOOSE_LANGUAGE",
+        "lang": "bn",
+        "last_active": time.time(),
+        "is_vip": False
+    }
 
     markup = InlineKeyboardMarkup(row_width=2)
     markup.add(
@@ -1322,49 +1347,69 @@ def handle_callbacks(call):
     # --- Language Selection ---
     if data in ["lang_en", "lang_bn"]:
         sess["lang"] = "en" if data == "lang_en" else "bn"
+        if not sess.get("is_vip"):
+            sess["step"] = "CHOOSE_PLAN"
+            bot.answer_callback_query(call.id)
+            bot.edit_message_text(
+                get_text(chat_id, "choose_plan"),
+                chat_id=chat_id,
+                message_id=call.message.message_id,
+                reply_markup=get_plans_keyboard()
+            )
+        else:
+            sess["step"] = "CHOOSE_SITE"
+            bot.answer_callback_query(call.id)
+            bot.edit_message_text(
+                get_text(chat_id, "choose_site"),
+                chat_id=chat_id,
+                message_id=call.message.message_id,
+                reply_markup=get_site_keyboard()
+            )
+
+    # --- Plan Selection ---
+    elif data in ["buy_plan_1", "buy_plan_7", "buy_plan_30"]:
+        plan_key = data.replace("buy_", "")
+        plan = SUBSCRIPTION_PLANS.get(plan_key)
+        sess["selected_plan"] = plan_key
+        sess["plan_name"] = plan["name"]
+        sess["plan_days"] = plan["days"]
+        sess["plan_price"] = plan["price"]
+        sess["step"] = "CHOOSE_PAYMENT_METHOD"
+
+        bot.answer_callback_query(call.id, plan["name"])
+        bot.edit_message_text(
+            get_text(chat_id, "choose_payment", plan_name=plan["name"], days=plan["days"], price=plan["price"]),
+            chat_id=chat_id,
+            message_id=call.message.message_id,
+            reply_markup=get_payment_methods_keyboard()
+        )
+
+    # --- Back to Plans ---
+    elif data == "back_to_plans":
         sess["step"] = "CHOOSE_PLAN"
-        
         bot.answer_callback_query(call.id)
         bot.edit_message_text(
             get_text(chat_id, "choose_plan"),
             chat_id=chat_id,
             message_id=call.message.message_id,
-            reply_markup=get_subscription_keyboard()
+            reply_markup=get_plans_keyboard()
         )
 
-    # --- Subscription Plan Selection ---
-    elif data.startswith("plan_"):
-        plan_days = int(data.split("_")[1])
-        prices = {1: 150, 7: 800, 30: 2500}
-        
-        sess["sub_days"] = plan_days
-        sess["sub_price"] = prices[plan_days]
-        sess["step"] = "CHOOSE_PAYMENT"
-        
-        bot.answer_callback_query(call.id)
-        bot.edit_message_text(
-            get_text(chat_id, "choose_payment", days=plan_days, price=sess["sub_price"]),
-            chat_id=chat_id,
-            message_id=call.message.message_id,
-            reply_markup=get_payment_method_keyboard()
-        )
-
-    # --- Payment Method Selection ---
+    # --- Payment Method Chosen ---
     elif data in ["pay_bkash", "pay_nagad"]:
         method = "bKash" if data == "pay_bkash" else "Nagad"
-        num = PAYMENT_NUMBERS["BKASH"] if data == "pay_bkash" else PAYMENT_NUMBERS["NAGAD"]
-        
-        sess["payment_method"] = method
+        wallet_num = PAYMENT_WALLETS.get(method)
+        sess["selected_method"] = method
         sess["step"] = "WAITING_TRX_ID"
-        
-        bot.answer_callback_query(call.id)
+
+        bot.answer_callback_query(call.id, method)
         bot.edit_message_text(
-            get_text(chat_id, "payment_instruction", method_name=method, price=sess.get("sub_price", 0), number=num),
+            get_text(chat_id, "payment_instruction", method=method, number=wallet_num, price=sess.get("plan_price", 150)),
             chat_id=chat_id,
             message_id=call.message.message_id
         )
 
-    # --- Site Selection ---
+    # --- Platform Selection ---
     elif data in ["site_amarclub", "site_dkwin"]:
         site_name = "Amar Club" if data == "site_amarclub" else "DK Win"
         sess["site_name"] = site_name
@@ -1377,7 +1422,6 @@ def handle_callbacks(call):
             message_id=call.message.message_id
         )
 
-    # --- Trading Controls ---
     elif data == "btn_start_flow":
         bot.answer_callback_query(call.id)
         sess["step"] = "WAITING_TARGET_PROFIT"
@@ -1471,30 +1515,6 @@ def handle_callbacks(call):
         else:
             bot.answer_callback_query(call.id, "No active trade!", show_alert=True)
 
-
-def dummy_verify_payment(chat_id, trx_id):
-    """Simulates a payment verification process"""
-    sess = user_sessions.get(chat_id)
-    time.sleep(3) # Simulate loading
-    
-    # Auto approve for now. (You can add admin approval logic here later)
-    sess["is_paid"] = True
-    sess["step"] = "CHOOSE_SITE"
-    
-    bot.send_message(
-        chat_id, 
-        get_text(chat_id, "payment_success", days=sess.get("sub_days", 0))
-    )
-    time.sleep(1)
-    
-    # Send site selection keyboard
-    bot.send_message(
-        chat_id, 
-        get_text(chat_id, "choose_site"), 
-        reply_markup=get_site_keyboard()
-    )
-
-
 @bot.message_handler(func=lambda msg: msg.chat.id in user_sessions)
 def handle_user_text(message):
     chat_id = message.chat.id
@@ -1503,22 +1523,19 @@ def handle_user_text(message):
     step = sess.get("step")
     text = message.text.strip()
 
-    # --- Processing TrxID ---
+    # --- Processing Payment TrxID ---
     if step == "WAITING_TRX_ID":
         sess["trx_id"] = text
-        bot.send_message(
-            chat_id, 
-            get_text(chat_id, "payment_verifying", trx=text)
-        )
-        # Start verification thread
-        threading.Thread(target=dummy_verify_payment, args=(chat_id, text), daemon=True).start()
+        bot.send_message(chat_id, get_text(chat_id, "trx_verifying", trx=text))
+        threading.Thread(target=verify_payment_simulation, args=(chat_id, text), daemon=True).start()
 
-    # --- Processing Login ---
+    # --- Account Phone ---
     elif step == "WAITING_PHONE":
         sess["phone"] = text
         sess["step"] = "WAITING_PASS"
         bot.send_message(chat_id, get_text(chat_id, "input_pass", phone=text))
 
+    # --- Account Password ---
     elif step == "WAITING_PASS":
         sess["password"] = text
         sess["step"] = "LOGGING_IN"
@@ -1534,7 +1551,7 @@ def handle_user_text(message):
             daemon=True
         ).start()
 
-    # --- Processing Trade Configuration ---
+    # --- Target Profit ---
     elif step == "WAITING_TARGET_PROFIT":
         try:
             val = float(text)
@@ -1552,6 +1569,7 @@ def handle_user_text(message):
             get_text(chat_id, "input_steps", target=val)
         )
 
+    # --- Total Martingale Steps ---
     elif step == "WAITING_STEPS":
         try:
             steps_val = int(text)
