@@ -47,7 +47,7 @@ def to_bold(text: str) -> str:
     return "".join(res)
 
 def find_free_port():
-    """Finds an available local network port to completely isolate WebDriver instances."""
+    """Finds an available local network port to isolate WebDriver and Marionette instances completely."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(('', 0))
         return s.getsockname()[1]
@@ -76,23 +76,24 @@ URL_DKWIN_WINGO = "https://dkwin6.com/#/saasLottery/WinGo?gameCode=WinGo_30S&lot
 PROFILES_BASE_DIR = os.path.expanduser("~/.ff_bot_profiles")
 os.makedirs(PROFILES_BASE_DIR, exist_ok=True)
 
-# User Session State: chat_id -> Session Dictionary
+# User Sessions: chat_id -> dict
 user_sessions = {}
 
-# Active WebDriver Instances: session_id -> Instance Dictionary
-# Retains references so background cloned browsers are never terminated or garbage collected
-active_drivers = {}
+# Active Sessions: session_id -> dict
+# Enables running multiple browser sessions concurrently without cross-talk or disconnection
+active_sessions = {}
+
+# Spinner animation frames for STOP button (Clean Black & White, No colorful emoji)
+SPINNER_FRAMES = ["◴", "◷", "◶", "◵"]
 
 # ==========================================
 # 4. Multi-Clone Isolated Firefox Launcher
 # ==========================================
-def launch_firefox_instance(chat_id, target_url):
+def launch_firefox_instance(chat_id, target_url, session_id):
     """
-    Launches a brand new, completely cloned independent Firefox window.
-    Uses dedicated profiles, unique Marionette and Gecko ports.
-    Previous browser windows remain active and untouched in background.
+    Launches a fully isolated, dedicated Firefox instance with independent profile,
+    dedicated Marionette port and Gecko port. Previous browsers remain unaffected.
     """
-    session_id = f"{chat_id}_{int(time.time())}_{find_free_port()}"
     user_profile_dir = os.path.join(PROFILES_BASE_DIR, f"user_{session_id}")
     os.makedirs(user_profile_dir, exist_ok=True)
 
@@ -102,6 +103,7 @@ def launch_firefox_instance(chat_id, target_url):
     options = Options()
     options.add_argument("-no-remote")
     options.add_argument("-new-instance")
+    options.add_argument(f"--marionette-port={marionette_port}")
     options.add_argument("-profile")
     options.add_argument(user_profile_dir)
 
@@ -115,7 +117,10 @@ def launch_firefox_instance(chat_id, target_url):
     options.set_preference("browser.tabs.remote.autostart", False)
     options.set_preference("browser.shell.checkDefaultBrowser", False)
 
-    service = FirefoxService(port=gecko_port)
+    service = FirefoxService(
+        port=gecko_port,
+        service_args=["--marionette-port", str(marionette_port)]
+    )
     driver = webdriver.Firefox(service=service, options=options)
 
     try:
@@ -123,51 +128,30 @@ def launch_firefox_instance(chat_id, target_url):
     except Exception:
         pass
 
-    active_drivers[session_id] = {
-        "driver": driver,
-        "profile_dir": user_profile_dir,
-        "chat_id": chat_id,
-        "created_at": time.time(),
-        "session_id": session_id
-    }
-
     driver.get(target_url)
-    return driver, user_profile_dir, session_id
+    return driver, user_profile_dir
 
-def close_user_browser(chat_id, session_id=None):
-    """Cleanly closes only the requested session without impacting other open instances."""
-    sess = user_sessions.get(chat_id)
-    target_sid = session_id or (sess.get("session_id") if sess else None)
-
-    if target_sid and target_sid in active_drivers:
-        active_item = active_drivers.pop(target_sid, None)
-        if active_item:
-            driver = active_item.get("driver")
-            if driver:
-                try:
-                    driver.quit()
-                except Exception:
-                    pass
-    elif sess and sess.get("driver"):
-        try:
-            sess["driver"].quit()
-        except Exception:
-            pass
-
+def close_session_browser(session_id):
+    """Closes only the requested session without impacting any other running browsers."""
+    sess = active_sessions.pop(session_id, None)
     if sess:
         sess["is_trading"] = False
-        sess["driver"] = None
-        sess["step"] = "IDLE"
+        driver = sess.get("driver")
+        if driver:
+            try:
+                driver.quit()
+            except Exception:
+                pass
 
 # ==========================================
 # 5. Smart Telegram Image Replacement Engine
 # ==========================================
-def display_or_replace_photo(chat_id, image_path, caption_text, reply_markup=None):
+def display_or_replace_photo(chat_id, session_id, image_path, caption_text, reply_markup=None):
     """
     Replaces the previous image message dynamically using Telegram's edit_message_media.
-    Avoids duplicate messages and provides a fluid interface experience.
+    Never creates duplicate messages and retains perfect UI stability.
     """
-    sess = user_sessions.setdefault(chat_id, {})
+    sess = active_sessions.get(session_id, {})
     last_photo_msg_id = sess.get("live_photo_message_id")
     replaced = False
 
@@ -344,7 +328,6 @@ WINGO_RUNBOX_AND_CLICK_JS = """
             btn.onclick = () => {
                 let el = document.querySelector(x.sel);
                 if (el) el.click();
-                else alert(x.name + ' not found');
             };
             b.appendChild(btn);
         });
@@ -357,19 +340,16 @@ WINGO_RUNBOX_AND_CLICK_JS = """
         document.body.appendChild(b);
     }
 
-    // Direct auto-click trigger on the requested WinGo image selector
     let target = document.querySelector("body > div > div:nth-of-type(3) > div:nth-of-type(5) > div:nth-of-type(2) > div:nth-of-type(3) > div > div > div > img");
     if (target) {
         target.click();
         return "CLICKED_SELECTOR";
     }
-
     let alt = document.querySelector("div[class*='wingo' i], img[src*='wingo' i]");
     if (alt) {
         alt.click();
         return "CLICKED_ALT";
     }
-
     return "INJECTED_WAITING";
 })();
 """
@@ -548,110 +528,53 @@ const autoTotalSteps = arguments[1];
     let sL=localStorage.getItem('drx_ui_x'),sT=localStorage.getItem('drx_ui_y');
     if(sL&&sT){p.style.left=sL;p.style.top=sT;}else{p.style.top='20px';p.style.right='20px';}
 
-    let stl=document.createElement('style');
-    stl.innerHTML='@keyframes titlePulseAnim{0%{transform:scale(1);text-shadow:0 0 10px #00ff00;}50%{transform:scale(1.05);text-shadow:0 0 20px #00ff00,0 0 30px #fff;}100%{transform:scale(1);text-shadow:0 0 10px #00ff00;}}.drx-in{background:rgba(10,12,18,0.92);backdrop-filter:blur(6px);position:relative;overflow:visible;z-index:1;display:flex;flex-direction:column;height:100%;border-radius:12px;border:2px solid #00ff00;box-sizing:border-box;}input::-webkit-outer-spin-button,input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}.txt-blk{color:#fff;text-shadow:1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,0px 4px 5px #000;font-weight:900;letter-spacing:1px;}.txt-blk-accent{color:#00ff00;text-shadow:1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,0px 4px 5px #000;font-weight:900;letter-spacing:1px;}.txt-blk-warn{color:#ffcc00;text-shadow:1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,0px 4px 5px #000;font-weight:900;letter-spacing:1px;}.txt-blk-err{color:#f00;text-shadow:1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,0px 4px 5px #000;font-weight:900;letter-spacing:1px;}.txt-blk-cyan{color:#0ff;text-shadow:1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,0px 4px 5px #000;font-weight:900;letter-spacing:1px;}.txt-blk-mag{color:#f0f;text-shadow:1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,0px 4px 5px #000;font-weight:900;letter-spacing:1px;}.drx-elec-target{border-radius:8px!important;position:relative;z-index:9999!important;transition:all 0.1s;background:rgba(0,0,0,0.5)!important;border:2px solid #00ff00!important;}.drx-title-anim{display:inline-block;animation:titlePulseAnim 2s infinite ease-in-out;}';
-    document.body.appendChild(stl);
-    p.className='drx-wrap';
-
     let inC=document.createElement('div');
     inC.className='drx-in';
     let h=document.createElement('div');
-    h.style.cssText='padding:8px;font-size:12px;display:flex;justify-content:space-between;cursor:move;border-bottom:2px solid #000;background:transparent;';
-    h.innerHTML='<span class="txt-blk drx-title-anim" id="drx-title">' + uF('WINZY-MARTINGALE') + '</span><span style="cursor:pointer;" class="txt-blk-err" id="sys-cls">X</span>';
+    h.style.cssText='padding:8px;font-size:12px;display:flex;justify-content:space-between;cursor:move;border-bottom:2px solid #00ff00;background:rgba(10,12,18,0.92);border-radius:12px 12px 0 0;';
+    h.innerHTML='<span style="color:#00ff00;font-weight:bold;">' + uF('WINZY-VIP') + '</span><span style="cursor:pointer;color:#f00;font-weight:bold;" id="sys-cls">X</span>';
     inC.appendChild(h);
 
-    let drg=false,sx,sy,sl,st_y;
-    function dSt(e){
-        if(e.target.tagName==='SPAN'&&e.target.id==='sys-cls')return;
-        drg=true;
-        let ev=e.type.includes('touch')?e.touches[0]:e;
-        sx=ev.clientX;sy=ev.clientY;
-        sl=p.offsetLeft;st_y=p.offsetTop;
-    }
-    function dMv(e){
-        if(!drg)return;
-        e.preventDefault();
-        let ev=e.type.includes('touch')?e.touches[0]:e;
-        p.style.left=(sl+ev.clientX-sx)+'px';
-        p.style.top=(st_y+ev.clientY-sy)+'px';
-    }
-    function dEn(){
-        drg=false;
-        localStorage.setItem('drx_ui_x',p.style.left);
-        localStorage.setItem('drx_ui_y',p.style.top);
-    }
-    h.addEventListener('mousedown',dSt);
-    document.addEventListener('mousemove',dMv);
-    document.addEventListener('mouseup',dEn);
-
-    h.querySelector('#sys-cls').onclick=()=>{
-        clearInterval(st.autoInt);
-        clearInterval(st.preScn);
-        if(st.balanceCheckInterval)clearInterval(st.balanceCheckInterval);
-        p.remove();
-        lkOvl.remove();
-        document.body.style.overflow='';
-    };
-
     let b=document.createElement('div');
-    b.style.cssText='padding:10px;display:flex;flex-direction:column;gap:8px;background:transparent;';
+    b.style.cssText='padding:10px;display:flex;flex-direction:column;gap:8px;background:rgba(10,12,18,0.92);border-radius:0 0 12px 12px;';
 
     const p1=document.createElement('div');
-    p1.innerHTML='<div style="text-align:center;margin-bottom:8px;padding:6px;background:transparent;border-radius:6px;border:2px solid #000;"><span class="txt-blk" style="font-size:9px;color:#ccc;">' + uF('CURRENT BAL') + '</span><br><span id="pre-bal" class="txt-blk" style="font-size:15px;color:#fff;">--</span></div>';
-
     const tgtInp=document.createElement('input');
     tgtInp.type='number';
     tgtInp.value=autoTargetProfit || '';
-    tgtInp.placeholder='TARGET PROFIT (৳)';
-    tgtInp.className='txt-blk';
-    tgtInp.style.cssText='width:100%;box-sizing:border-box;padding:8px;margin-bottom:8px;background:transparent;border:2px solid #000;border-radius:4px;text-align:center;font-size:11px;outline:none;color:#fff;';
+    tgtInp.placeholder='TARGET PROFIT';
+    tgtInp.style.cssText='width:100%;box-sizing:border-box;padding:8px;margin-bottom:8px;background:#18181b;border:1px solid #333;border-radius:4px;text-align:center;font-size:11px;outline:none;color:#fff;';
 
     const stepInp=document.createElement('input');
     stepInp.type='number';
     stepInp.value=autoTotalSteps || 7;
-    stepInp.placeholder='TOTAL STEPS (e.g. 7)';
-    stepInp.className='txt-blk-cyan';
-    stepInp.style.cssText='width:100%;box-sizing:border-box;padding:8px;margin-bottom:8px;background:transparent;border:2px solid #000;border-radius:4px;text-align:center;font-size:11px;outline:none;color:#0ff;';
+    stepInp.placeholder='TOTAL STEPS';
+    stepInp.style.cssText='width:100%;box-sizing:border-box;padding:8px;margin-bottom:8px;background:#18181b;border:1px solid #333;border-radius:4px;text-align:center;font-size:11px;outline:none;color:#0ff;';
 
     const goBtn=document.createElement('button');
     goBtn.innerText=uF('START');
-    goBtn.className='txt-blk-accent';
-    goBtn.style.cssText='width:100%;box-sizing:border-box;padding:8px;background:transparent;border:2px solid #000;border-radius:4px;cursor:pointer;font-size:11px;font-weight:bold;transition:0.2s;';
+    goBtn.style.cssText='width:100%;box-sizing:border-box;padding:8px;background:#22c55e;color:#000;border:none;border-radius:4px;cursor:pointer;font-size:11px;font-weight:bold;';
 
     p1.appendChild(tgtInp);
     p1.appendChild(stepInp);
     p1.appendChild(goBtn);
 
-    st.preScn=setInterval(()=>{
-        if(!st.isRun){
-            let bal=chkBal();
-            let el=document.getElementById('pre-bal');
-            if(el)el.innerText=uF(bal>0?bal.toFixed(2):'--');
-        }
-    },1000);
-
     const p2=document.createElement('div');
     p2.style.display='none';
 
     const balBx=document.createElement('div');
-    balBx.style.cssText='padding:6px;text-align:center;background:transparent;border-radius:6px;border:2px solid #000;margin-bottom:6px;';
-    balBx.innerHTML='<div class="txt-blk" style="font-size:9px;color:#ccc;">' + uF('LIVE BAL / PROFIT') + '</div><div id="ui-bal" class="txt-blk" style="font-size:16px;color:#fff;">--</div>';
+    balBx.style.cssText='padding:6px;text-align:center;background:#18181b;border-radius:6px;margin-bottom:6px;';
+    balBx.innerHTML='<div style="font-size:9px;color:#ccc;">' + uF('LIVE BAL') + '</div><div id="ui-bal" style="font-size:16px;color:#00ff00;font-weight:bold;">--</div>';
 
-    let aiRow='<div style="display:flex;justify-content:space-between;border-bottom:2px dashed #000;"><span class="txt-blk" style="color:#ccc;">' + uF('AI:') + '</span><span id="ui-ai" class="txt-blk-cyan">VIP JSON API</span></div>';
     const infBx=document.createElement('div');
-    infBx.style.cssText='padding:6px;font-size:10px;line-height:2;background:transparent;border-radius:6px;border:2px solid #000;position:relative;overflow:hidden;';
-    infBx.innerHTML=aiRow+'<div style="display:flex;justify-content:space-between;border-bottom:2px dashed #000;"><span class="txt-blk" style="color:#ccc;">' + uF('TGT:') + '</span><span id="ui-tgt" class="txt-blk" style="color:#fff;">0</span></div>' + '<div style="display:flex;justify-content:space-between;border-bottom:2px dashed #000;"><span class="txt-blk" style="color:#ccc;">' + uF('STP:') + '</span><span id="ui-bet" class="txt-blk-warn" style="color:#ffcc00;cursor:pointer;">5</span></div>' + '<div style="display:flex;justify-content:space-between;border-bottom:2px dashed #000;"><span class="txt-blk" style="color:#ccc;">' + uF('CLK:') + '</span><span id="ui-clk" class="txt-blk" style="color:#fff;">00:30</span></div>' + '<div style="display:flex;justify-content:space-between;border-bottom:2px dashed #000;"><span class="txt-blk" style="color:#ccc;">' + uF('STS:') + '</span><span id="ui-sts" class="txt-blk" style="color:#fff;">' + uF('WAIT') + '</span></div>';
-
-    const ghBox=document.createElement('div');
-    ghBox.id='gh-box-wrap';
-    ghBox.style.cssText='width:100%;height:26px;background:transparent;border:2px solid #000;border-radius:4px;padding:2px 4px;margin-top:4px;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;justify-content:center;';
-    ghBox.innerHTML='<div id="gh-content" class="txt-blk" style="font-size:7.5px;line-height:1.2;color:#fff;white-space:pre-wrap;text-align:left;width:100%;">Syncing API...</div>';
-    infBx.appendChild(ghBox);
+    infBx.style.cssText='padding:6px;font-size:10px;line-height:2;background:#18181b;border-radius:6px;';
+    infBx.innerHTML='<div style="display:flex;justify-content:space-between;"><span style="color:#ccc;">TGT:</span><span id="ui-tgt" style="color:#fff;">0</span></div>' + 
+                    '<div style="display:flex;justify-content:space-between;"><span style="color:#ccc;">STP:</span><span id="ui-bet" style="color:#ffcc00;">1</span></div>' + 
+                    '<div style="display:flex;justify-content:space-between;"><span style="color:#ccc;">STS:</span><span id="ui-sts" style="color:#0ff;">RUNNING</span></div>';
 
     const stpBtn=document.createElement('button');
     stpBtn.innerText=uF('STOP');
-    stpBtn.className='txt-blk-err';
-    stpBtn.style.cssText='width:100%;padding:8px;background:transparent;border:2px solid #000;border-radius:4px;cursor:pointer;font-size:11px;margin-top:6px;transition:0.2s;';
+    stpBtn.style.cssText='width:100%;padding:8px;background:#ef4444;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px;margin-top:6px;font-weight:bold;';
 
     p2.appendChild(balBx);
     p2.appendChild(infBx);
@@ -663,17 +586,10 @@ const autoTotalSteps = arguments[1];
     p.appendChild(inC);
     document.body.appendChild(p);
 
-    const drx_triggerEvent=(el,etype)=>{
-        let ev=new Event(etype,{bubbles:true,cancelable:true});
-        el.dispatchEvent(ev);
-    };
-
     const drx_simClick=el=>{
         if(!el)return;
         ['pointerdown','mousedown','touchstart','pointerup','mouseup','touchend','click'].forEach(evt=>{
-            try{
-                el.dispatchEvent(new MouseEvent(evt,{bubbles:true,cancelable:true,view:window}));
-            }catch(e){}
+            try{ el.dispatchEvent(new MouseEvent(evt,{bubbles:true,cancelable:true,view:window})); }catch(e){}
         });
     };
 
@@ -690,68 +606,36 @@ const autoTotalSteps = arguments[1];
             if(!btn){
                 if(targetText==='big')btn=document.querySelector('.Betting__C-foot-b');
                 else if(targetText==='small')btn=document.querySelector('.Betting__C-foot-s');
-                else if(targetText==='green')btn=document.querySelector('button[class*="green"], div[class*="green"]');
-                else if(targetText==='red')btn=document.querySelector('button[class*="red"], div[class*="red"]');
-                else if(targetText==='violet')btn=document.querySelector('button[class*="violet"], div[class*="violet"]');
             }
-            if(!btn){
-                if(cb)cb(false);
-                return;
-            }
-            btn.classList.add('drx-elec-target');
+            if(!btn){ if(cb)cb(false); return; }
             drx_simClick(btn);
 
-            let checkAttempts=0,valInterval=setInterval(()=>{
-                checkAttempts++;
+            let valInterval=setInterval(()=>{
                 let inpEl=document.querySelector("input[type='number'], input.van-field__control");
-                if(inpEl||checkAttempts>15){
+                if(inpEl){
                     clearInterval(valInterval);
-                    if(inpEl){
-                        inpEl.focus();
-                        let setV=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,"value").set;
-                        if(setV)setV.call(inpEl,String(amt));
-                        else inpEl.value=amt;
-                        drx_triggerEvent(inpEl,'input');
-                        drx_triggerEvent(inpEl,'change');
-                        drx_triggerEvent(inpEl,'blur');
-                    }
+                    inpEl.focus();
+                    let setV=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,"value").set;
+                    if(setV)setV.call(inpEl,String(amt));
+                    else inpEl.value=amt;
+                    inpEl.dispatchEvent(new Event('input',{bubbles:true}));
+                    inpEl.dispatchEvent(new Event('change',{bubbles:true}));
+
                     setTimeout(()=>{
                         let dEl=document.querySelector('button.bet-amount, button[class*="bet-amount"]');
-                        if(dEl){
-                            drx_simClick(dEl);
-                        }else{
+                        if(dEl) drx_simClick(dEl);
+                        else {
                             document.querySelectorAll('button').forEach(b=>{
                                 if((b.innerText||'').includes('Total amount')&&b.offsetParent)drx_simClick(b);
                             });
                         }
-                        btn.classList.remove('drx-elec-target');
                         setTimeout(()=>{if(cb)cb(true);},2000);
-                    },800);
+                    },600);
                 }
             },200);
         }catch(e){
             if(cb)cb(false);
         }
-    };
-
-    const scnUI=cb=>{
-        let ov=document.createElement('div');
-        ov.style.cssText='position:fixed;top:0;left:0;width:100vw;height:100vh;background:transparent;z-index:9999998;pointer-events:none;overflow:hidden;';
-        let cBase='#00ff00',rL=document.createElement('div');
-        rL.style.cssText='position:absolute;width:100%;height:2px;background:' + cBase + ';box-shadow:0 0 10px 3px ' + cBase + ';animation:sR 0.6s linear infinite alternate;';
-        let gL=document.createElement('div');
-        gL.style.cssText='position:absolute;height:100%;width:3px;background:' + cBase + ';box-shadow:0 0 15px 5px ' + cBase + ';animation:sG 0.6s cubic-bezier(0.25,0.1,0.25,1) infinite alternate;';
-        let sS=document.createElement('style');
-        sS.innerHTML='@keyframes sR{0%{top:-10px;}100%{top:100vh;}}@keyframes sG{0%{left:-10px;}100%{left:100vw;}}';
-        document.head.appendChild(sS);
-        ov.appendChild(rL);
-        ov.appendChild(gL);
-        document.body.appendChild(ov);
-        setTimeout(()=>{
-            ov.remove();
-            sS.remove();
-            if(cb)cb();
-        },1500);
     };
 
     const getNextLivePeriod=str=>{
@@ -775,13 +659,8 @@ const autoTotalSteps = arguments[1];
             if(st.curBal>=st.tgtAmt&&st.curBal>0){
                 uBal.innerText=uF(st.curBal.toFixed(2) + ' (DONE)');
                 uSts.innerText=uF('DONE');
-                uSts.className='txt-blk-accent';
-                stpBtn.style.display='none';
-                VoiceEngine.speak("Target reached successfully.");
                 st.isRun=false;
                 clearInterval(st.autoInt);
-                lkOvl.style.display='none';
-                document.body.style.overflow='';
                 return;
             }else{
                 uBal.innerText=uF(st.curBal>0?st.curBal.toFixed(2):'--');
@@ -789,7 +668,6 @@ const autoTotalSteps = arguments[1];
 
             let ts=Math.floor(Date.now()/1000),res=await fetch("https://data-vip-247-hack.ai.studio/apipid.json?ts="+ts),dataArray=await res.json();
             if(dataArray&&dataArray.length>0){
-                if(curApiIdx>=dataArray.length)curApiIdx=0;
                 let activeLogic=dataArray[curApiIdx],tempHist=activeLogic.history,cSig=getNextLivePeriod(String(tempHist[0].pid)),sSig=sessionStorage.getItem('drx_sig');
                 if(cSig!==sSig){
                     if(st.lastPred&&st.lastPeriod){
@@ -803,72 +681,33 @@ const autoTotalSteps = arguments[1];
                         }else{
                             st.l++;
                             st.stpIdx=Math.min(st.stpIdx+1,st.dynSeq.length-1);
-                            curApiIdx=(curApiIdx===0&&dataArray.length>1)?1:0;
                             st.cur_l_streak++;
                             st.cur_w_streak=0;
                             if(st.cur_l_streak>st.max_l_streak) st.max_l_streak=st.cur_l_streak;
                         }
                     }
                     st.lastPeriod=cSig;
-                    let timeLeft=dTimeLeft;
-                    if(timeLeft<=cfg.minSf){
-                        uSts.innerText=uF('<10S');
-                        uSts.className='txt-blk-warn';
-                    }
                     st.isTrd=true;
-                    uSts.innerText=uF('CHK...');
-                    uSts.className='txt-blk-warn';
                     let nBal=chkBal();
-                    uBal.innerText=uF(nBal.toFixed(2));
-                    if(nBal>=st.tgtAmt&&nBal>0){
-                        st.isTrd=false;
-                        isFetchingApi=false;
-                        return;
-                    }
                     if(st.stpIdx>=st.dynSeq.length)st.stpIdx=st.dynSeq.length-1;
-                    let tAmt=st.manualOverrideBet?st.manualOverrideBet:st.dynSeq[st.stpIdx];
-                    uBet.innerText=uF(st.manualOverrideBet?tAmt+' (FIX)':(tAmt + ' (S' + (st.stpIdx+1) + ')'));
-                    if(nBal<tAmt){
-                        uSts.innerText=uF('LOW');
-                        uSts.className='txt-blk-err';
-                        st.stpIdx=0;
-                        st.isTrd=false;
-                        isFetchingApi=false;
-                        return;
-                    }
-                    uSts.innerText=uF('DB...');
-                    uSts.className='txt-blk-cyan';
-                    setTimeout(()=>{
-                        let activeLogicNew=dataArray[curApiIdx],prediction=(activeLogicNew.pred||'BIG').toUpperCase();
-                        st.lastPred=prediction;
-                        let ghC=document.getElementById('gh-content');
-                        if(ghC)ghC.textContent='Step: ' + (st.stpIdx+1) + '/' + st.dynSeq.length + ' (Amt: ' + tAmt + ')\\nPred: ' + prediction + ' | W:' + st.w + ' L:' + st.l;
-                        if(prediction==='SKIP'){
-                            uSts.innerText=uF('SKIP');
-                            uSts.className='txt-blk-warn';
-                            sessionStorage.setItem('drx_sig',cSig);
+                    let tAmt=st.dynSeq[st.stpIdx];
+                    uBet.innerText=uF(tAmt + ' (S' + (st.stpIdx+1) + ')');
+
+                    let activeLogicNew=dataArray[curApiIdx],prediction=(activeLogicNew.pred||'BIG').toUpperCase();
+                    st.lastPred=prediction;
+
+                    if(prediction!=='SKIP'){
+                        exeTrd(prediction,tAmt,(suc)=>{
+                            if(suc){
+                                sessionStorage.setItem('drx_sig',cSig);
+                                st.tradesDone++;
+                            }
                             setTimeout(()=>{st.isTrd=false;},1000);
-                        }else{
-                            uSts.innerText=uF('EXC...');
-                            uSts.className='txt-blk';
-                            exeTrd(prediction,tAmt,(suc)=>{
-                                if(suc){
-                                    uSts.innerText=uF('OK');
-                                    uSts.className='txt-blk-accent';
-                                    sessionStorage.setItem('drx_sig',cSig);
-                                    sessionStorage.setItem('drx_p_bal',st.curBal);
-                                    st.tradesDone++;
-                                }else{
-                                    uSts.innerText=uF('ERR');
-                                    uSts.className='txt-blk-err';
-                                }
-                                setTimeout(()=>{st.isTrd=false;},1000);
-                            });
-                        }
-                    },1800);
-                }else if(!st.isTrd){
-                    uSts.innerText=uF('SCAN');
-                    uSts.className='txt-blk';
+                        });
+                    }else{
+                        sessionStorage.setItem('drx_sig',cSig);
+                        setTimeout(()=>{st.isTrd=false;},1000);
+                    }
                 }
             }
         }catch(e){
@@ -879,65 +718,38 @@ const autoTotalSteps = arguments[1];
 
     goBtn.onclick=()=>{
         let inputTarget=parseFloat(tgtInp.value);
-        if(!inputTarget||inputTarget<=0){
-            alert('Please enter Target Profit Amount!');
-            tgtInp.focus();
-            return;
-        }
+        if(!inputTarget||inputTarget<=0)return;
         let inputSteps=parseInt(stepInp.value)||1;
-        if(inputSteps<=0)inputSteps=1;
         st.totalSteps=inputSteps;
-        clearInterval(st.preScn);
-        st.tradesDone=0;
-        st.w=0;
-        st.l=0;
-        curApiIdx=0;
         let liveB=chkBal();
         st.startBal=liveB;
         st.tgtAmt=(inputTarget<=liveB)?(liveB+inputTarget):inputTarget;
         st.dynSeq=generateSmartSequence(liveB,st.totalSteps);
         st.stpIdx=0;
-        VoiceEngine.speak("Engine started with smart step calculation.");
-        scnUI(()=>{
-            sessionStorage.removeItem('drx_sig');
-            sessionStorage.removeItem('drx_p_bal');
-            document.getElementById('ui-tgt').innerText=uF(st.tgtAmt.toFixed(0));
-            p1.style.display='none';
-            p2.style.display='block';
-            lkOvl.style.display='block';
-            document.body.style.overflow='hidden';
-            st.isRun=true;
-            st.isTrd=false;
-            document.getElementById('ui-sts').innerText=uF('RDY');
-            st.autoInt=setInterval(apiLoopTask,1000);
-        });
+
+        document.getElementById('ui-tgt').innerText=uF(st.tgtAmt.toFixed(0));
+        p1.style.display='none';
+        p2.style.display='block';
+        st.isRun=true;
+        st.autoInt=setInterval(apiLoopTask,1000);
     };
 
     stpBtn.onclick=()=>{
         st.isRun=false;
         clearInterval(st.autoInt);
-        sessionStorage.removeItem('drx_sig');
-        sessionStorage.removeItem('drx_p_bal');
-        document.getElementById('ui-sts').innerText=uF('HLT');
-        document.getElementById('ui-sts').className='txt-blk-err';
-        lkOvl.style.display='none';
-        document.body.style.overflow='';
         p2.style.display='none';
         p1.style.display='block';
     };
 
     if (autoTargetProfit && autoTotalSteps) {
-        setTimeout(() => {
-            goBtn.click();
-        }, 1200);
+        setTimeout(() => { goBtn.click(); }, 1200);
     }
-
-    return "INJECTED_SUCCESSFULLY";
+    return "SUCCESS";
 })();
 """
 
 # ==========================================
-# 7. Dynamic Multilingual Templates
+# 7. Dynamic Text & Custom Keyboards
 # ==========================================
 def get_text(chat_id, key, **kwargs):
     sess = user_sessions.get(chat_id, {})
@@ -952,13 +764,13 @@ def get_text(chat_id, key, **kwargs):
             ),
             "choose_site": (
                 f"<b>{to_bold('SELECT PLATFORM')}</b>\n\n"
-                f"ট্রেডিং প্ল্যাটফর্ম নির্বাচন করুন:"
+                f"আসসালামু আলাইকুম, দয়া করে আপনি আপনার একটি ট্রেডিং সাইট নির্বাচন করুন:"
             ),
             "credentials_card": (
                 f"<b>{to_bold('ACCOUNT LOGIN')}</b>\n\n"
                 f"প্ল্যাটফর্ম: <b>{kwargs.get('site_name', '')}</b>\n\n"
                 f"আসসালামু আলাইকুম, দয়া করে নিচের বাটন চেপে আপনার নাম্বার এবং পাসওয়ার্ড দিন। "
-                f"এটি সম্পূর্ণ হাইড থাকবে এবং স্বয়ংক্রিয়ভাবে চ্যাট থেকে মুছে যাবে।"
+                f"এটি সম্পূর্ণ গোপন থাকবে এবং কাজ শেষে চ্যাট থেকে মুছে যাবে।"
             ),
             "ask_number": (
                 f"<b>{to_bold('ACCOUNT NUMBER')}</b>\n\n"
@@ -970,14 +782,14 @@ def get_text(chat_id, key, **kwargs):
             ),
             "login_success": (
                 f"<b>{to_bold('LOGIN SUCCESSFUL')}</b>\n\n"
-                f"প্ল্যাটফর্ম: <b>{kwargs.get('site_name', '')}</b>\n"
-                f"একাউন্ট: <code>{kwargs.get('phone', '')}</code>\n\n"
+                f"Platform: <b>{kwargs.get('site_name', '')}</b>\n"
+                f"Account: <code>{kwargs.get('phone', '')}</code>\n\n"
                 f"লগইন সফল হয়েছে। ট্রেডিং শুরু করতে নিচে <b>START</b> বাটন চাপুন:"
             ),
             "login_failed": (
                 f"<b>{to_bold('LOGIN FAILED')}</b>\n\n"
-                f"প্ল্যাটফর্ম: <b>{kwargs.get('site_name', '')}</b>\n"
-                f"কারণ: <i>{kwargs.get('error', 'ভুল তথ্য বা টাইমআউট')}</i>\n\n"
+                f"Platform: <b>{kwargs.get('site_name', '')}</b>\n"
+                f"Reason: <i>{kwargs.get('error', 'ভুল তথ্য বা টাইমআউট')}</i>\n\n"
                 f"পুনরায় চেষ্টা করার জন্য /start চাপুন।"
             ),
             "input_target": (
@@ -992,27 +804,16 @@ def get_text(chat_id, key, **kwargs):
             ),
             "running_dashboard": (
                 f"<b>{to_bold('24/7 AUTOMATION ENGINE ACTIVE')}</b>\n\n"
-                f"প্ল্যাটফর্ম: <b>{kwargs.get('site_name', '')}</b>\n"
-                f"শুরুর ব্যালেন্স: <code>৳ {kwargs.get('start_bal', '0.00')}</code>\n"
-                f"টার্গেট ব্যালেন্স: <code>৳ {kwargs.get('target_bal', '0.00')}</code>\n"
-                f"মোট স্টেপ: <b>{kwargs.get('steps', 7)}</b>\n\n"
-                f"সার্বক্ষণিক ব্যাকগ্রাউন্ডে স্বয়ংক্রিয়ভাবে ট্রেডিং চলছে..."
+                f"Platform: <b>{kwargs.get('site_name', '')}</b>\n"
+                f"Starting Balance: <code>৳ {kwargs.get('start_bal', '0.00')}</code>\n"
+                f"Target Balance: <code>৳ {kwargs.get('target_bal', '0.00')}</code>\n"
+                f"Total Steps: <b>{kwargs.get('steps', 7)}</b>\n\n"
+                f"Trading automatically in background 24/7.\n"
+                f"<b>LIVE STATUS</b>: মার্টিনগেল ইঞ্জিন সফলভাবে সচল রয়েছে।"
             ),
             "cancelled": (
                 f"<b>{to_bold('SESSION TERMINATED')}</b>\n\n"
                 f"বর্তমান সেশনটি সুন্দরভাবে বন্ধ করা হয়েছে। নতুন সেশনের জন্য /start পাঠান।"
-            ),
-            "target_achieved": (
-                f"<b>{to_bold('TARGET ACHIEVED SUCCESSFULLY')}</b>\n\n"
-                f"কাঙ্ক্ষিত টার্গেট সম্পূর্ণ সফলভাবে পূরণ হয়েছে।\n\n"
-                f"রিপোর্ট:\n"
-                f"শুরুর ব্যালেন্স: <code>৳ {kwargs.get('start_bal', '0.00')}</code>\n"
-                f"বর্তমান ব্যালেন্স: <code>৳ {kwargs.get('cur_bal', '0.00')}</code>\n"
-                f"অর্জিত প্রফিট: <code>+৳ {kwargs.get('profit', '0.00')}</code>\n\n"
-                f"মোট উইন: <b>{kwargs.get('wins', 0)}</b>\n"
-                f"মোট লস: <b>{kwargs.get('losses', 0)}</b>\n"
-                f"টানা সর্বোচ্চ উইন: <b>{kwargs.get('max_w', 0)}</b>\n"
-                f"টানা সর্বোচ্চ লস: <b>{kwargs.get('max_l', 0)}</b>"
             )
         },
         "en": {
@@ -1023,7 +824,7 @@ def get_text(chat_id, key, **kwargs):
             ),
             "choose_site": (
                 f"<b>{to_bold('SELECT PLATFORM')}</b>\n\n"
-                f"Select Platform:"
+                f"Please select your trading platform:"
             ),
             "credentials_card": (
                 f"<b>{to_bold('ACCOUNT LOGIN')}</b>\n\n"
@@ -1048,7 +849,7 @@ def get_text(chat_id, key, **kwargs):
             "login_failed": (
                 f"<b>{to_bold('LOGIN FAILED')}</b>\n\n"
                 f"Platform: <b>{kwargs.get('site_name', '')}</b>\n"
-                f"Reason: <i>{kwargs.get('error', 'Invalid credentials or timeout')}</i>\n\n"
+                f"Reason: <i>{kwargs.get('error', 'Invalid credentials')}</i>\n\n"
                 f"Type /start to retry."
             ),
             "input_target": (
@@ -1067,82 +868,277 @@ def get_text(chat_id, key, **kwargs):
                 f"Starting Balance: <code>৳ {kwargs.get('start_bal', '0.00')}</code>\n"
                 f"Target Balance: <code>৳ {kwargs.get('target_bal', '0.00')}</code>\n"
                 f"Total Steps: <b>{kwargs.get('steps', 7)}</b>\n\n"
-                f"Trading automatically in background 24/7."
+                f"Trading automatically in background 24/7.\n"
+                f"<b>LIVE STATUS</b>: Martingale engine running smoothly."
             ),
             "cancelled": (
                 f"<b>{to_bold('SESSION TERMINATED')}</b>\n\n"
                 f"Active browser session closed cleanly. Send /start to begin a new session."
-            ),
-            "target_achieved": (
-                f"<b>{to_bold('TARGET ACHIEVED SUCCESSFULLY')}</b>\n\n"
-                f"Target profit reached.\n\n"
-                f"Report:\n"
-                f"Start Balance: <code>৳ {kwargs.get('start_bal', '0.00')}</code>\n"
-                f"Current Balance: <code>৳ {kwargs.get('cur_bal', '0.00')}</code>\n"
-                f"Net Profit: <code>+৳ {kwargs.get('profit', '0.00')}</code>\n\n"
-                f"Wins: <b>{kwargs.get('wins', 0)}</b>\n"
-                f"Losses: <b>{kwargs.get('losses', 0)}</b>\n"
-                f"Max Win Streak: <b>{kwargs.get('max_w', 0)}</b>\n"
-                f"Max Loss Streak: <b>{kwargs.get('max_l', 0)}</b>"
             )
         }
     }
-
     return messages.get(lang, messages["bn"]).get(key, "")
 
-# ==========================================
-# 8. Interactive Keyboard Control Panels
-# ==========================================
-def get_credentials_keyboard(chat_id):
-    sess = user_sessions.get(chat_id, {})
+# 1. Credential Keyboard (Pure clean text, no emojis)
+def get_credentials_keyboard(sid):
+    sess = active_sessions.get(sid, {})
     markup = InlineKeyboardMarkup(row_width=2)
     has_phone = bool(sess.get("phone"))
 
     if not has_phone:
         markup.add(
-            InlineKeyboardButton(f"{to_bold('📱 NUMBER')}", callback_data="btn_ask_number"),
-            InlineKeyboardButton(f"{to_bold('🔑 PASSWORD')}", callback_data="btn_ask_password")
+            InlineKeyboardButton(f"{to_bold('NUMBER')}", callback_data=f"ask_num:{sid}"),
+            InlineKeyboardButton(f"{to_bold('PASSWORD')}", callback_data=f"ask_pass:{sid}")
         )
     else:
-        # Number received -> remove NUMBER button, keep PASSWORD
         markup.add(
-            InlineKeyboardButton(f"{to_bold('🔑 PASSWORD')}", callback_data="btn_ask_password")
+            InlineKeyboardButton(f"{to_bold('PASSWORD')}", callback_data=f"ask_pass:{sid}")
         )
+    markup.add(InlineKeyboardButton(f"{to_bold('CANCEL')}", callback_data=f"cancel:{sid}"))
+    return markup
+
+# 2. Start Screen Keyboard (Clean text)
+def get_start_screen_keyboard(sid):
+    markup = InlineKeyboardMarkup(row_width=2)
     markup.add(
-        InlineKeyboardButton(f"{to_bold('❌ CANCEL')}", callback_data="btn_cancel_flow")
+        InlineKeyboardButton(f"{to_bold('START')}", callback_data=f"start_cfg:{sid}"),
+        InlineKeyboardButton(f"{to_bold('CANCEL')}", callback_data=f"cancel:{sid}")
     )
     return markup
 
-def get_start_screen_keyboard():
+# 3. Target & Steps Setup Keyboard (Video: Short 3-5 letter buttons)
+def get_setup_param_keyboard(sid):
+    sess = active_sessions.get(sid, {})
+    t_val = sess.get("target_profit", 0)
+    s_val = sess.get("total_steps", 7)
+
+    t_lbl = f"TARGET: {int(t_val)}" if t_val else "TARGET"
+    s_lbl = f"STEPS: {int(s_val)}" if s_val else "STEPS"
+
     markup = InlineKeyboardMarkup(row_width=2)
     markup.add(
-        InlineKeyboardButton(f"{to_bold('▶ START')}", callback_data="btn_start_flow"),
-        InlineKeyboardButton(f"{to_bold('❌ CANCEL')}", callback_data="btn_cancel_flow")
+        InlineKeyboardButton(f"{to_bold(t_lbl)}", callback_data=f"set_tgt:{sid}"),
+        InlineKeyboardButton(f"{to_bold(s_lbl)}", callback_data=f"set_stp:{sid}")
+    )
+    markup.add(
+        InlineKeyboardButton(f"{to_bold('START')}", callback_data=f"run_auto:{sid}"),
+        InlineKeyboardButton(f"{to_bold('CANCEL')}", callback_data=f"cancel:{sid}")
     )
     return markup
 
-def get_trading_control_keyboard(anim_tick=0):
-    # Rotating black and white icons for animated Stop button
-    bw_icons = ["⚪", "⚫", "🔘", "⚪"]
-    cur_ico = bw_icons[anim_tick % len(bw_icons)]
+# 4. Live Running Dashboard Keyboard (Compact 2x2 Grid, Clean B&W Spinner, No Emojis)
+def get_trading_control_keyboard(sid):
+    sess = active_sessions.get(sid, {})
+    sess["anim_tick"] = sess.get("anim_tick", 0) + 1
+    spinner = SPINNER_FRAMES[sess["anim_tick"] % len(SPINNER_FRAMES)]
 
     markup = InlineKeyboardMarkup(row_width=2)
     markup.add(
-        InlineKeyboardButton(f"{to_bold('🔄 REFRESH FOOTAGE')}", callback_data="btn_screenshot"),
-        InlineKeyboardButton(f"{to_bold('💰 LIVE BALANCE')}", callback_data="btn_live_balance")
+        InlineKeyboardButton(f"{to_bold('SHOT')}", callback_data=f"shot:{sid}"),
+        InlineKeyboardButton(f"{to_bold('BAL')}", callback_data=f"bal:{sid}")
     )
     markup.add(
-        InlineKeyboardButton(f"{to_bold('📊 STATS REPORT')}", callback_data="btn_stats_report"),
-        InlineKeyboardButton(f"{to_bold(f'⏹ {cur_ico} STOP')}", callback_data="btn_stop_trade")
+        InlineKeyboardButton(f"{to_bold('STATS')}", callback_data=f"stats:{sid}"),
+        InlineKeyboardButton(f"{to_bold(f'STOP {spinner}')}", callback_data=f"stop:{sid}")
     )
     return markup
 
 # ==========================================
-# 9. Background Monitoring & 24h Lifetime Watchdog
+# 8. Clean Login Animation (No Brackets, Pure Text)
 # ==========================================
-def monitor_trading_progress(chat_id):
+def play_clean_login_animation(chat_id, msg_id):
+    frames = [
+        "<b>CONNECTING REMOTE BROWSER</b>\n<code>▰▱▱▱▱▱▱▱▱▱ 10% Initializing isolated profile...</code>",
+        "<b>LAUNCHING ISOLATED ENGINE</b>\n<code>▰▰▰▱▱▱▱▱▱▱ 35% Isolated Firefox ready...</code>",
+        "<b>INJECTING AUTHENTICATION DATA</b>\n<code>▰▰▰▰▰▰▱▱▱▱ 65% Auto-filling credentials...</code>",
+        "<b>VERIFYING ACTIVE SESSION</b>\n<code>▰▰▰▰▰▰▰▰▰▰ 100% Login verification complete!</code>"
+    ]
+    for frame in frames:
+        try:
+            bot.edit_message_text(frame, chat_id=chat_id, message_id=msg_id)
+        except Exception:
+            pass
+        time.sleep(0.35)
+
+def process_login(chat_id, sid, phone, password, anim_msg_id):
+    sess = active_sessions.get(sid, {})
+    site_name = sess.get("site_name", "Amar Club")
+    login_url = URL_AMARCLUB_LOGIN if "AMAR" in site_name.upper() else URL_DKWIN_LOGIN
+
+    play_clean_login_animation(chat_id, anim_msg_id)
+
+    try:
+        driver, prof_dir = launch_firefox_instance(chat_id, login_url, sid)
+        sess["driver"] = driver
+        sess["profile_dir"] = prof_dir
+    except Exception as e:
+        safe_delete_message(chat_id, anim_msg_id)
+        bot.send_message(chat_id, get_text(chat_id, "login_failed", site_name=site_name, error=str(e)))
+        return
+
+    # Auto-fill credentials
+    fill_ok = False
+    for _ in range(70):
+        try:
+            res = driver.execute_script(AUTO_FILL_AND_CLICK_JS, phone, password)
+            if res == "SUCCESS":
+                fill_ok = True
+                time.sleep(2.0)
+                break
+        except Exception:
+            pass
+        time.sleep(0.4)
+
+    if not fill_ok:
+        safe_delete_message(chat_id, anim_msg_id)
+        bot.send_message(chat_id, get_text(chat_id, "login_failed", site_name=site_name, error="লগইন ফর্ম পাওয়া যায়নি"))
+        close_session_browser(sid)
+        return
+
+    # Verify login success
+    login_status = "PENDING"
+    err_detail = ""
+    for _ in range(40):
+        try:
+            res = driver.execute_script(CHECK_LOGIN_STATUS_JS)
+            if res.get("status") == "SUCCESS":
+                login_status = "SUCCESS"
+                break
+            elif res.get("status") == "CONFIRM_CLICKED":
+                time.sleep(1.5)
+                continue
+            elif res.get("status") == "ERROR":
+                login_status = "ERROR"
+                err_detail = res.get("message", "ভুল ফোন বা পাসওয়ার্ড")
+                break
+        except Exception:
+            pass
+        time.sleep(0.5)
+
+    try:
+        if driver.execute_script("return !!(localStorage.getItem('token') || sessionStorage.getItem('token'));"):
+            login_status = "SUCCESS"
+    except Exception:
+        pass
+
+    safe_delete_message(chat_id, anim_msg_id)
+
+    if login_status == "ERROR":
+        close_session_browser(sid)
+        bot.send_message(chat_id, get_text(chat_id, "login_failed", site_name=site_name, error=err_detail))
+        return
+
+    time.sleep(1.5)
+
+    # 1. Take Login Screenshot
+    login_snap = os.path.join(PROFILES_BASE_DIR, f"login_done_{sid}.png")
+    try:
+        driver.save_screenshot(login_snap)
+    except Exception:
+        pass
+
+    masked_phone = phone[:3] + "****" + phone[-3:] if len(phone) >= 6 else phone
+
+    # 2. Display Login Screenshot with START & CANCEL buttons (Clean text)
+    display_or_replace_photo(
+        chat_id, sid,
+        login_snap,
+        get_text(chat_id, "login_success", site_name=site_name, phone=masked_phone),
+        get_start_screen_keyboard(sid)
+    )
+
+    try:
+        if os.path.exists(login_snap):
+            os.remove(login_snap)
+    except Exception:
+        pass
+
+# ==========================================
+# 9. WinGo Navigation & Configuration Flow
+# ==========================================
+def prepare_wingo_parameters(chat_id, sid):
+    sess = active_sessions.get(sid, {})
+    driver = sess.get("driver")
+    site_name = sess.get("site_name", "Amar Club")
+
+    if not driver:
+        bot.send_message(chat_id, "ব্রাউজার সংযোগ বিচ্ছিন্ন। /start চাপুন।")
+        return
+
+    # In-Browser JavaScript Automation & Selectors
+    try:
+        driver.execute_script(WINGO_RUNBOX_AND_CLICK_JS)
+    except Exception:
+        pass
+
+    time.sleep(1.5)
+
+    wingo_url = URL_AMARCLUB_WINGO if "AMAR" in site_name.upper() else URL_DKWIN_WINGO
+    try:
+        driver.execute_script("""
+            const target = arguments[0];
+            if (!window.location.href.includes('WinGo')) {
+                window.location.href = target;
+            }
+        """, wingo_url)
+    except Exception:
+        pass
+
+    for _ in range(30):
+        try:
+            if driver.execute_script(CHECK_WINGO_READY_JS):
+                break
+        except Exception:
+            pass
+        time.sleep(0.8)
+
+    # Fetch live balance
+    current_bal = 0.0
+    for _ in range(12):
+        try:
+            bal = driver.execute_script(FETCH_BALANCE_JS)
+            if bal and float(bal) > 0:
+                current_bal = float(bal)
+                break
+        except Exception:
+            pass
+        time.sleep(0.5)
+
+    sess["current_balance"] = current_bal
+
+    # Take WinGo Screenshot and display configuration card in-place
+    wingo_snap = os.path.join(PROFILES_BASE_DIR, f"wingo_{sid}.png")
+    try:
+        driver.save_screenshot(wingo_snap)
+    except Exception:
+        pass
+
+    config_caption = (
+        f"<b>{to_bold('WINGO 30S MARKET ACTIVE')}</b>\n\n"
+        f"Platform: <b>{site_name}</b>\n"
+        f"Live Balance: <code>৳ {current_bal:.2f}</code>\n\n"
+        f"নিচের <b>TARGET</b> ও <b>STEPS</b> বাটন চেপে ট্রেডিং সেট করুন, তারপর <b>START</b> চাপুন:"
+    )
+
+    display_or_replace_photo(
+        chat_id, sid,
+        wingo_snap,
+        config_caption,
+        get_setup_param_keyboard(sid)
+    )
+
+    try:
+        if os.path.exists(wingo_snap):
+            os.remove(wingo_snap)
+    except Exception:
+        pass
+
+# ==========================================
+# 10. Background Trading Watchdog & Monitor (24-Hour Persistence)
+# ==========================================
+def monitor_trading_progress(chat_id, sid):
     while True:
-        sess = user_sessions.get(chat_id)
+        sess = active_sessions.get(sid)
         if not sess or not sess.get("is_trading"):
             break
 
@@ -1182,26 +1178,23 @@ def monitor_trading_progress(chat_id):
                     start_b = sess.get("start_bal", 0)
                     profit = sess["cur_bal"] - start_b
 
-                    sid = sess.get("session_id", chat_id)
                     screen_path = os.path.join(PROFILES_BASE_DIR, f"win_{sid}.png")
                     try:
                         driver.save_screenshot(screen_path)
                     except Exception:
                         screen_path = None
 
-                    msg = get_text(
-                        chat_id, "target_achieved",
-                        start_bal=f"{start_b:.2f}",
-                        cur_bal=f"{sess['cur_bal']:.2f}",
-                        profit=f"{profit:.2f}",
-                        wins=sess["wins"],
-                        losses=sess["losses"],
-                        max_w=sess["max_w"],
-                        max_l=sess["max_l"]
+                    msg = (
+                        f"<b>{to_bold('TARGET ACHIEVED SUCCESSFULLY')}</b>\n\n"
+                        f"কাঙ্ক্ষিত টার্গেট সম্পূর্ণ সফলভাবে পূরণ হয়েছে।\n\n"
+                        f"শুরুর ব্যালেন্স: <code>৳ {start_b:.2f}</code>\n"
+                        f"বর্তমান ব্যালেন্স: <code>৳ {sess['cur_bal']:.2f}</code>\n"
+                        f"অর্জিত প্রফিট: <code>+৳ {profit:.2f}</code>\n"
+                        f"মোট উইন: <b>{sess['wins']}</b> | লস: <b>{sess['losses']}</b>"
                     )
 
                     if screen_path and os.path.exists(screen_path):
-                        display_or_replace_photo(chat_id, screen_path, msg, None)
+                        display_or_replace_photo(chat_id, sid, screen_path, msg, None)
                         try:
                             os.remove(screen_path)
                         except Exception:
@@ -1215,215 +1208,23 @@ def monitor_trading_progress(chat_id):
         time.sleep(4)
 
 def continuous_24h_watchdog():
-    """
-    Guarantees browser windows run unhindered 24/7.
-    Strictly cleans up instances exceeding 24 hours (86,400 seconds).
-    """
+    """Guarantees sessions persist 24 hours (86,400 seconds) and then cleans up automatically."""
     while True:
         try:
             now = time.time()
-            for sid, active_item in list(active_drivers.items()):
-                created_at = active_item.get("created_at", now)
+            for sid, item in list(active_sessions.items()):
+                created_at = item.get("created_at", now)
                 if now - created_at >= 86400:
                     print(f"[*] 24-hour lifetime elapsed. Auto-suspending browser session: {sid}")
-                    driver = active_item.get("driver")
-                    if driver:
-                        try:
-                            driver.quit()
-                        except Exception:
-                            pass
-                    active_drivers.pop(sid, None)
+                    close_session_browser(sid)
         except Exception as e:
-            print(f"[*] Watchdog error: {e}")
+            print(f"[*] Watchdog note: {e}")
         time.sleep(1800)
 
 threading.Thread(target=continuous_24h_watchdog, daemon=True).start()
 
 # ==========================================
-# 10. Login, Fast Animation & Navigation Processor
-# ==========================================
-def play_fast_login_animation(chat_id, msg_id):
-    frames = [
-        "<b>[ ⚡ LAUNCHING CLONED INSTANCE... ]</b>\n<code>[▰▱▱▱▱▱▱▱▱▱] 12% Initializing isolated profile...</code>",
-        "<b>[ 🚀 ESTABLISHING SECURE CONNECTION... ]</b>\n<code>[▰▰▰▱▱▱▱▱▱▱] 38% Connecting to remote browser...</code>",
-        "<b>[ 🔐 INJECTING AUTHENTICATION DATA... ]</b>\n<code>[▰▰▰▰▰▰▱▱▱▱] 67% Auto-filling credentials...</code>",
-        "<b>[ ✅ VERIFYING ACTIVE SESSION... ]</b>\n<code>[▰▰▰▰▰▰▰▰▰▰] 100% Login verification complete!</code>"
-    ]
-    for frame in frames:
-        try:
-            bot.edit_message_text(frame, chat_id=chat_id, message_id=msg_id)
-        except Exception:
-            pass
-        time.sleep(0.35)
-
-def process_login(chat_id, phone, password, anim_msg_id):
-    sess = user_sessions.get(chat_id, {})
-    sess["last_active"] = time.time()
-    site_name = sess.get("site_name", "Amar Club")
-
-    login_url = URL_AMARCLUB_LOGIN if "AMAR" in site_name.upper() else URL_DKWIN_LOGIN
-
-    play_fast_login_animation(chat_id, anim_msg_id)
-
-    driver = None
-    session_id = None
-    try:
-        driver, prof_dir, session_id = launch_firefox_instance(chat_id, login_url)
-        sess["driver"] = driver
-        sess["profile_dir"] = prof_dir
-        sess["session_id"] = session_id
-    except Exception as e:
-        safe_delete_message(chat_id, anim_msg_id)
-        bot.send_message(chat_id, get_text(chat_id, "login_failed", site_name=site_name, error=str(e)))
-        return
-
-    # Auto-fill credentials
-    fill_ok = False
-    for _ in range(70):
-        try:
-            res = driver.execute_script(AUTO_FILL_AND_CLICK_JS, phone, password)
-            if res == "SUCCESS":
-                fill_ok = True
-                time.sleep(2.0)
-                break
-        except Exception:
-            pass
-        time.sleep(0.4)
-
-    if not fill_ok:
-        safe_delete_message(chat_id, anim_msg_id)
-        bot.send_message(chat_id, get_text(chat_id, "login_failed", site_name=site_name, error="লগইন ফর্ম পাওয়া যায়নি"))
-        close_user_browser(chat_id, session_id)
-        return
-
-    # Verify login success & auto-dismiss popups
-    login_status = "PENDING"
-    err_detail = ""
-    for _ in range(40):
-        try:
-            res = driver.execute_script(CHECK_LOGIN_STATUS_JS)
-            if res.get("status") == "SUCCESS":
-                login_status = "SUCCESS"
-                break
-            elif res.get("status") == "CONFIRM_CLICKED":
-                time.sleep(1.5)
-                continue
-            elif res.get("status") == "ERROR":
-                login_status = "ERROR"
-                err_detail = res.get("message", "ভুল ফোন বা পাসওয়ার্ড")
-                break
-        except Exception:
-            pass
-        time.sleep(0.5)
-
-    try:
-        has_token = driver.execute_script("""
-            return !!(localStorage.getItem('token') || sessionStorage.getItem('token'));
-        """)
-        if has_token:
-            login_status = "SUCCESS"
-    except Exception:
-        pass
-
-    safe_delete_message(chat_id, anim_msg_id)
-
-    if login_status == "ERROR":
-        close_user_browser(chat_id, session_id)
-        bot.send_message(chat_id, get_text(chat_id, "login_failed", site_name=site_name, error=err_detail))
-        return
-
-    time.sleep(1.5)
-
-    # 1. Take Login Screenshot
-    login_snap = os.path.join(PROFILES_BASE_DIR, f"login_done_{session_id}.png")
-    try:
-        driver.save_screenshot(login_snap)
-    except Exception:
-        pass
-
-    # Masked Phone representation
-    masked_phone = phone[:3] + "****" + phone[-3:] if len(phone) >= 6 else phone
-
-    # 2. Display Login Screenshot with START & CANCEL buttons
-    display_or_replace_photo(
-        chat_id,
-        login_snap,
-        get_text(chat_id, "login_success", site_name=site_name, phone=masked_phone),
-        get_start_screen_keyboard()
-    )
-
-    try:
-        if os.path.exists(login_snap):
-            os.remove(login_snap)
-    except Exception:
-        pass
-
-def handle_start_click_and_wingo_open(chat_id):
-    """
-    Executes user-provided WinGo selector script, verifies market screen,
-    reads live balance, and prepares target amount prompt.
-    """
-    sess = user_sessions.get(chat_id, {})
-    driver = sess.get("driver")
-    site_name = sess.get("site_name", "Amar Club")
-
-    if not driver:
-        bot.send_message(chat_id, "ব্রাউজার সংযোগ বিচ্ছিন্ন। দয়া করে /start চাপুন।")
-        return
-
-    # 1. Inject and execute the user's specific WinGo selector script
-    try:
-        driver.execute_script(WINGO_RUNBOX_AND_CLICK_JS)
-    except Exception as e:
-        print(f"[*] WinGo runbox execution note: {e}")
-
-    time.sleep(1.5)
-
-    # 2. Backup URL verification in case selector click is loading
-    wingo_url = URL_AMARCLUB_WINGO if "AMAR" in site_name.upper() else URL_DKWIN_WINGO
-    try:
-        driver.execute_script("""
-            const target = arguments[0];
-            if (!window.location.href.includes('WinGo')) {
-                window.location.href = target;
-            }
-        """, wingo_url)
-    except Exception:
-        pass
-
-    # Wait for WinGo market readiness
-    for _ in range(30):
-        try:
-            if driver.execute_script(CHECK_WINGO_READY_JS):
-                break
-        except Exception:
-            pass
-        time.sleep(0.8)
-
-    # Fetch live market balance
-    current_bal = 0.0
-    for _ in range(12):
-        try:
-            bal = driver.execute_script(FETCH_BALANCE_JS)
-            if bal and float(bal) > 0:
-                current_bal = float(bal)
-                break
-        except Exception:
-            pass
-        time.sleep(0.5)
-
-    sess["current_balance"] = current_bal
-    sess["step"] = "WAITING_TARGET_PROFIT"
-
-    # Prompt user for target profit
-    q_msg = bot.send_message(
-        chat_id,
-        get_text(chat_id, "input_target", balance=f"{current_bal:.2f}")
-    )
-    sess["last_target_prompt_id"] = q_msg.message_id
-
-# ==========================================
-# 11. Telegram Flow & Callback Routing
+# 11. Telegram Handlers & Flow Routing
 # ==========================================
 @bot.message_handler(commands=['start'])
 def handle_start(message):
@@ -1432,12 +1233,7 @@ def handle_start(message):
 
     user_sessions[chat_id] = {
         "step": "CHOOSE_LANGUAGE",
-        "lang": "bn",
-        "last_active": time.time(),
-        "live_photo_message_id": None,
-        "phone": None,
-        "password": None,
-        "anim_tick": 0
+        "lang": "bn"
     }
 
     markup = InlineKeyboardMarkup(row_width=2)
@@ -1451,13 +1247,17 @@ def handle_start(message):
 def handle_callbacks(call):
     chat_id = call.message.chat.id
     data = call.data
-    sess = user_sessions.setdefault(chat_id, {"last_active": time.time()})
-    sess["last_active"] = time.time()
+
+    # Parse callback data and session id
+    parts = data.split(":")
+    action = parts[0]
+    sid = parts[1] if len(parts) > 1 else None
 
     # 1. Language Selection
-    if data in ["lang_en", "lang_bn"]:
-        sess["lang"] = "en" if data == "lang_en" else "bn"
-        sess["step"] = "CHOOSE_SITE"
+    if action in ["lang_en", "lang_bn"]:
+        u = user_sessions.setdefault(chat_id, {})
+        u["lang"] = "en" if action == "lang_en" else "bn"
+        u["step"] = "CHOOSE_SITE"
 
         markup = InlineKeyboardMarkup(row_width=2)
         markup.add(
@@ -1472,34 +1272,46 @@ def handle_callbacks(call):
             reply_markup=markup
         )
 
-    # 2. Platform Selection -> Show NUMBER and PASSWORD buttons
-    elif data in ["site_amarclub", "site_dkwin"]:
-        site_name = "Amar Club" if data == "site_amarclub" else "DK Win"
-        sess["site_name"] = site_name
-        sess["step"] = "PROMPT_CREDENTIALS"
-        sess["phone"] = None
-        sess["password"] = None
+    # 2. Platform Selection -> Generates Unique Session ID
+    elif action in ["site_amarclub", "site_dkwin"]:
+        site_name = "Amar Club" if action == "site_amarclub" else "DK Win"
+        sid = f"{chat_id}_{int(time.time()) % 1000000}"
+
+        active_sessions[sid] = {
+            "chat_id": chat_id,
+            "session_id": sid,
+            "site_name": site_name,
+            "phone": None,
+            "password": None,
+            "target_profit": 0,
+            "total_steps": 7,
+            "is_trading": False,
+            "created_at": time.time(),
+            "anim_tick": 0
+        }
+
+        user_sessions[chat_id]["active_sid"] = sid
 
         bot.answer_callback_query(call.id)
         bot.edit_message_text(
             get_text(chat_id, "credentials_card", site_name=site_name),
             chat_id=chat_id,
             message_id=call.message.message_id,
-            reply_markup=get_credentials_keyboard(chat_id)
+            reply_markup=get_credentials_keyboard(sid)
         )
-        sess["cred_card_msg_id"] = call.message.message_id
+        active_sessions[sid]["cred_card_msg_id"] = call.message.message_id
 
     # 3. NUMBER Button Click
-    elif data == "btn_ask_number":
-        sess["step"] = "WAITING_PHONE"
+    elif action == "ask_num" and sid in active_sessions:
+        active_sessions[sid]["input_mode"] = "WAITING_PHONE"
+        user_sessions[chat_id]["active_sid"] = sid
         bot.answer_callback_query(call.id)
         prompt_m = bot.send_message(chat_id, get_text(chat_id, "ask_number"))
-        sess["temp_ask_msg_id"] = prompt_m.message_id
+        active_sessions[sid]["temp_prompt_id"] = prompt_m.message_id
 
     # 4. PASSWORD Button Click (Validation: Must have Phone first)
-    elif data == "btn_ask_password":
-        if not sess.get("phone"):
-            # Reject with Alert Popup
+    elif action == "ask_pass" and sid in active_sessions:
+        if not active_sessions[sid].get("phone"):
             bot.answer_callback_query(
                 call.id,
                 "এটা হবে না! আপনি দয়া করে নাম্বারটি আগে দিন।",
@@ -1507,36 +1319,110 @@ def handle_callbacks(call):
             )
             return
 
-        sess["step"] = "WAITING_PASS"
+        active_sessions[sid]["input_mode"] = "WAITING_PASS"
+        user_sessions[chat_id]["active_sid"] = sid
         bot.answer_callback_query(call.id)
         prompt_m = bot.send_message(chat_id, get_text(chat_id, "ask_password"))
-        sess["temp_ask_msg_id"] = prompt_m.message_id
+        active_sessions[sid]["temp_prompt_id"] = prompt_m.message_id
 
-    # 5. START Button Click -> Trigger WinGo Selector & Setup
-    elif data == "btn_start_flow":
+    # 5. START Button from Login Success -> Open WinGo & Parameters
+    elif action == "start_cfg" and sid in active_sessions:
         bot.answer_callback_query(call.id, "উইনগো ৩০এস পেজ প্রস্তুত করা হচ্ছে...")
-        threading.Thread(target=handle_start_click_and_wingo_open, args=(chat_id,), daemon=True).start()
+        threading.Thread(target=prepare_wingo_parameters, args=(chat_id, sid), daemon=True).start()
 
-    # 6. Cancel Flow Cleanly
-    elif data == "btn_cancel_flow":
-        bot.answer_callback_query(call.id, "সেশন বাতিল করা হয়েছে")
-        curr_sid = sess.get("session_id")
-        close_user_browser(chat_id, curr_sid)
-        safe_delete_message(chat_id, call.message.message_id)
-        bot.send_message(chat_id, get_text(chat_id, "cancelled"))
+    # 6. Set Target Profit Button
+    elif action == "set_tgt" and sid in active_sessions:
+        active_sessions[sid]["input_mode"] = "WAITING_TARGET"
+        user_sessions[chat_id]["active_sid"] = sid
+        bot.answer_callback_query(call.id)
+        cur_bal = active_sessions[sid].get("current_balance", 0.0)
+        p_msg = bot.send_message(chat_id, get_text(chat_id, "input_target", balance=f"{cur_bal:.2f}"))
+        active_sessions[sid]["temp_prompt_id"] = p_msg.message_id
 
-    # 7. Footage Refresh (In-Place Image Update)
-    elif data == "btn_screenshot":
+    # 7. Set Steps Button
+    elif action == "set_stp" and sid in active_sessions:
+        active_sessions[sid]["input_mode"] = "WAITING_STEPS"
+        user_sessions[chat_id]["active_sid"] = sid
+        bot.answer_callback_query(call.id)
+        tgt = active_sessions[sid].get("target_profit", 0)
+        p_msg = bot.send_message(chat_id, get_text(chat_id, "input_steps", target=tgt))
+        active_sessions[sid]["temp_prompt_id"] = p_msg.message_id
+
+    # 8. RUN AUTOMATION Button
+    elif action == "run_auto" and sid in active_sessions:
+        sess = active_sessions[sid]
+        driver = sess.get("driver")
+
+        if not sess.get("target_profit") or sess["target_profit"] <= 0:
+            bot.answer_callback_query(call.id, "আগে টার্গেট অ্যামাউন্ট লিখুন!", show_alert=True)
+            return
+
+        bot.answer_callback_query(call.id, "ট্রেডিং ইঞ্জিন সক্রিয় করা হচ্ছে...")
+        sess["is_trading"] = True
+
+        # Inject Martingale core logic into the browser
+        try:
+            driver.execute_script(WINGO_CORE_JS, sess["target_profit"], sess["total_steps"])
+        except Exception as e:
+            bot.send_message(chat_id, f"Error: {e}")
+            return
+
+        time.sleep(2.0)
+
+        start_snap = os.path.join(PROFILES_BASE_DIR, f"run_{sid}.png")
+        try:
+            driver.save_screenshot(start_snap)
+        except Exception:
+            pass
+
+        cur_b = sess.get("current_balance", 0.0)
+        target_total = cur_b + sess["target_profit"]
+        sess["start_bal"] = cur_b
+
+        dashboard_caption = get_text(
+            chat_id, "running_dashboard",
+            site_name=sess.get("site_name", "Amar Club"),
+            start_bal=f"{cur_b:.2f}",
+            target_bal=f"{target_total:.2f}",
+            steps=sess["total_steps"]
+        )
+
+        display_or_replace_photo(
+            chat_id, sid,
+            start_snap,
+            dashboard_caption,
+            get_trading_control_keyboard(sid)
+        )
+
+        try:
+            if os.path.exists(start_snap):
+                os.remove(start_snap)
+        except Exception:
+            pass
+
+        threading.Thread(target=monitor_trading_progress, args=(chat_id, sid), daemon=True).start()
+
+    # 9. Control: SHOT (Refresh Footage In-Place)
+    elif action == "shot" and sid in active_sessions:
+        sess = active_sessions[sid]
         driver = sess.get("driver")
         if driver:
-            bot.answer_callback_query(call.id, "রিয়েল-টাইম ফুটেজ আপডেট হচ্ছে...")
-            sid = sess.get("session_id", chat_id)
+            bot.answer_callback_query(call.id, "ফুটেজ আপডেট হচ্ছে...")
             temp_shot = os.path.join(PROFILES_BASE_DIR, f"live_{sid}.png")
             try:
                 driver.save_screenshot(temp_shot)
-                sess["anim_tick"] = sess.get("anim_tick", 0) + 1
-                caption = f"<b>{to_bold('LIVE BROWSER FOOTAGE')}</b>\nসময়: <code>{time.strftime('%H:%M:%S')}</code>"
-                display_or_replace_photo(chat_id, temp_shot, caption, get_trading_control_keyboard(sess["anim_tick"]))
+                cur_b = sess.get("cur_bal", sess.get("current_balance", 0.0))
+                t_total = sess.get("start_bal", 0.0) + sess.get("target_profit", 0.0)
+                caption = (
+                    f"<b>{to_bold('24/7 AUTOMATION ENGINE ACTIVE')}</b>\n\n"
+                    f"Platform: <b>{sess.get('site_name', '')}</b>\n"
+                    f"Starting Balance: <code>৳ {sess.get('start_bal', 0.0):.2f}</code>\n"
+                    f"Target Balance: <code>৳ {t_total:.2f}</code>\n"
+                    f"Total Steps: <b>{sess.get('total_steps', 7)}</b>\n\n"
+                    f"সময়: <code>{time.strftime('%H:%M:%S')}</code>\n"
+                    f"<b>LIVE STATUS</b>: মার্টিনগেল ইঞ্জিন সফলভাবে সচল রয়েছে।"
+                )
+                display_or_replace_photo(chat_id, sid, temp_shot, caption, get_trading_control_keyboard(sid))
                 if os.path.exists(temp_shot):
                     os.remove(temp_shot)
             except Exception as e:
@@ -1544,9 +1430,9 @@ def handle_callbacks(call):
         else:
             bot.answer_callback_query(call.id, "Browser active নেই!", show_alert=True)
 
-    # 8. Live Balance
-    elif data == "btn_live_balance":
-        driver = sess.get("driver")
+    # 10. Control: BAL (Live Balance Check)
+    elif action == "bal" and sid in active_sessions:
+        driver = active_sessions[sid].get("driver")
         if driver:
             try:
                 b = driver.execute_script(FETCH_BALANCE_JS)
@@ -1554,11 +1440,11 @@ def handle_callbacks(call):
             except Exception:
                 bot.answer_callback_query(call.id, "ব্যালেন্স লোড হচ্ছে...", show_alert=True)
         else:
-            bot.answer_callback_query(call.id, "Active session নেই!", show_alert=True)
+            bot.answer_callback_query(call.id, "Session active নেই!", show_alert=True)
 
-    # 9. Real-time Stats Report
-    elif data == "btn_stats_report":
-        driver = sess.get("driver")
+    # 11. Control: STATS
+    elif action == "stats" and sid in active_sessions:
+        driver = active_sessions[sid].get("driver")
         if driver:
             try:
                 data_rep = driver.execute_script("""
@@ -1576,182 +1462,149 @@ def handle_callbacks(call):
                 """)
                 if data_rep:
                     stat_txt = (
-                        f"<b>{to_bold('LIVE TRADING STATS')}</b>\n\n"
-                        f"বর্তমান ব্যালেন্স: <code>৳ {data_rep['curBal']:.2f}</code>\n"
+                        f"<b>{to_bold('LIVE STATS REPORT')}</b>\n\n"
+                        f"ব্যালেন্স: <code>৳ {data_rep['curBal']:.2f}</code>\n"
                         f"টার্গেট: <code>৳ {data_rep['tgtAmt']:.2f}</code>\n"
                         f"মার্টিনগেল লেভেল: <b>Step {data_rep['step']}/{data_rep['maxStep']}</b>\n"
                         f"উইন: <b>{data_rep['w']}</b> | লস: <b>{data_rep['l']}</b>"
                     )
                     bot.send_message(chat_id, stat_txt)
                 else:
-                    bot.answer_callback_query(call.id, "ইঞ্জিন শুরু হচ্ছে...", show_alert=True)
+                    bot.answer_callback_query(call.id, "ইঞ্জিন লোড হচ্ছে...", show_alert=True)
             except Exception:
                 bot.answer_callback_query(call.id, "রিপোর্ট প্রস্তুত নয়।", show_alert=True)
-        else:
-            bot.answer_callback_query(call.id, "Browser active নেই!", show_alert=True)
 
-    # 10. Stop Trading
-    elif data == "btn_stop_trade":
+    # 12. Control: STOP
+    elif action == "stop" and sid in active_sessions:
+        sess = active_sessions[sid]
         driver = sess.get("driver")
         if driver:
             try:
                 driver.execute_script("let btn = document.querySelector('#sys-core-fin button'); if(btn) btn.click();")
                 sess["is_trading"] = False
-                bot.answer_callback_query(call.id, "অটোমেশন সাময়িক স্থগিত করা হয়েছে", show_alert=True)
-                bot.send_message(chat_id, f"<b>{to_bold('TRADING PAUSED')}</b>\nট্রেডিং ইঞ্জিন সাময়িকভাবে থামানো হয়েছে।")
+                bot.answer_callback_query(call.id, "ট্রেডিং সাময়িক স্থগিত করা হয়েছে", show_alert=True)
+                bot.send_message(chat_id, f"<b>{to_bold('TRADING PAUSED')}</b>\nট্রেডিং অটোমেশন সাময়িকভাবে থামানো হয়েছে।")
             except Exception:
                 bot.answer_callback_query(call.id, "Error stopping trade.", show_alert=True)
-        else:
-            bot.answer_callback_query(call.id, "ট্রেডিং চলছে না!", show_alert=True)
+
+    # 13. Cancel Session
+    elif action == "cancel" and sid in active_sessions:
+        bot.answer_callback_query(call.id, "সেশন বাতিল করা হয়েছে")
+        close_session_browser(sid)
+        safe_delete_message(chat_id, call.message.message_id)
+        bot.send_message(chat_id, get_text(chat_id, "cancelled"))
 
 # ==========================================
 # 12. Text Handler & Auto Credential Cleanup
 # ==========================================
-@bot.message_handler(func=lambda msg: msg.chat.id in user_sessions)
+@bot.message_handler(func=lambda msg: True)
 def handle_user_text(message):
     chat_id = message.chat.id
-    sess = user_sessions[chat_id]
-    sess["last_active"] = time.time()
-    step = sess.get("step")
     text = message.text.strip()
 
-    # Secret credentials and configuration numbers are immediately deleted
+    u = user_sessions.get(chat_id, {})
+    sid = u.get("active_sid")
+    if not sid or sid not in active_sessions:
+        return
+
+    sess = active_sessions[sid]
+    input_mode = sess.get("input_mode")
+
+    # Immediate deletion of user input messages
     safe_delete_message(chat_id, message.message_id)
 
-    # Delete temporary question prompt if exists
-    if sess.get("temp_ask_msg_id"):
-        safe_delete_message(chat_id, sess["temp_ask_msg_id"])
-        sess["temp_ask_msg_id"] = None
+    # Delete prompt message
+    if sess.get("temp_prompt_id"):
+        safe_delete_message(chat_id, sess["temp_prompt_id"])
+        sess["temp_prompt_id"] = None
 
-    # Step: User sends phone number
-    if step == "WAITING_PHONE":
+    # Step: Phone Input
+    if input_mode == "WAITING_PHONE":
         sess["phone"] = text
-        sess["step"] = "PROMPT_CREDENTIALS"
+        sess["input_mode"] = None
 
-        # Update card: remove NUMBER button, keep PASSWORD button
         if sess.get("cred_card_msg_id"):
             try:
                 masked = text[:3] + "****" + text[-3:] if len(text) >= 6 else text
                 updated_card_text = (
                     f"<b>{to_bold('ACCOUNT LOGIN')}</b>\n\n"
                     f"প্ল্যাটফর্ম: <b>{sess.get('site_name', '')}</b>\n"
-                    f"নাম্বার: <code>{masked}</code> ✅\n\n"
-                    f"এখন নিচের <b>PASSWORD</b> বাটনে চাপ দিয়ে আপনার পাসওয়ার্ড দিন:"
+                    f"নাম্বার: <code>{masked}</code> (সংরক্ষিত)\n\n"
+                    f"এখন নিচের <b>PASSWORD</b> বাটনে চাপ দিয়ে পাসওয়ার্ড দিন:"
                 )
                 bot.edit_message_text(
                     updated_card_text,
                     chat_id=chat_id,
                     message_id=sess["cred_card_msg_id"],
-                    reply_markup=get_credentials_keyboard(chat_id)
+                    reply_markup=get_credentials_keyboard(sid)
                 )
             except Exception:
                 pass
 
-    # Step: User sends password
-    elif step == "WAITING_PASS":
+    # Step: Password Input
+    elif input_mode == "WAITING_PASS":
         sess["password"] = text
-        sess["step"] = "LOGGING_IN"
+        sess["input_mode"] = None
 
-        # Delete the credentials card to leave zero traces
         if sess.get("cred_card_msg_id"):
             safe_delete_message(chat_id, sess["cred_card_msg_id"])
             sess["cred_card_msg_id"] = None
 
-        # Start fast in-message login animation
-        anim_msg = bot.send_message(chat_id, "<b>[ ⚡ LAUNCHING CLONED INSTANCE... ]</b>")
+        anim_msg = bot.send_message(chat_id, "<b>CONNECTING REMOTE BROWSER</b>")
         threading.Thread(
             target=process_login,
-            args=(chat_id, sess["phone"], sess["password"], anim_msg.message_id),
+            args=(chat_id, sid, sess["phone"], sess["password"], anim_msg.message_id),
             daemon=True
         ).start()
 
-    # Step: User sends Target Profit amount
-    elif step == "WAITING_TARGET_PROFIT":
+    # Step: Target Input
+    elif input_mode == "WAITING_TARGET":
         try:
             val = float(text)
-            if val <= 0:
-                raise ValueError()
+            if val <= 0: raise ValueError()
+            sess["target_profit"] = val
+            sess["input_mode"] = None
+
+            # Refresh setup card photo
+            wingo_snap = os.path.join(PROFILES_BASE_DIR, f"wingo_{sid}.png")
+            cur_bal = sess.get("current_balance", 0.0)
+            config_caption = (
+                f"<b>{to_bold('WINGO 30S MARKET ACTIVE')}</b>\n\n"
+                f"Platform: <b>{sess.get('site_name', '')}</b>\n"
+                f"Live Balance: <code>৳ {cur_bal:.2f}</code>\n"
+                f"Selected Target: <code>৳ {val:.2f}</code>\n\n"
+                f"প্যারামিটার সেট হয়েছে। ট্রেডিং চালু করতে <b>START</b> চাপুন:"
+            )
+            display_or_replace_photo(
+                chat_id, sid, wingo_snap, config_caption, get_setup_param_keyboard(sid)
+            )
         except ValueError:
-            m = bot.send_message(chat_id, "দয়া করে সঠিক অ্যামাউন্ট লিখুন (যেমন: <code>500</code>):")
-            sess["temp_ask_msg_id"] = m.message_id
-            return
+            p_msg = bot.send_message(chat_id, "দয়া করে সঠিক সংখ্যা লিখুন (যেমন: 500):")
+            sess["temp_prompt_id"] = p_msg.message_id
 
-        # Delete previous target prompt
-        if sess.get("last_target_prompt_id"):
-            safe_delete_message(chat_id, sess["last_target_prompt_id"])
-
-        sess["target_profit"] = val
-        sess["step"] = "WAITING_STEPS"
-
-        q_msg = bot.send_message(
-            chat_id,
-            get_text(chat_id, "input_steps", target=val)
-        )
-        sess["last_steps_prompt_id"] = q_msg.message_id
-
-    # Step: User sends Martingale backup steps
-    elif step == "WAITING_STEPS":
+    # Step: Steps Input
+    elif input_mode == "WAITING_STEPS":
         try:
             steps_val = int(text)
-            if steps_val <= 0:
-                raise ValueError()
+            if steps_val <= 0: raise ValueError()
+            sess["total_steps"] = steps_val
+            sess["input_mode"] = None
+
+            wingo_snap = os.path.join(PROFILES_BASE_DIR, f"wingo_{sid}.png")
+            cur_bal = sess.get("current_balance", 0.0)
+            config_caption = (
+                f"<b>{to_bold('WINGO 30S MARKET ACTIVE')}</b>\n\n"
+                f"Platform: <b>{sess.get('site_name', '')}</b>\n"
+                f"Live Balance: <code>৳ {cur_bal:.2f}</code>\n"
+                f"Selected Steps: <b>{steps_val}</b>\n\n"
+                f"প্যারামিটার সেট হয়েছে। ট্রেডিং চালু করতে <b>START</b> চাপুন:"
+            )
+            display_or_replace_photo(
+                chat_id, sid, wingo_snap, config_caption, get_setup_param_keyboard(sid)
+            )
         except ValueError:
-            m = bot.send_message(chat_id, "দয়া করে সঠিক পূর্ণসংখ্যা লিখুন (যেমন: <code>7</code>):")
-            sess["temp_ask_msg_id"] = m.message_id
-            return
-
-        # Delete previous steps prompt
-        if sess.get("last_steps_prompt_id"):
-            safe_delete_message(chat_id, sess["last_steps_prompt_id"])
-
-        sess["total_steps"] = steps_val
-        sess["step"] = "TRADING_RUNNING"
-        sess["is_trading"] = True
-
-        driver = sess.get("driver")
-        if not driver:
-            bot.send_message(chat_id, "ব্রাউজার সংযোগ বিচ্ছিন্ন। /start দিয়ে পুনরায় শুরু করুন।")
-            return
-
-        # Inject Martingale Core Algorithm into WinGo
-        try:
-            driver.execute_script(WINGO_CORE_JS, sess["target_profit"], sess["total_steps"])
-        except Exception as e:
-            bot.send_message(chat_id, f"অটোমেশন স্ক্রিপ্ট এক্সিকিউশন এরর: {e}")
-            return
-
-        time.sleep(2.0)
-
-        sid = sess.get("session_id", chat_id)
-        start_snap = os.path.join(PROFILES_BASE_DIR, f"start_{sid}.png")
-        try:
-            driver.save_screenshot(start_snap)
-        except Exception:
-            pass
-
-        cur_b = sess.get("current_balance", 0.0)
-        target_total = cur_b + sess["target_profit"]
-        sess["start_bal"] = cur_b
-
-        dashboard_caption = (
-            f"{get_text(chat_id, 'running_dashboard', site_name=sess.get('site_name', 'Amar Club'), start_bal=f'{cur_b:.2f}', target_bal=f'{target_total:.2f}', steps=sess['total_steps'])}\n\n"
-            f"<b>{to_bold('LIVE STATUS')}</b>: মার্টিনগেল ইঞ্জিন সফলভাবে সচল রয়েছে।"
-        )
-
-        display_or_replace_photo(
-            chat_id,
-            start_snap,
-            dashboard_caption,
-            get_trading_control_keyboard(0)
-        )
-
-        try:
-            if os.path.exists(start_snap):
-                os.remove(start_snap)
-        except Exception:
-            pass
-
-        threading.Thread(target=monitor_trading_progress, args=(chat_id,), daemon=True).start()
+            p_msg = bot.send_message(chat_id, "দয়া করে সঠিক পূর্ণসংখ্যা লিখুন (যেমন: 7):")
+            sess["temp_prompt_id"] = p_msg.message_id
 
 # ==========================================
 # 13. Main Execution
