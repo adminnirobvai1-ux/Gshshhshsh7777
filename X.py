@@ -29,7 +29,7 @@ from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.firefox.service import Service as FirefoxService
 
 # ==========================================
-# 2. Mathematical Bold Unicode Converter (Clean Without Brackets)
+# 2. Premium Mathematical Bold Unicode Converter
 # ==========================================
 def to_bold(text: str) -> str:
     """Converts ASCII letters and digits to Mathematical Bold Unicode (A->𝐀, a->𝐚, 0->𝟎)"""
@@ -70,28 +70,31 @@ os.makedirs(PROFILES_BASE_DIR, exist_ok=True)
 # User Session Database: chat_id -> Session Dictionary
 user_sessions = {}
 
-# Global Active WebDriver Instances Database: session_id -> Instance Dictionary
-# Stores each active webdriver instance keyed by unique session ID so Python's garbage collector
-# does NOT close older running browsers, keeping previous windows open alongside new ones.
-active_drivers = {}
+# Payment Details (Change these numbers to your real numbers)
+PAYMENT_NUMBERS = {
+    "BKASH": "01700000000", # আপনার বিকাশ পার্সোনাল নাম্বার দিন
+    "NAGAD": "01800000000"  # আপনার নগদ পার্সোনাল নাম্বার দিন
+}
 
 # ==========================================
 # 4. Multi-Instance Isolated Firefox Launcher
 # ==========================================
 def launch_firefox_instance(chat_id, target_url):
     """
-    Launches a completely new, independent Firefox instance for every login or new session.
-    Uses dynamic unique profile directory paths (f'{chat_id}_{int(time.time())}_{port}')
-    so that existing/previous Firefox sessions and profiles are never overwritten or deleted.
-    Ensures previous browser windows stay open alongside new ones with -no-remote and -new-instance.
-    Stores each active webdriver instance in the active_drivers global dictionary.
-    Each session remains completely isolated without sharing or resetting history/cookies.
+    Launches an independent Firefox clone instance for each user.
+    Uses separate profile folders, separate ports, and avoids session clashing.
     """
-    session_id = f"{chat_id}_{int(time.time())}_{find_free_port()}"
-    user_profile_dir = os.path.join(PROFILES_BASE_DIR, f"user_{session_id}")
+    user_profile_dir = os.path.join(PROFILES_BASE_DIR, f"user_{chat_id}")
     os.makedirs(user_profile_dir, exist_ok=True)
 
-    # Dynamic port allocation for complete Marionette & Geckodriver isolation
+    for lock_name in [".parentlock", "parent.lock", "lock"]:
+        lp = os.path.join(user_profile_dir, lock_name)
+        if os.path.exists(lp):
+            try:
+                os.remove(lp)
+            except Exception:
+                pass
+
     gecko_port = find_free_port()
     marionette_port = find_free_port()
 
@@ -101,7 +104,6 @@ def launch_firefox_instance(chat_id, target_url):
     options.add_argument("-profile")
     options.add_argument(user_profile_dir)
 
-    # Ensure DISPLAY is set for Linux GUI / Xvfb
     if "DISPLAY" not in os.environ or not os.environ["DISPLAY"]:
         os.environ["DISPLAY"] = ":0"
 
@@ -120,49 +122,36 @@ def launch_firefox_instance(chat_id, target_url):
     except Exception:
         pass
 
-    # Store in global dictionary to retain strong references and prevent garbage collection
-    active_drivers[session_id] = {
-        "driver": driver,
-        "profile_dir": user_profile_dir,
-        "chat_id": chat_id,
-        "created_at": time.time(),
-        "session_id": session_id
-    }
-
     driver.get(target_url)
-    return driver, user_profile_dir, session_id
+    return driver, user_profile_dir
 
-def close_user_browser(chat_id, session_id=None):
-    """
-    Safely closes ONLY the designated session browser when explicitly cancelled,
-    leaving any other previous or concurrent browser windows open and untouched.
-    """
+def close_user_browser(chat_id):
+    """Safely closes ONLY this user's browser without terminating other active users."""
     sess = user_sessions.get(chat_id)
-    target_sid = session_id or (sess.get("session_id") if sess else None)
-
-    if target_sid and target_sid in active_drivers:
-        active_item = active_drivers.pop(target_sid, None)
-        if active_item:
-            driver = active_item.get("driver")
-            if driver:
-                try:
-                    driver.quit()
-                except Exception:
-                    pass
-    elif sess and sess.get("driver"):
-        driver = sess.get("driver")
+    if not sess:
+        return
+    sess["is_trading"] = False
+    driver = sess.get("driver")
+    if driver:
         try:
             driver.quit()
         except Exception:
             pass
-
-    if sess:
-        sess["is_trading"] = False
         sess["driver"] = None
-        sess["step"] = "IDLE"
+    sess["step"] = "IDLE"
+
+    prof_dir = sess.get("profile_dir")
+    if prof_dir and os.path.exists(prof_dir):
+        for lock_name in [".parentlock", "parent.lock", "lock"]:
+            lp = os.path.join(prof_dir, lock_name)
+            if os.path.exists(lp):
+                try:
+                    os.remove(lp)
+                except Exception:
+                    pass
 
 # ==========================================
-# 5. In-Browser JavaScript Automation Code (With Error 22 Auto-Confirm)
+# 5. In-Browser JavaScript Automation Code
 # ==========================================
 AUTO_FILL_AND_CLICK_JS = """
 const phone = arguments[0];
@@ -170,12 +159,6 @@ const pass = arguments[1];
 
 if (!window.location.hash.includes('login')) {
   window.location.hash = '#/login';
-}
-
-// Auto dismiss any initial popup dialog if present
-const initDialogConfirm = document.querySelector('.van-dialog__confirm, .dialog-confirm, button[class*="confirm"], .van-button--primary');
-if (initDialogConfirm) {
-    try { initDialogConfirm.click(); } catch(e){}
 }
 
 let elN = document.querySelector('input[type="tel"], input[placeholder*="phone" i], input[placeholder*="Phone" i]') || 
@@ -210,8 +193,8 @@ setTimeout(() => {
   clearAndSetVal(elP, pass);
   setTimeout(() => {
     elL.click();
-  }, 800);
-}, 800);
+  }, 1000);
+}, 1000);
 
 return "SUCCESS";
 """
@@ -221,63 +204,28 @@ const hash = window.location.hash || '';
 const href = window.location.href || '';
 const bodyText = document.body ? document.body.innerText : '';
 
-// 1. AUTO-HANDLE "Error 22: Your account is already logged in somewhere else" or Kickout Dialog
-const dialog = document.querySelector('.van-dialog');
-if (dialog) {
-    const dText = dialog.innerText || '';
-    if (dText.includes('already logged in') || dText.includes('somewhere else') || 
-        dText.includes('logged in') || dText.includes('22') || dText.includes('other device') ||
-        dText.includes('Confirm') || dText.includes('Determine') || dText.includes('continue')) {
-        const confirmBtn = dialog.querySelector('.van-dialog__confirm, button[class*="confirm"], .van-button--danger, .van-button--primary, button');
-        if (confirmBtn) {
-            try { confirmBtn.click(); } catch(e){}
-            return { status: "CONFIRM_CLICKED", message: "Auto-confirmed already logged in prompt" };
-        }
-    }
-}
-
-// 2. Bonus or announcement modal dismiss
 const isBonusModal = bodyText.includes('BONUS DAILY RECHARGE') || 
                      bodyText.includes('DAILY RECHARGE') || 
                      bodyText.includes('Daily Bonus') ||
-                     bodyText.includes('Deposit Bonus') ||
-                     bodyText.includes('Announcement');
+                     bodyText.includes('Deposit Bonus');
 
 if (isBonusModal) {
-    const confirmBtn = document.querySelector('.van-dialog__confirm, .dialog-confirm, button[class*="confirm"], button[class*="close"], .van-popup__close-icon');
+    const confirmBtn = document.querySelector('.van-dialog__confirm, .dialog-confirm, button[class*="confirm"], button[class*="close"]');
     if (confirmBtn) {
         try { confirmBtn.click(); } catch(e){}
     }
     return { status: "SUCCESS" };
 }
 
-// 3. Check if auth token exists in browser storage
-try {
-    const t1 = localStorage.getItem('token') || localStorage.getItem('token_str') || localStorage.getItem('auth');
-    const t2 = sessionStorage.getItem('token') || sessionStorage.getItem('auth');
-    if (t1 || t2) {
-        return { status: "SUCCESS" };
-    }
-} catch(e){}
-
-// 4. Check URL change away from login page
-if (!href.includes('/login') && (!hash.includes('login') || hash.length > 8)) {
+if (!href.includes('/login') && (!hash.includes('login') || hash === '#/' || hash.length >= 2)) {
     return { status: "SUCCESS" };
 }
 
-// 5. Toast error checker - ONLY fail on permanent errors (wrong password/account not found)
 const toast = document.querySelector('.van-toast--text, .van-toast--fail, .van-toast');
 if (toast && toast.innerText && toast.innerText.trim().length > 0) {
     const t = toast.innerText.trim();
-    // If toast is error 22 / already logged in, do not immediately fail! Click submit again or confirm
-    if (t.includes('already logged in') || t.includes('somewhere else') || t.includes('22')) {
-        const loginBtn = document.querySelector('button[type="submit"], body > div > div:nth-of-type(2) > div:nth-of-type(4) > div > div > div:nth-of-type(4) > button');
-        if (loginBtn) {
-            try { loginBtn.click(); } catch(e){}
-        }
-        return { status: "PENDING", message: "Handling session takeover..." };
-    }
-    if (t.includes('password') || t.includes('incorrect') || t.includes('wrong') || t.includes('Account does not exist') || t.includes('frozen')) {
+    if (t.includes('Error') || t.includes('password') || t.includes('incorrect') || 
+        t.includes('logged in') || t.includes('wrong') || t.includes('failed')) {
         return { status: "ERROR", message: t };
     }
 }
@@ -290,11 +238,7 @@ const hash = window.location.hash || '';
 const href = window.location.href || '';
 const bodyText = document.body ? document.body.innerText : '';
 
-// Dismiss any popups blocking the WinGo screen
-const dismissBtns = document.querySelectorAll('.van-dialog__confirm, .dialog-close, .van-popup__close-icon, button[class*="close"], .van-dialog button');
-dismissBtns.forEach(btn => { try { btn.click(); } catch(e){} });
-
-if (hash.includes('WinGo') || href.includes('WinGo') || bodyText.includes('Win Go') || bodyText.includes('30S') || bodyText.includes('Time remaining')) {
+if (hash.includes('WinGo') || href.includes('WinGo') || bodyText.includes('Win Go') || bodyText.includes('30S')) {
     return true;
 }
 return false;
@@ -319,7 +263,6 @@ for (let i = 0; i < els.length; i++) {
 return 0;
 """
 
-# Original Automation Martingale script remains complete and unchanged
 WINGO_CORE_JS = """
 const autoTargetProfit = arguments[0];
 const autoTotalSteps = arguments[1];
@@ -392,7 +335,7 @@ const autoTotalSteps = arguments[1];
         let uClk=document.getElementById('ui-clk');
         if(uClk){
             let minutes=Math.floor(dTimeLeft/60),seconds=dTimeLeft%60;
-            uClk.textContent=uF(String(minutes).padStart(2,'0') + ':' + String(seconds).padStart(2,'0'));
+            uClk.textContent=uF(`${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}`);
         }
         dTimeLeft--;
         if(dTimeLeft<0)dTimeLeft=30;
@@ -470,7 +413,7 @@ const autoTotalSteps = arguments[1];
     inC.className='drx-in';
     let h=document.createElement('div');
     h.style.cssText='padding:8px;font-size:12px;display:flex;justify-content:space-between;cursor:move;border-bottom:2px solid #000;background:transparent;';
-    h.innerHTML='<span class="txt-blk drx-title-anim" id="drx-title">' + uF('WINZY-MARTINGALE') + '</span><span style="cursor:pointer;" class="txt-blk-err" id="sys-cls">X</span>';
+    h.innerHTML=`<span class="txt-blk drx-title-anim" id="drx-title">${uF('WINZY-MARTINGALE')}</span><span style="cursor:pointer;" class="txt-blk-err" id="sys-cls">X</span>`;
     inC.appendChild(h);
 
     let drg=false,sx,sy,sl,st_y;
@@ -510,7 +453,7 @@ const autoTotalSteps = arguments[1];
     b.style.cssText='padding:10px;display:flex;flex-direction:column;gap:8px;background:transparent;';
 
     const p1=document.createElement('div');
-    p1.innerHTML='<div style="text-align:center;margin-bottom:8px;padding:6px;background:transparent;border-radius:6px;border:2px solid #000;"><span class="txt-blk" style="font-size:9px;color:#ccc;">' + uF('CURRENT BAL') + '</span><br><span id="pre-bal" class="txt-blk" style="font-size:15px;color:#fff;">--</span></div>';
+    p1.innerHTML=`<div style="text-align:center;margin-bottom:8px;padding:6px;background:transparent;border-radius:6px;border:2px solid #000;"><span class="txt-blk" style="font-size:9px;color:#ccc;">${uF('CURRENT BAL')}</span><br><span id="pre-bal" class="txt-blk" style="font-size:15px;color:#fff;">--</span></div>`;
 
     const tgtInp=document.createElement('input');
     tgtInp.type='number';
@@ -548,12 +491,12 @@ const autoTotalSteps = arguments[1];
 
     const balBx=document.createElement('div');
     balBx.style.cssText='padding:6px;text-align:center;background:transparent;border-radius:6px;border:2px solid #000;margin-bottom:6px;';
-    balBx.innerHTML='<div class="txt-blk" style="font-size:9px;color:#ccc;">' + uF('LIVE BAL / PROFIT') + '</div><div id="ui-bal" class="txt-blk" style="font-size:16px;color:#fff;">--</div>';
+    balBx.innerHTML=`<div class="txt-blk" style="font-size:9px;color:#ccc;">${uF('LIVE BAL / PROFIT')}</div><div id="ui-bal" class="txt-blk" style="font-size:16px;color:#fff;">--</div>`;
 
-    let aiRow='<div style="display:flex;justify-content:space-between;border-bottom:2px dashed #000;"><span class="txt-blk" style="color:#ccc;">' + uF('AI:') + '</span><span id="ui-ai" class="txt-blk-cyan">VIP JSON API</span></div>';
+    let aiRow=`<div style="display:flex;justify-content:space-between;border-bottom:2px dashed #000;"><span class="txt-blk" style="color:#ccc;">${uF('AI:')}</span><span id="ui-ai" class="txt-blk-cyan">VIP JSON API</span></div>`;
     const infBx=document.createElement('div');
     infBx.style.cssText='padding:6px;font-size:10px;line-height:2;background:transparent;border-radius:6px;border:2px solid #000;position:relative;overflow:hidden;';
-    infBx.innerHTML=aiRow+'<div style="display:flex;justify-content:space-between;border-bottom:2px dashed #000;"><span class="txt-blk" style="color:#ccc;">' + uF('TGT:') + '</span><span id="ui-tgt" class="txt-blk" style="color:#fff;">0</span></div>' + '<div style="display:flex;justify-content:space-between;border-bottom:2px dashed #000;"><span class="txt-blk" style="color:#ccc;">' + uF('STP:') + '</span><span id="ui-bet" class="txt-blk-warn" style="color:#ffcc00;cursor:pointer;">5</span></div>' + '<div style="display:flex;justify-content:space-between;border-bottom:2px dashed #000;"><span class="txt-blk" style="color:#ccc;">' + uF('CLK:') + '</span><span id="ui-clk" class="txt-blk" style="color:#fff;">00:30</span></div>' + '<div style="display:flex;justify-content:space-between;border-bottom:2px dashed #000;"><span class="txt-blk" style="color:#ccc;">' + uF('STS:') + '</span><span id="ui-sts" class="txt-blk" style="color:#fff;">' + uF('WAIT') + '</span></div>';
+    infBx.innerHTML=aiRow+`<div style="display:flex;justify-content:space-between;border-bottom:2px dashed #000;"><span class="txt-blk" style="color:#ccc;">${uF('TGT:')}</span><span id="ui-tgt" class="txt-blk" style="color:#fff;">0</span></div>`+`<div style="display:flex;justify-content:space-between;border-bottom:2px dashed #000;" title="Double-click to set manual fixed bet"><span class="txt-blk" style="color:#ccc;">${uF('STP:')}</span><span id="ui-bet" class="txt-blk-warn" style="color:#ffcc00;cursor:pointer;">5</span></div>`+`<div style="display:flex;justify-content:space-between;border-bottom:2px dashed #000;"><span class="txt-blk" style="color:#ccc;">${uF('CLK:')}</span><span id="ui-clk" class="txt-blk" style="color:#fff;">00:30</span></div>`+`<div style="display:flex;justify-content:space-between;border-bottom:2px dashed #000;"><span class="txt-blk" style="color:#ccc;">${uF('STS:')}</span><span id="ui-sts" class="txt-blk" style="color:#fff;">${uF('WAIT')}</span></div>`;
 
     const ghBox=document.createElement('div');
     ghBox.id='gh-box-wrap';
@@ -651,9 +594,9 @@ const autoTotalSteps = arguments[1];
         let ov=document.createElement('div');
         ov.style.cssText='position:fixed;top:0;left:0;width:100vw;height:100vh;background:transparent;z-index:9999998;pointer-events:none;overflow:hidden;';
         let cBase='#00ff00',rL=document.createElement('div');
-        rL.style.cssText='position:absolute;width:100%;height:2px;background:' + cBase + ';box-shadow:0 0 10px 3px ' + cBase + ';animation:sR 0.6s linear infinite alternate;';
+        rL.style.cssText=`position:absolute;width:100%;height:2px;background:${cBase};box-shadow:0 0 10px 3px ${cBase};animation:sR 0.6s linear infinite alternate;`;
         let gL=document.createElement('div');
-        gL.style.cssText='position:absolute;height:100%;width:3px;background:' + cBase + ';box-shadow:0 0 15px 5px ' + cBase + ';animation:sG 0.6s cubic-bezier(0.25,0.1,0.25,1) infinite alternate;';
+        gL.style.cssText=`position:absolute;height:100%;width:3px;background:${cBase};box-shadow:0 0 15px 5px ${cBase};animation:sG 0.6s cubic-bezier(0.25,0.1,0.25,1) infinite alternate;`;
         let sS=document.createElement('style');
         sS.innerHTML='@keyframes sR{0%{top:-10px;}100%{top:100vh;}}@keyframes sG{0%{left:-10px;}100%{left:100vw;}}';
         document.head.appendChild(sS);
@@ -686,7 +629,7 @@ const autoTotalSteps = arguments[1];
             chkBal();
             const uBal=document.getElementById('ui-bal'),uSts=document.getElementById('ui-sts'),uBet=document.getElementById('ui-bet');
             if(st.curBal>=st.tgtAmt&&st.curBal>0){
-                uBal.innerText=uF(st.curBal.toFixed(2) + ' (DONE)');
+                uBal.innerText=uF(`${st.curBal.toFixed(2)} (DONE)`);
                 uSts.innerText=uF('DONE');
                 uSts.className='txt-blk-accent';
                 stpBtn.style.display='none';
@@ -740,7 +683,7 @@ const autoTotalSteps = arguments[1];
                     }
                     if(st.stpIdx>=st.dynSeq.length)st.stpIdx=st.dynSeq.length-1;
                     let tAmt=st.manualOverrideBet?st.manualOverrideBet:st.dynSeq[st.stpIdx];
-                    uBet.innerText=uF(st.manualOverrideBet?tAmt+' (FIX)':(tAmt + ' (S' + (st.stpIdx+1) + ')'));
+                    uBet.innerText=uF(st.manualOverrideBet?tAmt+' (FIX)':`${tAmt} (S${st.stpIdx+1})`);
                     if(nBal<tAmt){
                         uSts.innerText=uF('LOW');
                         uSts.className='txt-blk-err';
@@ -755,7 +698,7 @@ const autoTotalSteps = arguments[1];
                         let activeLogicNew=dataArray[curApiIdx],prediction=(activeLogicNew.pred||'BIG').toUpperCase();
                         st.lastPred=prediction;
                         let ghC=document.getElementById('gh-content');
-                        if(ghC)ghC.textContent='Step: ' + (st.stpIdx+1) + '/' + st.dynSeq.length + ' (Amt: ' + tAmt + ')\\nPred: ' + prediction + ' | W:' + st.w + ' L:' + st.l;
+                        if(ghC)ghC.textContent=`Step: ${st.stpIdx+1}/${st.dynSeq.length} (Amt: ${tAmt})\\nPred: ${prediction} | W:${st.w} L:${st.l}`;
                         if(prediction==='SKIP'){
                             uSts.innerText=uF('SKIP');
                             uSts.className='txt-blk-warn';
@@ -850,7 +793,7 @@ const autoTotalSteps = arguments[1];
 """
 
 # ==========================================
-# 6. Messaging Templates (No Brackets Anywhere)
+# 6. Messaging Templates (Organized & Updated)
 # ==========================================
 def get_text(chat_id, key, **kwargs):
     sess = user_sessions.get(chat_id, {})
@@ -863,9 +806,38 @@ def get_text(chat_id, key, **kwargs):
                 f"স্বাগতম আপনাকে প্রিমিয়াম উইনগো ট্রেডিং অটোমেশন সিস্টেমে।\n"
                 f"দয়া করে আপনার পছন্দের ভাষা নির্বাচন করুন:"
             ),
+            # --- New Subscription Flow Texts ---
+            "choose_plan": (
+                f"<b>{to_bold('SUBSCRIPTION PLAN')}</b>\n\n"
+                f"আমাদের প্রিমিয়াম বটটি ব্যবহার করার জন্য আপনাকে সাবস্ক্রিপশন নিতে হবে।\n"
+                f"দয়া করে নিচে থেকে আপনার পছন্দের প্যাকেজটি সিলেক্ট করুন:"
+            ),
+            "choose_payment": (
+                f"<b>{to_bold('PAYMENT METHOD')}</b>\n\n"
+                f"আপনি <b>{kwargs.get('days', 0)} দিনের</b> প্যাকেজ সিলেক্ট করেছেন।\n"
+                f"প্যাকেজ মূল্য: <b>৳ {kwargs.get('price', 0)}</b>\n\n"
+                f"দয়া করে আপনার পেমেন্ট মেথড নির্বাচন করুন:"
+            ),
+            "payment_instruction": (
+                f"<b>{to_bold('SEND MONEY')}</b>\n\n"
+                f"নিচের <b>{kwargs.get('method_name', '')}</b> নাম্বারে <b>৳ {kwargs.get('price', 0)}</b> সেন্ড মানি করুন।\n\n"
+                f"💳 নাম্বার: <code>{kwargs.get('number', '')}</code> (Personal)\n\n"
+                f"টাকা পাঠানোর পর আপনার <b>Transaction ID (TrxID)</b> টি মেসেজে লিখে পাঠান:"
+            ),
+            "payment_verifying": (
+                f"<b>{to_bold('VERIFYING PAYMENT')}</b>\n\n"
+                f"আপনার TrxID: <code>{kwargs.get('trx', '')}</code> যাচাই করা হচ্ছে। একটু অপেক্ষা করুন..."
+            ),
+            "payment_success": (
+                f"<b>{to_bold('PAYMENT SUCCESSFUL')}</b>\n\n"
+                f"✅ ধন্যবাদ! আপনার পেমেন্ট সফল হয়েছে।\n"
+                f"আপনার <b>{kwargs.get('days', 0)} দিনের</b> প্রিমিয়াম অ্যাক্সেস চালু হয়েছে।\n\n"
+                f"এখন চলুন ট্রেডিং শুরু করা যাক।"
+            ),
+            # -----------------------------------
             "choose_site": (
                 f"<b>{to_bold('SELECT PLATFORM')}</b>\n\n"
-                f"প্ল্যাটফর্ম নির্বাচন করুন:"
+                f"আপনার ট্রেডিং প্ল্যাটফর্ম নির্বাচন করুন:"
             ),
             "input_phone": (
                 f"<b>{to_bold('ACCOUNT NUMBER')}</b>\n\n"
@@ -879,13 +851,13 @@ def get_text(chat_id, key, **kwargs):
             "login_wait": (
                 f"<b>{to_bold('CONNECTING')}</b>\n\n"
                 f"প্ল্যাটফর্ম: <b>{kwargs.get('site_name', '')}</b>\n"
-                f"ব্রাউজার চালু করে সুরক্ষিতভাবে লগইন সম্পন্ন করা হচ্ছে..."
+                f"ব্রাউজার চালু করে লগইন সম্পন্ন করা হচ্ছে..."
             ),
             "login_success_redirecting": (
                 f"<b>{to_bold('LOGIN COMPLETED')}</b>\n\n"
                 f"প্ল্যাটফর্ম: <b>{kwargs.get('site_name', '')}</b>\n"
                 f"একাউন্ট: <code>{kwargs.get('phone', '')}</code>\n\n"
-                f"স্বয়ংক্রিয়ভাবে উইনগো ৩০এস মার্কেট পেজে প্রবেশ করা হচ্ছে..."
+                f"স্বয়ংক্রিয়ভাবে উইনগো ৩০এস পেজে রিডাইরেক্ট করা হচ্ছে..."
             ),
             "login_failed": (
                 f"<b>{to_bold('LOGIN FAILED')}</b>\n\n"
@@ -894,7 +866,7 @@ def get_text(chat_id, key, **kwargs):
                 f"পুনরায় চেষ্টা করার জন্য /start পাঠান।"
             ),
             "wingo_ready": (
-                f"<b>{to_bold('WINGO 30S MARKET READY')}</b>\n\n"
+                f"<b>{to_bold('WINGO 30S TRIGGERED')}</b>\n\n"
                 f"প্ল্যাটফর্ম: <b>{kwargs.get('site_name', '')}</b> (WinGo 30S)\n"
                 f"বর্তমান ব্যালেন্স: <code>৳ {kwargs.get('balance', '0.00')}</code>\n\n"
                 f"ট্রেডিং শুরু করতে START অথবা বাতিল করতে CANCEL চাপুন:"
@@ -920,7 +892,7 @@ def get_text(chat_id, key, **kwargs):
                 f"শুরুর ব্যালেন্স: <code>৳ {kwargs.get('start_bal', '0.00')}</code>\n"
                 f"টার্গেট ব্যালেন্স: <code>৳ {kwargs.get('target_bal', '0.00')}</code>\n"
                 f"মোট স্টেপ: <b>{kwargs.get('steps', 7)}</b>\n\n"
-                f"সার্বক্ষণিক ব্যাকগ্রাউন্ডে স্বয়ংক্রিয়ভাবে ট্রেডিং চলছে।"
+                f"ব্যাকগ্রাউন্ডে স্বয়ংক্রিয়ভাবে ট্রেডিং চলছে।"
             ),
             "cancelled": (
                 f"<b>{to_bold('SESSION CANCELLED')}</b>\n\n"
@@ -946,6 +918,33 @@ def get_text(chat_id, key, **kwargs):
                 f"Welcome to the Premium WinGo Auto-Trading Platform.\n"
                 f"Please select your language:"
             ),
+            "choose_plan": (
+                f"<b>{to_bold('SUBSCRIPTION PLAN')}</b>\n\n"
+                f"You need an active subscription to use this premium bot.\n"
+                f"Please select a package from below:"
+            ),
+            "choose_payment": (
+                f"<b>{to_bold('PAYMENT METHOD')}</b>\n\n"
+                f"You selected the <b>{kwargs.get('days', 0)} Days</b> package.\n"
+                f"Price: <b>৳ {kwargs.get('price', 0)}</b>\n\n"
+                f"Please choose your payment method:"
+            ),
+            "payment_instruction": (
+                f"<b>{to_bold('SEND MONEY')}</b>\n\n"
+                f"Please Send Money <b>৳ {kwargs.get('price', 0)}</b> to the <b>{kwargs.get('method_name', '')}</b> number below.\n\n"
+                f"💳 Number: <code>{kwargs.get('number', '')}</code> (Personal)\n\n"
+                f"After sending money, reply with your <b>Transaction ID (TrxID)</b>:"
+            ),
+            "payment_verifying": (
+                f"<b>{to_bold('VERIFYING PAYMENT')}</b>\n\n"
+                f"Verifying your TrxID: <code>{kwargs.get('trx', '')}</code>. Please wait..."
+            ),
+            "payment_success": (
+                f"<b>{to_bold('PAYMENT SUCCESSFUL')}</b>\n\n"
+                f"✅ Thank you! Payment successful.\n"
+                f"Your <b>{kwargs.get('days', 0)} Days</b> premium access is now active.\n\n"
+                f"Let's start trading."
+            ),
             "choose_site": (
                 f"<b>{to_bold('SELECT PLATFORM')}</b>\n\n"
                 f"Choose Platform:"
@@ -968,7 +967,7 @@ def get_text(chat_id, key, **kwargs):
                 f"<b>{to_bold('LOGIN COMPLETED')}</b>\n\n"
                 f"Platform: <b>{kwargs.get('site_name', '')}</b>\n"
                 f"Account: <code>{kwargs.get('phone', '')}</code>\n\n"
-                f"Redirecting automatically to WinGo 30S market page..."
+                f"Redirecting automatically to WinGo 30S page..."
             ),
             "login_failed": (
                 f"<b>{to_bold('LOGIN FAILED')}</b>\n\n"
@@ -977,7 +976,7 @@ def get_text(chat_id, key, **kwargs):
                 f"Type /start to try again."
             ),
             "wingo_ready": (
-                f"<b>{to_bold('WINGO 30S MARKET READY')}</b>\n\n"
+                f"<b>{to_bold('WINGO 30S TRIGGERED')}</b>\n\n"
                 f"Platform: <b>{kwargs.get('site_name', '')}</b> (WinGo 30S)\n"
                 f"Current Balance: <code>৳ {kwargs.get('balance', '0.00')}</code>\n\n"
                 f"Press START to configure trading or CANCEL to exit:"
@@ -1028,8 +1027,33 @@ def get_text(chat_id, key, **kwargs):
     return messages.get(lang, messages["bn"]).get(key, "")
 
 # ==========================================
-# 7. Keyboard Controls (Clean Without Brackets)
+# 7. Keyboards Management
 # ==========================================
+def get_subscription_keyboard():
+    markup = InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        InlineKeyboardButton(f"🟢 1 Day Premium - ৳150", callback_data="plan_1"),
+        InlineKeyboardButton(f"🟡 7 Days Premium - ৳800", callback_data="plan_7"),
+        InlineKeyboardButton(f"🔴 30 Days Premium - ৳2500", callback_data="plan_30")
+    )
+    return markup
+
+def get_payment_method_keyboard():
+    markup = InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        InlineKeyboardButton(f"🟣 bKash", callback_data="pay_bkash"),
+        InlineKeyboardButton(f"🟠 Nagad", callback_data="pay_nagad")
+    )
+    return markup
+
+def get_site_keyboard():
+    markup = InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        InlineKeyboardButton(f"{to_bold('AMAR CLUB')}", callback_data="site_amarclub"),
+        InlineKeyboardButton(f"{to_bold('DK WIN')}", callback_data="site_dkwin")
+    )
+    return markup
+
 def get_start_or_cancel_keyboard():
     markup = InlineKeyboardMarkup(row_width=2)
     markup.add(
@@ -1095,8 +1119,7 @@ def monitor_trading_progress(chat_id):
                     start_b = sess.get("start_bal", 0)
                     profit = sess["cur_bal"] - start_b
 
-                    sid = sess.get("session_id", chat_id)
-                    screen_path = os.path.join(PROFILES_BASE_DIR, f"win_{sid}.png")
+                    screen_path = os.path.join(PROFILES_BASE_DIR, f"win_{chat_id}.png")
                     try:
                         driver.save_screenshot(screen_path)
                     except Exception:
@@ -1133,17 +1156,12 @@ def idle_session_reaper():
     while True:
         try:
             now = time.time()
-            for sid, active_item in list(active_drivers.items()):
-                created_at = active_item.get("created_at", now)
-                if now - created_at > 86400:  # 24 hours retention
-                    print(f"[*] Cleaning up 24h idle browser session for {sid}")
-                    driver = active_item.get("driver")
-                    if driver:
-                        try:
-                            driver.quit()
-                        except Exception:
-                            pass
-                    active_drivers.pop(sid, None)
+            for cid, sess in list(user_sessions.items()):
+                if not sess.get("is_trading"):
+                    last_active = sess.get("last_active", now)
+                    if now - last_active > 86400:  # 24 hours
+                        print(f"[*] Cleaning up 24h idle browser session for {cid}")
+                        close_user_browser(cid)
         except Exception:
             pass
         time.sleep(3600)
@@ -1151,7 +1169,7 @@ def idle_session_reaper():
 threading.Thread(target=idle_session_reaper, daemon=True).start()
 
 # ==========================================
-# 9. Login & Direct WinGo 30S Navigation + Market Screenshot
+# 9. Login & Direct Redirect Flow
 # ==========================================
 def process_login(chat_id, phone, password, status_msg_id):
     sess = user_sessions.get(chat_id, {})
@@ -1162,12 +1180,10 @@ def process_login(chat_id, phone, password, status_msg_id):
     wingo_url = URL_AMARCLUB_WINGO if "AMAR" in site_name.upper() else URL_DKWIN_WINGO
 
     driver = None
-    session_id = None
     try:
-        driver, prof_dir, session_id = launch_firefox_instance(chat_id, login_url)
+        driver, prof_dir = launch_firefox_instance(chat_id, login_url)
         sess["driver"] = driver
         sess["profile_dir"] = prof_dir
-        sess["session_id"] = session_id
     except Exception as e:
         bot.edit_message_text(
             get_text(chat_id, "login_failed", site_name=site_name, error=str(e)),
@@ -1176,7 +1192,6 @@ def process_login(chat_id, phone, password, status_msg_id):
         )
         return
 
-    # Auto-fill credentials
     fill_ok = False
     for _ in range(80):
         try:
@@ -1195,22 +1210,17 @@ def process_login(chat_id, phone, password, status_msg_id):
             chat_id=chat_id,
             message_id=status_msg_id
         )
-        close_user_browser(chat_id, session_id)
+        close_user_browser(chat_id)
         return
 
-    # Verify login success, auto-handling "already logged in somewhere else"
     login_status = "PENDING"
     err_detail = ""
-    for _ in range(50):
+    for _ in range(40):
         try:
             res = driver.execute_script(CHECK_LOGIN_STATUS_JS)
             if res.get("status") == "SUCCESS":
                 login_status = "SUCCESS"
                 break
-            elif res.get("status") == "CONFIRM_CLICKED":
-                # Auto-confirm clicked! Wait for next poll to verify token
-                time.sleep(1.5)
-                continue
             elif res.get("status") == "ERROR":
                 login_status = "ERROR"
                 err_detail = res.get("message", "ভুল ফোন বা পাসওয়ার্ড")
@@ -1219,18 +1229,8 @@ def process_login(chat_id, phone, password, status_msg_id):
             pass
         time.sleep(0.5)
 
-    # Double check if token exists even if error was caught
-    try:
-        has_token = driver.execute_script("""
-            return !!(localStorage.getItem('token') || sessionStorage.getItem('token'));
-        """)
-        if has_token:
-            login_status = "SUCCESS"
-    except Exception:
-        pass
-
     if login_status == "ERROR":
-        close_user_browser(chat_id, session_id)
+        close_user_browser(chat_id)
         bot.edit_message_text(
             get_text(chat_id, "login_failed", site_name=site_name, error=err_detail),
             chat_id=chat_id,
@@ -1238,34 +1238,20 @@ def process_login(chat_id, phone, password, status_msg_id):
         )
         return
 
-    # 1. Update Telegram status message: Login complete, navigating to WinGo 30S
     bot.edit_message_text(
         get_text(chat_id, "login_success_redirecting", site_name=site_name, phone=phone),
         chat_id=chat_id,
         message_id=status_msg_id
     )
 
-    # 2. Strict Requirement: Navigate directly to WinGo 30S market link!
-    time.sleep(1.5)
+    time.sleep(1.2)
     try:
         driver.get(wingo_url)
     except Exception as e:
         print(f"[*] Navigation error: {e}")
 
-    # Enforce URL load via JS in case of SPA hash routing
-    try:
-        driver.execute_script("""
-            const target = arguments[0];
-            if (!window.location.href.includes('WinGo')) {
-                window.location.href = target;
-            }
-        """, wingo_url)
-    except Exception:
-        pass
-
-    # 3. Wait UNTIL the WinGo 30S page is fully opened and ready!
     wingo_ready = False
-    for _ in range(35):
+    for _ in range(30):
         try:
             ready_res = driver.execute_script(CHECK_WINGO_READY_JS)
             if ready_res:
@@ -1275,9 +1261,8 @@ def process_login(chat_id, phone, password, status_msg_id):
             pass
         time.sleep(1)
 
-    time.sleep(2.5)
+    time.sleep(2)
 
-    # 4. Read the live balance from the WinGo 30S market page
     current_bal = 0.0
     for _ in range(15):
         try:
@@ -1292,45 +1277,33 @@ def process_login(chat_id, phone, password, status_msg_id):
     sess["current_balance"] = current_bal
     sess["step"] = "WINGO_TRIGGERED_READY"
 
-    # 5. Take a LIVE SCREENSHOT of the WinGo 30S market page right upon entering!
-    wingo_snap = os.path.join(PROFILES_BASE_DIR, f"wingo_market_{session_id}.png")
-    snap_ok = False
-    try:
-        driver.save_screenshot(wingo_snap)
-        snap_ok = True
-    except Exception as e:
-        print(f"[*] Screenshot error: {e}")
-
-    # 6. Send the WinGo 30S live market screenshot directly with the START & CANCEL buttons
-    if snap_ok and os.path.exists(wingo_snap):
-        with open(wingo_snap, "rb") as ph:
-            bot.send_photo(
-                chat_id, ph,
-                caption=get_text(chat_id, "wingo_ready", site_name=site_name, balance=f"{current_bal:.2f}"),
-                reply_markup=get_start_or_cancel_keyboard()
-            )
-        try:
-            os.remove(wingo_snap)
-        except Exception:
-            pass
-    else:
-        bot.send_message(
-            chat_id,
-            get_text(chat_id, "wingo_ready", site_name=site_name, balance=f"{current_bal:.2f}"),
-            reply_markup=get_start_or_cancel_keyboard()
-        )
+    bot.send_message(
+        chat_id,
+        get_text(chat_id, "wingo_ready", site_name=site_name, balance=f"{current_bal:.2f}"),
+        reply_markup=get_start_or_cancel_keyboard()
+    )
 
 # ==========================================
-# 10. Telegram Handlers & Interaction
+# 10. Telegram Handlers
 # ==========================================
 @bot.message_handler(commands=['start'])
 def handle_start(message):
     chat_id = message.chat.id
-    user_sessions[chat_id] = {
-        "step": "CHOOSE_LANGUAGE",
-        "lang": "bn",
-        "last_active": time.time()
-    }
+    
+    # Initialize session, keep payment status if already paid
+    if chat_id not in user_sessions:
+        user_sessions[chat_id] = {}
+        
+    sess = user_sessions[chat_id]
+    sess["step"] = "CHOOSE_LANGUAGE"
+    sess["lang"] = "bn"
+    sess["last_active"] = time.time()
+    
+    # If already paid, skip to site selection directly
+    if sess.get("is_paid"):
+        sess["step"] = "CHOOSE_SITE"
+        bot.send_message(chat_id, get_text(chat_id, "choose_site"), reply_markup=get_site_keyboard())
+        return
 
     markup = InlineKeyboardMarkup(row_width=2)
     markup.add(
@@ -1346,25 +1319,52 @@ def handle_callbacks(call):
     sess = user_sessions.setdefault(chat_id, {"last_active": time.time()})
     sess["last_active"] = time.time()
 
-    # 1. Language Selection
+    # --- Language Selection ---
     if data in ["lang_en", "lang_bn"]:
         sess["lang"] = "en" if data == "lang_en" else "bn"
-        sess["step"] = "CHOOSE_SITE"
-
-        markup = InlineKeyboardMarkup(row_width=2)
-        markup.add(
-            InlineKeyboardButton(f"{to_bold('AMAR CLUB')}", callback_data="site_amarclub"),
-            InlineKeyboardButton(f"{to_bold('DK WIN')}", callback_data="site_dkwin")
-        )
+        sess["step"] = "CHOOSE_PLAN"
+        
         bot.answer_callback_query(call.id)
         bot.edit_message_text(
-            get_text(chat_id, "choose_site"),
+            get_text(chat_id, "choose_plan"),
             chat_id=chat_id,
             message_id=call.message.message_id,
-            reply_markup=markup
+            reply_markup=get_subscription_keyboard()
         )
 
-    # 2. Platform Selection
+    # --- Subscription Plan Selection ---
+    elif data.startswith("plan_"):
+        plan_days = int(data.split("_")[1])
+        prices = {1: 150, 7: 800, 30: 2500}
+        
+        sess["sub_days"] = plan_days
+        sess["sub_price"] = prices[plan_days]
+        sess["step"] = "CHOOSE_PAYMENT"
+        
+        bot.answer_callback_query(call.id)
+        bot.edit_message_text(
+            get_text(chat_id, "choose_payment", days=plan_days, price=sess["sub_price"]),
+            chat_id=chat_id,
+            message_id=call.message.message_id,
+            reply_markup=get_payment_method_keyboard()
+        )
+
+    # --- Payment Method Selection ---
+    elif data in ["pay_bkash", "pay_nagad"]:
+        method = "bKash" if data == "pay_bkash" else "Nagad"
+        num = PAYMENT_NUMBERS["BKASH"] if data == "pay_bkash" else PAYMENT_NUMBERS["NAGAD"]
+        
+        sess["payment_method"] = method
+        sess["step"] = "WAITING_TRX_ID"
+        
+        bot.answer_callback_query(call.id)
+        bot.edit_message_text(
+            get_text(chat_id, "payment_instruction", method_name=method, price=sess.get("sub_price", 0), number=num),
+            chat_id=chat_id,
+            message_id=call.message.message_id
+        )
+
+    # --- Site Selection ---
     elif data in ["site_amarclub", "site_dkwin"]:
         site_name = "Amar Club" if data == "site_amarclub" else "DK Win"
         sess["site_name"] = site_name
@@ -1377,7 +1377,7 @@ def handle_callbacks(call):
             message_id=call.message.message_id
         )
 
-    # 3. WinGo 30S Ready Buttons: START or CANCEL
+    # --- Trading Controls ---
     elif data == "btn_start_flow":
         bot.answer_callback_query(call.id)
         sess["step"] = "WAITING_TARGET_PROFIT"
@@ -1389,21 +1389,18 @@ def handle_callbacks(call):
 
     elif data == "btn_cancel_flow":
         bot.answer_callback_query(call.id, "Session Cancelled")
-        curr_sid = sess.get("session_id")
-        close_user_browser(chat_id, curr_sid)
+        close_user_browser(chat_id)
         bot.edit_message_text(
             get_text(chat_id, "cancelled"),
             chat_id=chat_id,
             message_id=call.message.message_id
         )
 
-    # 4. Live Control: Screen Footage Snapshot
     elif data == "btn_screenshot":
         driver = sess.get("driver")
         if driver:
             bot.answer_callback_query(call.id, "Capturing live footage...")
-            sid = sess.get("session_id", chat_id)
-            temp_shot = os.path.join(PROFILES_BASE_DIR, f"live_{sid}.png")
+            temp_shot = os.path.join(PROFILES_BASE_DIR, f"live_{chat_id}.png")
             try:
                 driver.save_screenshot(temp_shot)
                 with open(temp_shot, "rb") as p:
@@ -1417,7 +1414,6 @@ def handle_callbacks(call):
         else:
             bot.answer_callback_query(call.id, "Browser not active!", show_alert=True)
 
-    # 5. Live Control: Live Balance
     elif data == "btn_live_balance":
         driver = sess.get("driver")
         if driver:
@@ -1429,7 +1425,6 @@ def handle_callbacks(call):
         else:
             bot.answer_callback_query(call.id, "No active session!", show_alert=True)
 
-    # 6. Live Control: Statistics Report
     elif data == "btn_stats_report":
         driver = sess.get("driver")
         if driver:
@@ -1463,7 +1458,6 @@ def handle_callbacks(call):
         else:
             bot.answer_callback_query(call.id, "Browser not active!", show_alert=True)
 
-    # 7. Live Control: Stop Trading
     elif data == "btn_stop_trade":
         driver = sess.get("driver")
         if driver:
@@ -1477,6 +1471,30 @@ def handle_callbacks(call):
         else:
             bot.answer_callback_query(call.id, "No active trade!", show_alert=True)
 
+
+def dummy_verify_payment(chat_id, trx_id):
+    """Simulates a payment verification process"""
+    sess = user_sessions.get(chat_id)
+    time.sleep(3) # Simulate loading
+    
+    # Auto approve for now. (You can add admin approval logic here later)
+    sess["is_paid"] = True
+    sess["step"] = "CHOOSE_SITE"
+    
+    bot.send_message(
+        chat_id, 
+        get_text(chat_id, "payment_success", days=sess.get("sub_days", 0))
+    )
+    time.sleep(1)
+    
+    # Send site selection keyboard
+    bot.send_message(
+        chat_id, 
+        get_text(chat_id, "choose_site"), 
+        reply_markup=get_site_keyboard()
+    )
+
+
 @bot.message_handler(func=lambda msg: msg.chat.id in user_sessions)
 def handle_user_text(message):
     chat_id = message.chat.id
@@ -1485,13 +1503,22 @@ def handle_user_text(message):
     step = sess.get("step")
     text = message.text.strip()
 
-    # Step: Input Phone
-    if step == "WAITING_PHONE":
+    # --- Processing TrxID ---
+    if step == "WAITING_TRX_ID":
+        sess["trx_id"] = text
+        bot.send_message(
+            chat_id, 
+            get_text(chat_id, "payment_verifying", trx=text)
+        )
+        # Start verification thread
+        threading.Thread(target=dummy_verify_payment, args=(chat_id, text), daemon=True).start()
+
+    # --- Processing Login ---
+    elif step == "WAITING_PHONE":
         sess["phone"] = text
         sess["step"] = "WAITING_PASS"
         bot.send_message(chat_id, get_text(chat_id, "input_pass", phone=text))
 
-    # Step: Input Password
     elif step == "WAITING_PASS":
         sess["password"] = text
         sess["step"] = "LOGGING_IN"
@@ -1507,7 +1534,7 @@ def handle_user_text(message):
             daemon=True
         ).start()
 
-    # Step: Input Target Profit
+    # --- Processing Trade Configuration ---
     elif step == "WAITING_TARGET_PROFIT":
         try:
             val = float(text)
@@ -1525,7 +1552,6 @@ def handle_user_text(message):
             get_text(chat_id, "input_steps", target=val)
         )
 
-    # Step: Input Martingale Steps & Launch Script
     elif step == "WAITING_STEPS":
         try:
             steps_val = int(text)
@@ -1546,7 +1572,6 @@ def handle_user_text(message):
 
         bot.send_message(chat_id, get_text(chat_id, "starting_trade"))
 
-        # Inject original automation JavaScript
         try:
             driver.execute_script(WINGO_CORE_JS, sess["target_profit"], sess["total_steps"])
         except Exception as e:
@@ -1555,9 +1580,7 @@ def handle_user_text(message):
 
         time.sleep(2)
 
-        # Initial live screenshot
-        sid = sess.get("session_id", chat_id)
-        start_snap = os.path.join(PROFILES_BASE_DIR, f"start_{sid}.png")
+        start_snap = os.path.join(PROFILES_BASE_DIR, f"start_{chat_id}.png")
         try:
             driver.save_screenshot(start_snap)
             with open(start_snap, "rb") as ph:
@@ -1569,7 +1592,6 @@ def handle_user_text(message):
         except Exception as e:
             print(f"[*] Snapshot error: {e}")
 
-        # Control Panel Dashboard
         cur_b = sess.get("current_balance", 0.0)
         target_total = cur_b + sess["target_profit"]
         sess["start_bal"] = cur_b
