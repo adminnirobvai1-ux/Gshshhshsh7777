@@ -5,9 +5,10 @@ import time
 import threading
 import shutil
 import tempfile
+import json
 
 # ==========================================
-# ১. প্রয়োজনীয় প্যাকেজ অটো-ইনস্টল
+# ১. প্রয়োজনীয় প্যাকেজ অটো-ইনস্টল
 # ==========================================
 def install_and_import(package_name, import_name=None):
     if import_name is None:
@@ -27,7 +28,7 @@ from selenium import webdriver
 from selenium.webdriver.firefox.options import Options
 
 # ==========================================
-# ২. কনফিগারেশন ও ডিরেক্টরি সেটআপ
+# ২. কনফিগারেশন ও ডিরেক্টরি সেটআপ (নতুন টোকেন সহ)
 # ==========================================
 TOKEN = "8808949150:AAF236nZ7xG3kPxlxubELHqChpn4IPycFL4"
 bot = telebot.TeleBot(TOKEN)
@@ -36,30 +37,33 @@ bot = telebot.TeleBot(TOKEN)
 URL_AMARCLUB_LOGIN = "https://amarclub1.com/#/login"
 URL_DKWIN_LOGIN = "https://dkwin6.com/#/login"
 
-# গেম লিংক (WinGo 30S)
-URL_AMARCLUB_GAME = "https://amarclub1.com/#/saasLottery/WinGo?gameCode=WinGo_30S&lottery=WinGo"
-URL_DKWIN_GAME = "https://dkwin6.com/#/saasLottery/WinGo?gameCode=WinGo_30S&lottery=WinGo"
+# লগইন সম্পন্ন হওয়ার পর স্বয়ংক্রিয়ভাবে রিডাইরেক্ট হওয়ার গেম ইউআরএল (WinGo 30S)
+URL_AMARCLUB_WINGO = "https://amarclub1.com/#/saasLottery/WinGo?gameCode=WinGo_30S&lottery=WinGo"
+URL_DKWIN_WINGO = "https://dkwin6.com/#/saasLottery/WinGo?gameCode=WinGo_30S&lottery=WinGo"
 
 PROFILES_BASE_DIR = os.path.expanduser("~/.ff_bot_fixed_profiles")
 os.makedirs(PROFILES_BASE_DIR, exist_ok=True)
 
-# সচল ব্রাউজার ও স্টেট ডিকশনারি
+# বর্তমানে সচল থাকা ব্রাউজারসমূহ ট্র্যাক করার ডিকশনারি
+# কী (key): f"{chat_id}_{profile_name}"
 active_browsers = {}
+
+# ইউজারের বর্তমান ইনপুট স্টেট (স্টেপ বাই স্টেপ ফর্ম)
 user_states = {}
 
 def get_user_profiles(chat_id):
-    """ইউজারের ফিক্সড প্রোফাইলের তালিকা রিটার্ন করে"""
+    """ইউজারের সেভ করা ফিক্সড প্রোফাইলের তালিকা রিটার্ন করে"""
     user_dir = os.path.join(PROFILES_BASE_DIR, str(chat_id))
     if not os.path.exists(user_dir):
         return []
     return [d for d in os.listdir(user_dir) if os.path.isdir(os.path.join(user_dir, d))]
 
 def auto_close_browser(session_key):
-    """২৪ ঘণ্টা পূর্ণ হলে স্বয়ংক্রিয়ভাবে ব্রাউজার বন্ধ করে মেমোরি ক্লিয়ার করে"""
+    """২৪ ঘণ্টা পূর্ণ হলে স্বয়ংক্রিয়ভাবে ব্রাউজার বন্ধ করে মেমোরি ক্লিয়ার করে"""
     sess = active_browsers.get(session_key)
     if sess:
         try:
-            print(f"[*] ২৪ ঘন্টা পার হওয়ায় সেশন {session_key} অটোমেটিক বন্ধ করা হচ্ছে...")
+            print(f"[*] ২৪ ঘন্টা পার হওয়ায় সেশন {session_key} অটোমেটিক বন্ধ করা হচ্ছে...")
             sess["driver"].quit()
         except Exception:
             pass
@@ -68,13 +72,14 @@ def auto_close_browser(session_key):
         active_browsers.pop(session_key, None)
 
 # ==========================================
-# ৩. ব্রাউজার লঞ্চার ও স্ক্রিপ্টসমূহ
+# ৩. স্বাধীন ফায়ারফক্স ব্রাউজার লঞ্চার
 # ==========================================
 def launch_firefox_instance(profile_path, target_url):
-    """প্রতিটি আইডির জন্য সম্পূর্ণ আলাদা ফায়ারফক্স উইন্ডো চালু করে"""
+    """প্রতিটি আইডির জন্য সম্পূর্ণ আলাদা ও নিরপেক্ষ ফায়ারফক্স উইন্ডো চালু করে"""
     if "DISPLAY" not in os.environ:
         os.environ["DISPLAY"] = ":0"
 
+    # লক ফাইল ডিলিট করা যাতে Marionette ক্র্যাশ বা হ্যাং না করে
     for lock in [".parentlock", "parent.lock", "lock", "sessionstore.jsonlz4"]:
         lp = os.path.join(profile_path, lock)
         if os.path.exists(lp):
@@ -88,6 +93,8 @@ def launch_firefox_instance(profile_path, target_url):
     options.add_argument("-new-instance")
     options.add_argument("-profile")
     options.add_argument(profile_path)
+    
+    # অপ্রয়োজনীয় পপআপ ও পুশ নোটিফিকেশন বন্ধ রাখা
     options.set_preference("dom.webnotifications.enabled", False)
     options.set_preference("dom.push.enabled", False)
 
@@ -96,7 +103,9 @@ def launch_firefox_instance(profile_path, target_url):
     driver.get(target_url)
     return driver
 
-# লগইন অটো-ফিল জাভাস্ক্রিপ্ট
+# ==========================================
+# ৪. অটো-ফিল ও নির্ভুল স্ট্যাটাস ভেরিফিকেশন JS
+# ==========================================
 AUTO_FILL_AND_CLICK_JS = """
 const phone = arguments[0];
 const pass = arguments[1];
@@ -143,7 +152,6 @@ setTimeout(() => {
 return "SUCCESS";
 """
 
-# লগইন স্ট্যাটাস ভেরিফিকেশন জাভাস্ক্রিপ্ট
 CHECK_LOGIN_STATUS_JS = """
 const hash = window.location.hash || '';
 const href = window.location.href || '';
@@ -151,7 +159,7 @@ const bodyText = document.body ? document.body.innerText : '';
 
 const isBonusModal = bodyText.includes('BONUS DAILY RECHARGE') || 
                      bodyText.includes('DAILY RECHARGE') || 
-                     bodyText.includes('Daily Bonus') || 
+                     bodyText.includes('Daily Bonus') ||
                      bodyText.includes('Deposit Bonus');
 
 if (isBonusModal) {
@@ -178,392 +186,555 @@ if (toast && toast.innerText && toast.innerText.trim().length > 0) {
 return { status: "PENDING" };
 """
 
-# আপনার দেওয়া সম্পূর্ণ WINZY-MARTINGALE স্ক্রিপ্ট
-WINZY_MARTINGALE_PAYLOAD_JS = r"""
-(function(){
-if(document.getElementById('sys-core-fin'))return;
-const uF=s=>String(s).toUpperCase().split('').map(c=>{let n=c.charCodeAt(0);if(n>=65&&n<=90)return String.fromCodePoint(n+119743);if(n>=48&&n<=57)return String.fromCodePoint(n+120764);return c;}).join('');
-const cfg={fRt:300,syncDly:2500,minSf:10};
-let st={isRun:false,startBal:0,tgtAmt:0,curBal:0,autoInt:null,preScn:null,isTrd:false,stpIdx:0,dynSeq:[],totalSteps:10,tradesDone:0,lastPred:null,lastPeriod:null,balanceCheckInterval:null,manualOverrideBet:null,w:0,l:0};
-let curApiIdx=0,isFetchingApi=false;
-const VoiceEngine={speak(msg,lang='en-US',rate=1.1){if(!('speechSynthesis' in window))return;window.speechSynthesis.cancel();let utter=new SpeechSynthesisUtterance(msg);utter.lang=lang;utter.rate=rate;utter.pitch=1.2;utter.volume=1;window.speechSynthesis.speak(utter);}};
-let dTimeLeft=30;
-setInterval(()=>{let uClk=document.getElementById('ui-clk');if(uClk){let minutes=Math.floor(dTimeLeft/60),seconds=dTimeLeft%60;uClk.textContent=uF(`${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}`);}dTimeLeft--;if(dTimeLeft<0)dTimeLeft=30;},1000);
-let lkOvl=document.createElement('div');
-lkOvl.id='drx-lck-bg';
-lkOvl.style.cssText='position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.01);z-index:9999997;display:none;';
-lkOvl.addEventListener('click',e=>{e.preventDefault();e.stopPropagation();},true);
-document.body.appendChild(lkOvl);
-
-window.chkBal = function(){
-    let els=document.querySelectorAll('*');
-    for(let i=0;i<els.length;i++){
-        let txt=els[i].innerText||'';
-        if(txt.includes('Wallet balance')||txt.includes('Balance')){
-            let parentTxt=(els[i].parentNode&&els[i].parentNode.innerText)?els[i].parentNode.innerText:'';
-            let match=parentTxt.match(/[৳₹$€£]\s*([\d,]+\.?\d*)/);
-            if(match){st.curBal=parseFloat(match[1].replace(/,/g,''));return st.curBal;}
-        }
+# ব্যালেন্স রিড করার জাভাস্ক্রিপ্ট
+FETCH_BALANCE_JS = """
+let els = document.querySelectorAll('*');
+for (let i = 0; i < els.length; i++) {
+    let txt = els[i].innerText || '';
+    if (txt.includes('Wallet balance') || txt.includes('Balance')) {
+        let parentTxt = (els[i].parentNode && els[i].parentNode.innerText) ? els[i].parentNode.innerText : '';
+        let match = parentTxt.match(/[৳₹$€£]\\s*([\\d,]+\\.?\\d*)/);
+        if (match) return parseFloat(match[1].replace(/,/g, ''));
     }
-    for(let i=0;i<els.length;i++){
-        let txt=els[i].innerText||'';
-        if(txt.trim().match(/^[৳₹$€£]\s*[\d,]+\.?\d*$/)){
-            st.curBal=parseFloat(txt.replace(/[^\d.]/g,''));
-            return st.curBal;
-        }
-    }
-    return st.curBal;
-};
-
-function generateSmartSequence(balance,steps){
-    steps=Math.max(1,parseInt(steps)||1);
-    let b=Math.max(1,Math.floor(balance)||1);
-    let units=Math.pow(2,steps)-1;
-    if(units>0&&units<=b){
-        let base=Math.floor(b/units);
-        let seq=[],val=base;
-        for(let i=0;i<steps;i++){seq.push(val);val*=2;}
-        return seq;
-    }
-    let seq=[],val=1,sum=0;
-    for(let i=0;i<steps;i++){
-        if(sum+val<=b){seq.push(val);sum+=val;val*=2;}
-        else{let rem=b-sum;if(rem>0)seq.push(rem);break;}
-    }
-    return seq.length>0?seq:[1];
 }
-
-let p=document.createElement('div');
-p.id='sys-core-fin';
-p.style.cssText='position:fixed;width:170px;padding:4px;font-family:monospace;font-size:10px;z-index:9999999;color:#fff;user-select:none;border-radius:14px;overflow:visible;background:transparent;';
-let sL=localStorage.getItem('drx_ui_x'),sT=localStorage.getItem('drx_ui_y');
-if(sL&&sT){p.style.left=sL;p.style.top=sT;}else{p.style.top='20px';p.style.right='20px';}
-
-let stl=document.createElement('style');
-stl.innerHTML='@keyframes titlePulseAnim{0%{transform:scale(1);text-shadow:0 0 10px #00ff00;}50%{transform:scale(1.05);text-shadow:0 0 20px #00ff00,0 0 30px #fff;}100%{transform:scale(1);text-shadow:0 0 10px #00ff00;}}.drx-in{background:transparent;position:relative;overflow:visible;z-index:1;display:flex;flex-direction:column;height:100%;border-radius:12px;border:2px solid #000;box-sizing:border-box;}input::-webkit-outer-spin-button,input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}.txt-blk{color:#fff;text-shadow:1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,0px 4px 5px #000;font-weight:900;letter-spacing:1px;}.txt-blk-accent{color:#00ff00;text-shadow:1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,0px 4px 5px #000;font-weight:900;letter-spacing:1px;}.txt-blk-warn{color:#ffcc00;text-shadow:1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,0px 4px 5px #000;font-weight:900;letter-spacing:1px;}.txt-blk-err{color:#f00;text-shadow:1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,0px 4px 5px #000;font-weight:900;letter-spacing:1px;}.txt-blk-cyan{color:#0ff;text-shadow:1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,0px 4px 5px #000;font-weight:900;letter-spacing:1px;}.txt-blk-mag{color:#f0f;text-shadow:1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,0px 4px 5px #000;font-weight:900;letter-spacing:1px;}.drx-elec-target{border-radius:8px!important;position:relative;z-index:9999!important;transition:all 0.1s;background:rgba(0,0,0,0.5)!important;border:2px solid #000!important;}.drx-title-anim{display:inline-block;animation:titlePulseAnim 2s infinite ease-in-out;}';
-document.body.appendChild(stl);
-
-p.className='drx-wrap';
-let inC=document.createElement('div');
-inC.className='drx-in';
-let h=document.createElement('div');
-h.style.cssText='padding:8px;font-size:12px;display:flex;justify-content:space-between;cursor:move;border-bottom:2px solid #000;background:transparent;';
-h.innerHTML=`<span class="txt-blk drx-title-anim" id="drx-title">${uF('WINZY-MARTINGALE')}</span><span style="cursor:pointer;" class="txt-blk-err" id="sys-cls">X</span>`;
-inC.appendChild(h);
-
-let drg=false,sx,sy,sl,st_y;
-function dSt(e){if(e.target.tagName==='SPAN')return;drg=true;let ev=e.type.includes('touch')?e.touches[0]:e;sx=ev.clientX;sy=ev.clientY;sl=p.offsetLeft;st_y=p.offsetTop;}
-function dMv(e){if(!drg)return;e.preventDefault();let ev=e.type.includes('touch')?e.touches[0]:e;p.style.left=(sl+ev.clientX-sx)+'px';p.style.top=(st_y+ev.clientY-sy)+'px';}
-function dEn(){drg=false;localStorage.setItem('drx_ui_x',p.style.left);localStorage.setItem('drx_ui_y',p.style.top);}
-h.addEventListener('mousedown',dSt);
-h.addEventListener('touchstart',dSt,{passive:false});
-document.addEventListener('mousemove',dMv);
-document.addEventListener('touchmove',dMv,{passive:false});
-document.addEventListener('mouseup',dEn);
-document.addEventListener('touchend',dEn);
-
-h.querySelector('#sys-cls').onclick=()=>{clearInterval(st.autoInt);clearInterval(st.preScn);if(st.balanceCheckInterval)clearInterval(st.balanceCheckInterval);p.remove();lkOvl.remove();document.body.style.overflow='';};
-
-let b=document.createElement('div');
-b.style.cssText='padding:10px;display:flex;flex-direction:column;gap:8px;background:transparent;';
-const p1=document.createElement('div');
-p1.innerHTML=`<div style="text-align:center;margin-bottom:8px;padding:6px;background:transparent;border-radius:6px;border:2px solid #000;"><span class="txt-blk" style="font-size:9px;color:#ccc;">${uF('CURRENT BAL')}</span><br><span id="pre-bal" class="txt-blk" style="font-size:15px;color:#fff;">--</span></div>`;
-
-const tgtInp=document.createElement('input');
-tgtInp.type='number';
-tgtInp.placeholder='TARGET PROFIT (৳)';
-tgtInp.className='txt-blk';
-tgtInp.id='drx_target_profit';
-tgtInp.style.cssText='width:100%;box-sizing:border-box;padding:8px;margin-bottom:8px;background:transparent;border:2px solid #000;border-radius:4px;text-align:center;font-size:11px;outline:none;color:#fff;';
-
-const stepInp=document.createElement('input');
-stepInp.type='number';
-stepInp.placeholder='TOTAL STEPS (e.g. 7)';
-stepInp.className='txt-blk-cyan';
-stepInp.id='drx_total_steps';
-stepInp.style.cssText='width:100%;box-sizing:border-box;padding:8px;margin-bottom:8px;background:transparent;border:2px solid #000;border-radius:4px;text-align:center;font-size:11px;outline:none;color:#0ff;';
-
-const goBtn=document.createElement('button');
-goBtn.innerText=uF('START');
-goBtn.id='drx_btn_start';
-goBtn.className='txt-blk-accent';
-goBtn.style.cssText='width:100%;box-sizing:border-box;padding:8px;background:transparent;border:2px solid #000;border-radius:4px;cursor:pointer;font-size:11px;font-weight:bold;transition:0.2s;';
-
-p1.appendChild(tgtInp);
-p1.appendChild(stepInp);
-p1.appendChild(goBtn);
-
-st.preScn=setInterval(()=>{if(!st.isRun){let bal=window.chkBal();let el=document.getElementById('pre-bal');if(el)el.innerText=uF(bal>0?bal.toFixed(2):'--');}},1000);
-
-const p2=document.createElement('div');
-p2.style.display='none';
-const balBx=document.createElement('div');
-balBx.style.cssText='padding:6px;text-align:center;background:transparent;border-radius:6px;border:2px solid #000;margin-bottom:6px;';
-balBx.innerHTML=`<div class="txt-blk" style="font-size:9px;color:#ccc;">${uF('LIVE BAL / PROFIT')}</div><div id="ui-bal" class="txt-blk" style="font-size:16px;color:#fff;">--</div>`;
-
-let aiRow=`<div style="display:flex;justify-content:space-between;border-bottom:2px dashed #000;"><span class="txt-blk" style="color:#ccc;">${uF('AI:')}</span><span id="ui-ai" class="txt-blk-cyan">VIP JSON API</span></div>`;
-const infBx=document.createElement('div');
-infBx.style.cssText='padding:6px;font-size:10px;line-height:2;background:transparent;border-radius:6px;border:2px solid #000;position:relative;overflow:hidden;';
-infBx.innerHTML=aiRow+`<div style="display:flex;justify-content:space-between;border-bottom:2px dashed #000;"><span class="txt-blk" style="color:#ccc;">${uF('TGT:')}</span><span id="ui-tgt" class="txt-blk" style="color:#fff;">0</span></div>`+`<div style="display:flex;justify-content:space-between;border-bottom:2px dashed #000;" title="Double-click to set manual fixed bet"><span class="txt-blk" style="color:#ccc;">${uF('STP:')}</span><span id="ui-bet" class="txt-blk-warn" style="color:#ffcc00;cursor:pointer;">5</span></div>`+`<div style="display:flex;justify-content:space-between;border-bottom:2px dashed #000;"><span class="txt-blk" style="color:#ccc;">${uF('CLK:')}</span><span id="ui-clk" class="txt-blk" style="color:#fff;">00:30</span></div>`+`<div style="display:flex;justify-content:space-between;border-bottom:2px dashed #000;"><span class="txt-blk" style="color:#ccc;">${uF('STS:')}</span><span id="ui-sts" class="txt-blk" style="color:#fff;">${uF('WAIT')}</span></div>`;
-
-const ghBox=document.createElement('div');
-ghBox.id='gh-box-wrap';
-ghBox.style.cssText='width:100%;height:26px;background:transparent;border:2px solid #000;border-radius:4px;padding:2px 4px;margin-top:4px;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;justify-content:center;';
-ghBox.innerHTML='<div id="gh-content" class="txt-blk" style="font-size:7.5px;line-height:1.2;color:#fff;white-space:pre-wrap;text-align:left;width:100%;">Syncing API...</div>';
-infBx.appendChild(ghBox);
-
-const stpBtn=document.createElement('button');
-stpBtn.innerText=uF('STOP');
-stpBtn.className='txt-blk-err';
-stpBtn.style.cssText='width:100%;padding:8px;background:transparent;border:2px solid #000;border-radius:4px;cursor:pointer;font-size:11px;margin-top:6px;transition:0.2s;';
-
-p2.appendChild(balBx);
-p2.appendChild(infBx);
-p2.appendChild(stpBtn);
-b.appendChild(p1);
-b.appendChild(p2);
-inC.appendChild(b);
-p.appendChild(inC);
-document.body.appendChild(p);
-
-const drx_triggerEvent=(el,etype)=>{let ev=new Event(etype,{bubbles:true,cancelable:true});el.dispatchEvent(ev);};
-const drx_simClick=el=>{if(!el)return;['pointerdown','mousedown','touchstart','pointerup','mouseup','touchend','click'].forEach(evt=>{try{el.dispatchEvent(new MouseEvent(evt,{bubbles:true,cancelable:true,view:window}));}catch(e){}});};
-
-const exeTrd=(pred,amt,cb)=>{
-    try{
-        let btn=null,targetText=pred.toLowerCase(),btns=document.querySelectorAll('button, div, span');
-        for(let i=0;i<btns.length;i++){
-            let t=(btns[i].innerText||'').trim().toLowerCase();
-            if(t===targetText&&btns[i].offsetParent&&!btns[i].children.length){btn=btns[i];break;}
-        }
-        if(!btn){
-            if(targetText==='big')btn=document.querySelector('.Betting__C-foot-b');
-            else if(targetText==='small')btn=document.querySelector('.Betting__C-foot-s');
-            else if(targetText==='green')btn=document.querySelector('button[class*="green"], div[class*="green"]');
-            else if(targetText==='red')btn=document.querySelector('button[class*="red"], div[class*="red"]');
-            else if(targetText==='violet')btn=document.querySelector('button[class*="violet"], div[class*="violet"]');
-        }
-        if(!btn){if(cb)cb(false);return;}
-        btn.classList.add('drx-elec-target');
-        drx_simClick(btn);
-        let checkAttempts=0,valInterval=setInterval(()=>{
-            checkAttempts++;
-            let inpEl=document.querySelector("input[type='number'], input.van-field__control");
-            if(inpEl||checkAttempts>15){
-                clearInterval(valInterval);
-                if(inpEl){
-                    inpEl.focus();
-                    let setV=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,"value").set;
-                    if(setV)setV.call(inpEl,String(amt));else inpEl.value=amt;
-                    drx_triggerEvent(inpEl,'input');
-                    drx_triggerEvent(inpEl,'change');
-                    drx_triggerEvent(inpEl,'blur');
-                }
-                setTimeout(()=>{
-                    let dEl=document.querySelector('button.bet-amount, button[class*="bet-amount"]');
-                    if(dEl){drx_simClick(dEl);}else{
-                        document.querySelectorAll('button').forEach(b=>{if((b.innerText||'').includes('Total amount')&&b.offsetParent)drx_simClick(b);});
-                    }
-                    btn.classList.remove('drx-elec-target');
-                    setTimeout(()=>{if(cb)cb(true);},2000);
-                },800);
-            }
-        },200);
-    }catch(e){if(cb)cb(false);}
-};
-
-const scnUI=cb=>{
-    let ov=document.createElement('div');
-    ov.style.cssText='position:fixed;top:0;left:0;width:100vw;height:100vh;background:transparent;z-index:9999998;pointer-events:none;overflow:hidden;';
-    let cBase='#00ff00',rL=document.createElement('div');
-    rL.style.cssText=`position:absolute;width:100%;height:2px;background:${cBase};box-shadow:0 0 10px 3px ${cBase};animation:sR 0.6s linear infinite alternate;`;
-    let gL=document.createElement('div');
-    gL.style.cssText=`position:absolute;height:100%;width:3px;background:${cBase};box-shadow:0 0 15px 5px ${cBase};animation:sG 0.6s cubic-bezier(0.25,0.1,0.25,1) infinite alternate;`;
-    let sS=document.createElement('style');
-    sS.innerHTML='@keyframes sR{0%{top:-10px;}100%{top:100vh;}}@keyframes sG{0%{left:-10px;}100%{left:100vw;}}';
-    document.head.appendChild(sS);
-    ov.appendChild(rL);
-    ov.appendChild(gL);
-    document.body.appendChild(ov);
-    setTimeout(()=>{ov.remove();sS.remove();if(cb)cb();},1500);
-};
-
-const getNextLivePeriod=str=>{
-    let chars=str.split('');
-    for(let i=chars.length-1;i>=0;i--){
-        if(chars[i]!=='9'){chars[i]=String.fromCharCode(chars[i].charCodeAt(0)+1);return chars.join('');}
-        chars[i]='0';
+for (let i = 0; i < els.length; i++) {
+    let txt = els[i].innerText || '';
+    if (txt.trim().match(/^[৳₹$€£]\\s*[\\d,]+\\.?\\d*$/)) {
+        return parseFloat(txt.replace(/[^\\d.]/g, ''));
     }
-    return '1'+chars.join('');
-};
+}
+return 0;
+"""
 
-const apiLoopTask=async()=>{
-    if(!st.isRun||st.isTrd||isFetchingApi)return;
-    isFetchingApi=true;
-    try{
-        window.chkBal();
-        const uBal=document.getElementById('ui-bal'),uSts=document.getElementById('ui-sts'),uBet=document.getElementById('ui-bet');
-        if(st.curBal>=st.tgtAmt&&st.curBal>0){
-            uBal.innerText=uF(`${st.curBal.toFixed(2)} (DONE)`);
-            uSts.innerText=uF('DONE');
-            uSts.className='txt-blk-accent';
-            stpBtn.style.display='none';
-            VoiceEngine.speak("Target reached successfully.");
-            st.isRun=false;
-            clearInterval(st.autoInt);
-            lkOvl.style.display='none';
-            document.body.style.overflow='';
-            return;
-        }else{
-            uBal.innerText=uF(st.curBal>0?st.curBal.toFixed(2):'--');
+# ==========================================
+# ৫. উইনগো অটো-ট্রেডিং মার্টিনগেল ইঞ্জেকশন স্ক্রিপ্ট
+# ==========================================
+WINGO_AUTOMATION_JS = """
+const autoTargetProfit = arguments[0];
+const autoTotalSteps = arguments[1];
+
+(function(){
+    if (document.getElementById('sys-core-fin')) {
+        let tIn = document.querySelector('#sys-core-fin input[placeholder*="TARGET"]');
+        let sIn = document.querySelector('#sys-core-fin input[placeholder*="STEPS"]');
+        let btn = document.querySelector('#sys-core-fin button');
+        if (tIn && sIn && btn) {
+            tIn.value = autoTargetProfit;
+            sIn.value = autoTotalSteps;
+            btn.click();
         }
-        let ts=Math.floor(Date.now()/1000),res=await fetch("https://data-vip-247-hack.ai.studio/apipid.json?ts="+ts),dataArray=await res.json();
-        if(dataArray&&dataArray.length>0){
-            if(curApiIdx>=dataArray.length)curApiIdx=0;
-            let activeLogic=dataArray[curApiIdx],tempHist=activeLogic.history,cSig=getNextLivePeriod(String(tempHist[0].pid)),sSig=sessionStorage.getItem('drx_sig');
-            if(cSig!==sSig){
-                if(st.lastPred&&st.lastPeriod){
-                    let actualData=tempHist[0],actualR=actualData.actual==='BIG'?'BIG':'SMALL';
-                    if(st.lastPred===actualR){st.w++;st.stpIdx=0;}
-                    else{st.l++;st.stpIdx=Math.min(st.stpIdx+1,st.dynSeq.length-1);curApiIdx=(curApiIdx===0&&dataArray.length>1)?1:0;}
-                }
-                st.lastPeriod=cSig;
-                let timeLeft=dTimeLeft;
-                if(timeLeft<=cfg.minSf){uSts.innerText=uF('<10S');uSts.className='txt-blk-warn';}
-                st.isTrd=true;
-                uSts.innerText=uF('CHK...');
-                uSts.className='txt-blk-warn';
-                let nBal=window.chkBal();
-                uBal.innerText=uF(nBal.toFixed(2));
-                if(nBal>=st.tgtAmt&&nBal>0){st.isTrd=false;isFetchingApi=false;return;}
-                if(st.stpIdx>=st.dynSeq.length)st.stpIdx=st.dynSeq.length-1;
-                let tAmt=st.manualOverrideBet?st.manualOverrideBet:st.dynSeq[st.stpIdx];
-                uBet.innerText=uF(st.manualOverrideBet?tAmt+' (FIX)':`${tAmt} (S${st.stpIdx+1})`);
-                if(nBal<tAmt){uSts.innerText=uF('LOW');uSts.className='txt-blk-err';st.stpIdx=0;st.isTrd=false;isFetchingApi=false;return;}
-                uSts.innerText=uF('DB...');
-                uSts.className='txt-blk-cyan';
-                setTimeout(()=>{
-                    let activeLogicNew=dataArray[curApiIdx],prediction=(activeLogicNew.pred||'BIG').toUpperCase();
-                    st.lastPred=prediction;
-                    let predDisplay=document.getElementById('ui-pred');
-                    if(!predDisplay){
-                        predDisplay=document.createElement('span');
-                        predDisplay.id='ui-pred';
-                        predDisplay.className='txt-blk-accent';
-                        predDisplay.style.cssText='color: #00ff00 !important; margin-left: 5px; font-weight: bold;';
-                        let betSpan=document.getElementById('ui-bet');
-                        if(betSpan)betSpan.parentNode.appendChild(predDisplay);
-                    }
-                    predDisplay.innerText=prediction==='BIG'?'[B]':(prediction==='SMALL'?'[S]':'[SKP]');
-                    let ghC=document.getElementById('gh-content');
-                    if(ghC)ghC.textContent=`Step: ${st.stpIdx+1}/${st.dynSeq.length} (Amt: ${tAmt})\nPred: ${prediction} | W:${st.w} L:${st.l}`;
-                    if(prediction==='SKIP'){
-                        uSts.innerText=uF('SKIP');
-                        uSts.className='txt-blk-warn';
-                        sessionStorage.setItem('drx_sig',cSig);
-                        setTimeout(()=>{st.isTrd=false;},1000);
-                    }else{
-                        uSts.innerText=uF('EXC...');
-                        uSts.className='txt-blk';
-                        exeTrd(prediction,tAmt,(suc)=>{
-                            if(suc){
-                                uSts.innerText=uF('OK');
-                                uSts.className='txt-blk-accent';
-                                sessionStorage.setItem('drx_sig',cSig);
-                                sessionStorage.setItem('drx_p_bal',st.curBal);
-                                st.tradesDone++;
-                            }else{
-                                uSts.innerText=uF('ERR');
-                                uSts.className='txt-blk-err';
-                            }
-                            setTimeout(()=>{st.isTrd=false;},1000);
-                        });
-                    }
-                },1800);
-            }else if(!st.isTrd){uSts.innerText=uF('SCAN');uSts.className='txt-blk';}
-        }
-    }catch(e){st.isTrd=false;}
-    isFetchingApi=false;
-};
+        return "ALREADY_EXISTS_RESTARTED";
+    }
 
-goBtn.onclick=()=>{
-    let inputTarget=parseFloat(tgtInp.value);
-    if(!inputTarget||inputTarget<=0){alert('Please enter Target Profit Amount!');tgtInp.focus();return;}
-    let inputSteps=parseInt(stepInp.value)||1;
-    if(inputSteps<=0)inputSteps=1;
-    st.totalSteps=inputSteps;
-    clearInterval(st.preScn);
-    st.tradesDone=0;st.w=0;st.l=0;curApiIdx=0;
-    let liveB=window.chkBal();
-    st.startBal=liveB;
-    st.tgtAmt=(inputTarget<=liveB)?(liveB+inputTarget):inputTarget;
-    st.dynSeq=generateSmartSequence(liveB,st.totalSteps);
-    st.stpIdx=0;
-    VoiceEngine.speak("Engine started.");
-    scnUI(()=>{
-        sessionStorage.removeItem('drx_sig');
-        sessionStorage.removeItem('drx_p_bal');
-        document.getElementById('ui-tgt').innerText=uF(st.tgtAmt.toFixed(0));
-        p1.style.display='none';
-        p2.style.display='block';
-        lkOvl.style.display='block';
-        document.body.style.overflow='hidden';
-        st.isRun=true;
-        st.isTrd=false;
-        document.getElementById('ui-sts').innerText=uF('RDY');
-        st.autoInt=setInterval(apiLoopTask,1000);
-        if(st.balanceCheckInterval)clearInterval(st.balanceCheckInterval);
-        st.balanceCheckInterval=setInterval(()=>{
-            if(!st.isRun)return;
-            let currentBal=window.chkBal();
-            if(currentBal>=st.tgtAmt&&currentBal>0){
-                st.isRun=false;
-                clearInterval(st.autoInt);
-                clearInterval(st.balanceCheckInterval);
-                st.balanceCheckInterval=null;
-                const uSts=document.getElementById('ui-sts');
-                if(uSts){uSts.innerText=uF('DONE');uSts.className='txt-blk-accent';}
-                stpBtn.style.display='none';
-                lkOvl.style.display='none';
-                document.body.style.overflow='';
-                VoiceEngine.speak("Target reached.");
-            }
-        },1000);
-    });
-};
+    const uF = s => String(s).toUpperCase().split('').map(c => {
+        let n = c.charCodeAt(0);
+        if (n >= 65 && n <= 90) return String.fromCodePoint(n + 119743);
+        if (n >= 48 && n <= 57) return String.fromCodePoint(n + 120764);
+        return c;
+    }).join('');
 
-stpBtn.onclick=()=>{
-    st.isRun=false;
-    clearInterval(st.autoInt);
-    if(st.balanceCheckInterval)clearInterval(st.balanceCheckInterval);
-    st.balanceCheckInterval=null;
-    sessionStorage.removeItem('drx_sig');
-    sessionStorage.removeItem('drx_p_bal');
-    document.getElementById('ui-sts').innerText=uF('HLT');
-    document.getElementById('ui-sts').className='txt-blk-err';
-    lkOvl.style.display='none';
-    document.body.style.overflow='';
-    stpBtn.innerText=uF('RBT');
-    stpBtn.onclick=()=>{
-        p2.style.display='none';
-        p1.style.display='block';
-        stpBtn.innerText=uF('STOP');
-        st.preScn=setInterval(()=>{let b=window.chkBal();let el=document.getElementById('pre-bal');if(el)el.innerText=uF(b>0?b.toFixed(2):'--');},1000);
+    const cfg = { fRt: 300, syncDly: 2500, minSf: 10 };
+    let st = {
+        isRun: false,
+        startBal: 0,
+        tgtAmt: 0,
+        curBal: 0,
+        autoInt: null,
+        preScn: null,
+        isTrd: false,
+        stpIdx: 0,
+        dynSeq: [],
+        totalSteps: autoTotalSteps || 7,
+        tradesDone: 0,
+        lastPred: null,
+        lastPeriod: null,
+        balanceCheckInterval: null,
+        manualOverrideBet: null,
+        w: 0,
+        l: 0
     };
-};
+
+    let curApiIdx = 0, isFetchingApi = false;
+
+    const VoiceEngine = {
+        speak(msg, lang = 'en-US', rate = 1.1) {
+            if (!('speechSynthesis' in window)) return;
+            try {
+                window.speechSynthesis.cancel();
+                let utter = new SpeechSynthesisUtterance(msg);
+                utter.lang = lang;
+                utter.rate = rate;
+                utter.pitch = 1.2;
+                utter.volume = 1;
+                window.speechSynthesis.speak(utter);
+            } catch(e){}
+        }
+    };
+
+    let dTimeLeft = 30;
+    setInterval(() => {
+        let uClk = document.getElementById('ui-clk');
+        if (uClk) {
+            let minutes = Math.floor(dTimeLeft / 60), seconds = dTimeLeft % 60;
+            uClk.textContent = uF(`${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`);
+        }
+        dTimeLeft--;
+        if (dTimeLeft < 0) dTimeLeft = 30;
+    }, 1000);
+
+    let lkOvl = document.createElement('div');
+    lkOvl.id = 'drx-lck-bg';
+    lkOvl.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.01);z-index:9999997;display:none;';
+    lkOvl.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); }, true);
+    document.body.appendChild(lkOvl);
+
+    function chkBal() {
+        let els = document.querySelectorAll('*');
+        for (let i = 0; i < els.length; i++) {
+            let txt = els[i].innerText || '';
+            if (txt.includes('Wallet balance') || txt.includes('Balance')) {
+                let parentTxt = (els[i].parentNode && els[i].parentNode.innerText) ? els[i].parentNode.innerText : '';
+                let match = parentTxt.match(/[৳₹$€£]\\s*([\\d,]+\\.?\\d*)/);
+                if (match) {
+                    st.curBal = parseFloat(match[1].replace(/,/g, ''));
+                    return st.curBal;
+                }
+            }
+        }
+        for (let i = 0; i < els.length; i++) {
+            let txt = els[i].innerText || '';
+            if (txt.trim().match(/^[৳₹$€£]\\s*[\\d,]+\\.?\\d*$/)) {
+                st.curBal = parseFloat(txt.replace(/[^\\d.]/g, ''));
+                return st.curBal;
+            }
+        }
+        return st.curBal;
+    }
+
+    function generateSmartSequence(balance, steps) {
+        steps = Math.max(1, parseInt(steps) || 1);
+        let b = Math.max(1, Math.floor(balance) || 1);
+        let units = Math.pow(2, steps) - 1;
+        if (units > 0 && units <= b) {
+            let base = Math.floor(b / units);
+            let seq = [], val = Math.max(1, base);
+            for (let i = 0; i < steps; i++) {
+                seq.push(val);
+                val *= 2;
+            }
+            return seq;
+        }
+        let seq = [], val = 1, sum = 0;
+        for (let i = 0; i < steps; i++) {
+            if (sum + val <= b) {
+                seq.push(val);
+                sum += val;
+                val *= 2;
+            } else {
+                let rem = b - sum;
+                if (rem > 0) seq.push(rem);
+                break;
+            }
+        }
+        return seq.length > 0 ? seq : [1];
+    }
+
+    let p = document.createElement('div');
+    p.id = 'sys-core-fin';
+    p.style.cssText = 'position:fixed;width:180px;padding:6px;font-family:monospace;font-size:10px;z-index:9999999;color:#fff;user-select:none;border-radius:14px;overflow:visible;background:rgba(10,15,20,0.92);box-shadow:0 8px 32px rgba(0,0,0,0.8);border:1px solid #00ff88;';
+    
+    let sL = localStorage.getItem('drx_ui_x'), sT = localStorage.getItem('drx_ui_y');
+    if (sL && sT) { p.style.left = sL; p.style.top = sT; }
+    else { p.style.top = '25px'; p.style.right = '20px'; }
+
+    let stl = document.createElement('style');
+    stl.innerHTML = '@keyframes titlePulseAnim{0%{transform:scale(1);text-shadow:0 0 10px #00ff00;}50%{transform:scale(1.05);text-shadow:0 0 20px #00ff00,0 0 30px #fff;}100%{transform:scale(1);text-shadow:0 0 10px #00ff00;}}.drx-in{display:flex;flex-direction:column;gap:4px;}.txt-blk{color:#fff;font-weight:900;}.txt-blk-accent{color:#00ff88;font-weight:900;}.txt-blk-warn{color:#ffcc00;font-weight:900;}.txt-blk-err{color:#ff3366;font-weight:900;}.txt-blk-cyan{color:#00e5ff;font-weight:900;}.drx-elec-target{outline:3px solid #00ff88!important;}';
+    document.body.appendChild(stl);
+
+    let inC = document.createElement('div');
+    inC.className = 'drx-in';
+
+    let h = document.createElement('div');
+    h.style.cssText = 'padding:6px;font-size:11px;display:flex;justify-content:space-between;cursor:move;border-bottom:1px solid #333;';
+    h.innerHTML = `<span class="txt-blk-accent" id="drx-title">${uF('WINZY WINGO')}</span><span style="cursor:pointer;" class="txt-blk-err" id="sys-cls">✕</span>`;
+    inC.appendChild(h);
+
+    // ড্র্যাগিং লজিক
+    let drg = false, sx, sy, sl, st_y;
+    function dSt(e) {
+        if (e.target.tagName === 'SPAN' && e.target.id === 'sys-cls') return;
+        drg = true;
+        let ev = e.type.includes('touch') ? e.touches[0] : e;
+        sx = ev.clientX; sy = ev.clientY;
+        sl = p.offsetLeft; st_y = p.offsetTop;
+    }
+    function dMv(e) {
+        if (!drg) return;
+        e.preventDefault();
+        let ev = e.type.includes('touch') ? e.touches[0] : e;
+        p.style.left = (sl + ev.clientX - sx) + 'px';
+        p.style.top = (st_y + ev.clientY - sy) + 'px';
+    }
+    function dEn() {
+        drg = false;
+        localStorage.setItem('drx_ui_x', p.style.left);
+        localStorage.setItem('drx_ui_y', p.style.top);
+    }
+    h.addEventListener('mousedown', dSt);
+    document.addEventListener('mousemove', dMv);
+    document.addEventListener('mouseup', dEn);
+
+    h.querySelector('#sys-cls').onclick = () => {
+        clearInterval(st.autoInt);
+        clearInterval(st.preScn);
+        if (st.balanceCheckInterval) clearInterval(st.balanceCheckInterval);
+        p.remove();
+        lkOvl.remove();
+    };
+
+    let b = document.createElement('div');
+    b.style.cssText = 'padding:6px;display:flex;flex-direction:column;gap:6px;';
+
+    const p1 = document.createElement('div');
+    p1.innerHTML = `<div style="text-align:center;margin-bottom:6px;padding:4px;background:#141b22;border-radius:6px;border:1px solid #30363d;"><span class="txt-blk" style="font-size:9px;color:#8b949e;">${uF('CURRENT BAL')}</span><br><span id="pre-bal" class="txt-blk" style="font-size:14px;color:#00ff88;">--</span></div>`;
+
+    const tgtInp = document.createElement('input');
+    tgtInp.type = 'number';
+    tgtInp.value = autoTargetProfit || '';
+    tgtInp.placeholder = 'TARGET PROFIT (৳)';
+    tgtInp.className = 'txt-blk';
+    tgtInp.style.cssText = 'width:100%;box-sizing:border-box;padding:6px;margin-bottom:4px;background:#0d1117;border:1px solid #30363d;border-radius:4px;text-align:center;font-size:11px;color:#fff;outline:none;';
+
+    const stepInp = document.createElement('input');
+    stepInp.type = 'number';
+    stepInp.value = autoTotalSteps || 7;
+    stepInp.placeholder = 'TOTAL STEPS (e.g. 7)';
+    stepInp.className = 'txt-blk-cyan';
+    stepInp.style.cssText = 'width:100%;box-sizing:border-box;padding:6px;margin-bottom:6px;background:#0d1117;border:1px solid #30363d;border-radius:4px;text-align:center;font-size:11px;color:#00e5ff;outline:none;';
+
+    const goBtn = document.createElement('button');
+    goBtn.innerText = uF('START AUTO TRADE');
+    goBtn.className = 'txt-blk-accent';
+    goBtn.style.cssText = 'width:100%;box-sizing:border-box;padding:7px;background:#238636;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px;font-weight:bold;';
+
+    p1.appendChild(tgtInp);
+    p1.appendChild(stepInp);
+    p1.appendChild(goBtn);
+
+    const p2 = document.createElement('div');
+    p2.style.display = 'none';
+
+    const balBx = document.createElement('div');
+    balBx.style.cssText = 'padding:6px;text-align:center;background:#161b22;border-radius:6px;border:1px solid #30363d;margin-bottom:6px;';
+    balBx.innerHTML = `<div class="txt-blk" style="font-size:9px;color:#8b949e;">${uF('LIVE BAL / TARGET')}</div><div id="ui-bal" class="txt-blk-accent" style="font-size:14px;">--</div>`;
+
+    const infBx = document.createElement('div');
+    infBx.style.cssText = 'padding:6px;font-size:10px;line-height:1.8;background:#0d1117;border-radius:6px;border:1px solid #30363d;';
+    infBx.innerHTML = `
+        <div style="display:flex;justify-content:space-between;border-bottom:1px solid #21262d;"><span style="color:#8b949e;">API:</span><span id="ui-ai" class="txt-blk-cyan">VIP JSON</span></div>
+        <div style="display:flex;justify-content:space-between;border-bottom:1px solid #21262d;"><span style="color:#8b949e;">TGT:</span><span id="ui-tgt" class="txt-blk">0</span></div>
+        <div style="display:flex;justify-content:space-between;border-bottom:1px solid #21262d;"><span style="color:#8b949e;">BET:</span><span id="ui-bet" class="txt-blk-warn">--</span></div>
+        <div style="display:flex;justify-content:space-between;border-bottom:1px solid #21262d;"><span style="color:#8b949e;">CLK:</span><span id="ui-clk" class="txt-blk">00:30</span></div>
+        <div style="display:flex;justify-content:space-between;"><span style="color:#8b949e;">STS:</span><span id="ui-sts" class="txt-blk">WAIT</span></div>
+    `;
+
+    const ghBox = document.createElement('div');
+    ghBox.id = 'gh-box-wrap';
+    ghBox.style.cssText = 'width:100%;min-height:26px;background:#161b22;border:1px solid #30363d;border-radius:4px;padding:4px;margin-top:4px;font-size:8px;line-height:1.3;color:#8b949e;';
+    ghBox.innerHTML = '<div id="gh-content">Syncing VIP API...</div>';
+    infBx.appendChild(ghBox);
+
+    const stpBtn = document.createElement('button');
+    stpBtn.innerText = uF('STOP TRADE');
+    stpBtn.className = 'txt-blk-err';
+    stpBtn.style.cssText = 'width:100%;padding:7px;background:#da3633;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:11px;margin-top:6px;font-weight:bold;';
+
+    p2.appendChild(balBx);
+    p2.appendChild(infBx);
+    p2.appendChild(stpBtn);
+
+    b.appendChild(p1);
+    b.appendChild(p2);
+    inC.appendChild(b);
+    p.appendChild(inC);
+    document.body.appendChild(p);
+
+    const drx_triggerEvent = (el, etype) => {
+        let ev = new Event(etype, { bubbles: true, cancelable: true });
+        el.dispatchEvent(ev);
+    };
+
+    const drx_simClick = el => {
+        if (!el) return;
+        ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach(evt => {
+            try {
+                el.dispatchEvent(new MouseEvent(evt, { bubbles: true, cancelable: true, view: window }));
+            } catch (e) {}
+        });
+    };
+
+    const exeTrd = (pred, amt, cb) => {
+        try {
+            let btn = null, targetText = pred.toLowerCase();
+            let btns = document.querySelectorAll('button, div, span');
+            for (let i = 0; i < btns.length; i++) {
+                let t = (btns[i].innerText || '').trim().toLowerCase();
+                if (t === targetText && btns[i].offsetParent && !btns[i].children.length) {
+                    btn = btns[i];
+                    break;
+                }
+            }
+            if (!btn) {
+                if (targetText === 'big') btn = document.querySelector('.Betting__C-foot-b');
+                else if (targetText === 'small') btn = document.querySelector('.Betting__C-foot-s');
+                else if (targetText === 'green') btn = document.querySelector('button[class*="green"], div[class*="green"]');
+                else if (targetText === 'red') btn = document.querySelector('button[class*="red"], div[class*="red"]');
+                else if (targetText === 'violet') btn = document.querySelector('button[class*="violet"], div[class*="violet"]');
+            }
+            if (!btn) {
+                if (cb) cb(false);
+                return;
+            }
+            btn.classList.add('drx-elec-target');
+            drx_simClick(btn);
+
+            let checkAttempts = 0;
+            let valInterval = setInterval(() => {
+                checkAttempts++;
+                let inpEl = document.querySelector("input[type='number'], input.van-field__control");
+                if (inpEl || checkAttempts > 15) {
+                    clearInterval(valInterval);
+                    if (inpEl) {
+                        inpEl.focus();
+                        let setV = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+                        if (setV) setV.call(inpEl, String(amt));
+                        else inpEl.value = amt;
+                        drx_triggerEvent(inpEl, 'input');
+                        drx_triggerEvent(inpEl, 'change');
+                        drx_triggerEvent(inpEl, 'blur');
+                    }
+                    setTimeout(() => {
+                        let dEl = document.querySelector('button.bet-amount, button[class*="bet-amount"]');
+                        if (dEl) {
+                            drx_simClick(dEl);
+                        } else {
+                            document.querySelectorAll('button').forEach(b => {
+                                if ((b.innerText || '').includes('Total amount') && b.offsetParent) drx_simClick(b);
+                            });
+                        }
+                        btn.classList.remove('drx-elec-target');
+                        setTimeout(() => { if (cb) cb(true); }, 2000);
+                    }, 800);
+                }
+            }, 200);
+        } catch (e) {
+            if (cb) cb(false);
+        }
+    };
+
+    const getNextLivePeriod = str => {
+        let chars = str.split('');
+        for (let i = chars.length - 1; i >= 0; i--) {
+            if (chars[i] !== '9') {
+                chars[i] = String.fromCharCode(chars[i].charCodeAt(0) + 1);
+                return chars.join('');
+            }
+            chars[i] = '0';
+        }
+        return '1' + chars.join('');
+    };
+
+    const apiLoopTask = async () => {
+        if (!st.isRun || st.isTrd || isFetchingApi) return;
+        isFetchingApi = true;
+        try {
+            chkBal();
+            const uBal = document.getElementById('ui-bal');
+            const uSts = document.getElementById('ui-sts');
+            const uBet = document.getElementById('ui-bet');
+
+            if (st.curBal >= st.tgtAmt && st.curBal > 0) {
+                if (uBal) uBal.innerText = uF(`${st.curBal.toFixed(2)} (DONE)`);
+                if (uSts) {
+                    uSts.innerText = uF('DONE');
+                    uSts.className = 'txt-blk-accent';
+                }
+                stpBtn.style.display = 'none';
+                VoiceEngine.speak("Target reached successfully.");
+                st.isRun = false;
+                clearInterval(st.autoInt);
+                return;
+            } else {
+                if (uBal) uBal.innerText = uF(st.curBal > 0 ? `${st.curBal.toFixed(2)} / ${st.tgtAmt}` : '--');
+            }
+
+            let ts = Math.floor(Date.now() / 1000);
+            let res = await fetch("https://data-vip-247-hack.ai.studio/apipid.json?ts=" + ts);
+            let dataArray = await res.json();
+
+            if (dataArray && dataArray.length > 0) {
+                if (curApiIdx >= dataArray.length) curApiIdx = 0;
+                let activeLogic = dataArray[curApiIdx];
+                let tempHist = activeLogic.history;
+                let cSig = getNextLivePeriod(String(tempHist[0].pid));
+                let sSig = sessionStorage.getItem('drx_sig');
+
+                if (cSig !== sSig) {
+                    if (st.lastPred && st.lastPeriod) {
+                        let actualData = tempHist[0];
+                        let actualR = actualData.actual === 'BIG' ? 'BIG' : 'SMALL';
+                        if (st.lastPred === actualR) {
+                            st.w++;
+                            st.stpIdx = 0;
+                        } else {
+                            st.l++;
+                            st.stpIdx = Math.min(st.stpIdx + 1, st.dynSeq.length - 1);
+                            curApiIdx = (curApiIdx === 0 && dataArray.length > 1) ? 1 : 0;
+                        }
+                    }
+                    st.lastPeriod = cSig;
+
+                    st.isTrd = true;
+                    if (uSts) {
+                        uSts.innerText = uF('CHK...');
+                        uSts.className = 'txt-blk-warn';
+                    }
+
+                    let nBal = chkBal();
+                    if (uBal) uBal.innerText = uF(`${nBal.toFixed(2)} / ${st.tgtAmt}`);
+
+                    if (nBal >= st.tgtAmt && nBal > 0) {
+                        st.isTrd = false;
+                        isFetchingApi = false;
+                        return;
+                    }
+
+                    if (st.stpIdx >= st.dynSeq.length) st.stpIdx = st.dynSeq.length - 1;
+                    let tAmt = st.manualOverrideBet ? st.manualOverrideBet : st.dynSeq[st.stpIdx];
+
+                    if (uBet) uBet.innerText = uF(`${tAmt} (S${st.stpIdx + 1})`);
+
+                    if (nBal < tAmt) {
+                        if (uSts) {
+                            uSts.innerText = uF('LOW BAL');
+                            uSts.className = 'txt-blk-err';
+                        }
+                        st.stpIdx = 0;
+                        st.isTrd = false;
+                        isFetchingApi = false;
+                        return;
+                    }
+
+                    setTimeout(() => {
+                        let activeLogicNew = dataArray[curApiIdx];
+                        let prediction = (activeLogicNew.pred || 'BIG').toUpperCase();
+                        st.lastPred = prediction;
+
+                        let ghC = document.getElementById('gh-content');
+                        if (ghC) ghC.textContent = `Step: ${st.stpIdx + 1}/${st.dynSeq.length} | Bet: ${tAmt}\\nPred: ${prediction} | W:${st.w} L:${st.l}`;
+
+                        if (prediction === 'SKIP') {
+                            if (uSts) uSts.innerText = uF('SKIP');
+                            sessionStorage.setItem('drx_sig', cSig);
+                            setTimeout(() => { st.isTrd = false; }, 1000);
+                        } else {
+                            if (uSts) uSts.innerText = uF('BETTING...');
+                            exeTrd(prediction, tAmt, (suc) => {
+                                if (suc) {
+                                    if (uSts) {
+                                        uSts.innerText = uF('OK');
+                                        uSts.className = 'txt-blk-accent';
+                                    }
+                                    sessionStorage.setItem('drx_sig', cSig);
+                                    st.tradesDone++;
+                                } else {
+                                    if (uSts) {
+                                        uSts.innerText = uF('ERR');
+                                        uSts.className = 'txt-blk-err';
+                                    }
+                                }
+                                setTimeout(() => { st.isTrd = false; }, 1000);
+                            });
+                        }
+                    }, 1500);
+                } else if (!st.isTrd) {
+                    if (uSts) {
+                        uSts.innerText = uF('SCAN');
+                        uSts.className = 'txt-blk';
+                    }
+                }
+            }
+        } catch (e) {
+            st.isTrd = false;
+        }
+        isFetchingApi = false;
+    };
+
+    goBtn.onclick = () => {
+        let inputTarget = parseFloat(tgtInp.value);
+        if (!inputTarget || inputTarget <= 0) {
+            alert('Please enter Target Profit Amount!');
+            tgtInp.focus();
+            return;
+        }
+        let inputSteps = parseInt(stepInp.value) || 7;
+        st.totalSteps = inputSteps;
+        st.tradesDone = 0;
+        st.w = 0;
+        st.l = 0;
+        curApiIdx = 0;
+
+        let liveB = chkBal();
+        st.startBal = liveB;
+        st.tgtAmt = (inputTarget <= liveB) ? (liveB + inputTarget) : inputTarget;
+        st.dynSeq = generateSmartSequence(liveB, st.totalSteps);
+        st.stpIdx = 0;
+
+        document.getElementById('ui-tgt').innerText = uF(st.tgtAmt.toFixed(0));
+        p1.style.display = 'none';
+        p2.style.display = 'block';
+        st.isRun = true;
+        st.isTrd = false;
+        document.getElementById('ui-sts').innerText = uF('RDY');
+
+        st.autoInt = setInterval(apiLoopTask, 1000);
+    };
+
+    stpBtn.onclick = () => {
+        st.isRun = false;
+        clearInterval(st.autoInt);
+        document.getElementById('ui-sts').innerText = uF('STOPPED');
+        p2.style.display = 'none';
+        p1.style.display = 'block';
+    };
+
+    // অটো স্টার্ট ট্রিগার (যদি আরগুমেন্ট থাকে)
+    if (autoTargetProfit && autoTotalSteps) {
+        setTimeout(() => {
+            goBtn.click();
+        }, 1000);
+    }
+
+    return "INJECTED_AND_STARTED";
 })();
 """
 
 # ==========================================
-# ৪. ব্যাকগ্রাউন্ড প্রসেস ও লাইভ গেম ট্রিগার
+# ৬. ব্যাকগ্রাউন্ড লগইন প্রসেস ও লিংক ট্রিগার
 # ==========================================
 def process_login(chat_id, session_key, phone, password, status_msg_id):
     state = user_states.get(chat_id, {})
     site_name = state.get("site_name")
-    site_login_url = state.get("site_url")
+    site_url = state.get("site_url")
     profile_path = state.get("profile_path")
     profile_name = state.get("profile_name")
     is_temp = state.get("is_temp", False)
+
+    # সাইট অনুযায়ী নির্দিষ্ট WinGo 30S লিংক সিলেক্ট করা
+    if "amarclub" in site_name.lower():
+        wingo_url = URL_AMARCLUB_WINGO
+    else:
+        wingo_url = URL_DKWIN_WINGO
 
     stop_anim = threading.Event()
     def spinner():
@@ -572,8 +743,8 @@ def process_login(chat_id, session_key, phone, password, status_msg_id):
         while not stop_anim.is_set():
             try:
                 bot.edit_message_text(
-                    f"⏳ **{site_name}**-এ লগইন প্রক্রিয়া চলছে... [ {spinners[i % len(spinners)]} ]\n"
-                    f"ক্রেডেনশিয়াল ভেরিফাই হচ্ছে...",
+                    f"⏳ **{site_name}**-এ লগইন সম্পন্ন হচ্ছে... [ {spinners[i % len(spinners)]} ]\n"
+                    f"ব্রাউজার চালু করে ক্রেডেনশিয়াল সাবমিট করা হচ্ছে...",
                     chat_id=chat_id,
                     message_id=status_msg_id,
                     parse_mode="Markdown"
@@ -587,13 +758,13 @@ def process_login(chat_id, session_key, phone, password, status_msg_id):
 
     driver = None
     try:
-        driver = launch_firefox_instance(profile_path, site_login_url)
+        driver = launch_firefox_instance(profile_path, site_url)
     except Exception as e:
         stop_anim.set()
-        bot.edit_message_text(f"❌ ব্রাউজার চালু করতে সমস্যা হয়েছে:\n`{e}`", chat_id=chat_id, message_id=status_msg_id, parse_mode="Markdown")
+        bot.edit_message_text(f"❌ ব্রাউজার চালু করতে সমস্যা হয়েছে:\n`{e}`", chat_id=chat_id, message_id=status_msg_id, parse_mode="Markdown")
         return
 
-    # ক্রেডেনশিয়াল পূরণ
+    # ফর্ম ফিল্ড ফিলাপ করার চেষ্টা (সর্বোচ্চ ৪০ সেকেন্ড)
     fill_ok = False
     for _ in range(80):
         try:
@@ -608,10 +779,10 @@ def process_login(chat_id, session_key, phone, password, status_msg_id):
 
     if not fill_ok:
         stop_anim.set()
-        bot.edit_message_text("❌ লগইন ফিল্ড পাওয়া যায়নি অথবা পেজ লোড হতে অতিরিক্ত সময় নিয়েছে।", chat_id=chat_id, message_id=status_msg_id)
+        bot.edit_message_text("❌ লগইন ফিল্ড পাওয়া যায়নি অথবা পেজ লোড হতে অতিরিক্ত সময় নিয়েছে।", chat_id=chat_id, message_id=status_msg_id)
         return
 
-    # স্ট্যাটাস চেক
+    # লগইন স্ট্যাটাস ভেরিফাই করা (সর্বোচ্চ ২০ সেকেন্ড)
     login_status = "PENDING"
     err_detail = ""
     for _ in range(40):
@@ -622,7 +793,7 @@ def process_login(chat_id, session_key, phone, password, status_msg_id):
                 break
             elif res.get("status") == "ERROR":
                 login_status = "ERROR"
-                err_detail = res.get("message", "ভুল পাসওয়ার্ড বা তথ্য দেওয়া হয়েছে।")
+                err_detail = res.get("message", "ভুল পাসওয়ার্ড বা তথ্য দেওয়া হয়েছে।")
                 break
         except Exception:
             pass
@@ -630,87 +801,100 @@ def process_login(chat_id, session_key, phone, password, status_msg_id):
 
     stop_anim.set()
 
-    if login_status == "ERROR":
+    if login_status == "SUCCESS" or login_status == "PENDING":
+        # ২৪ ঘণ্টার অটো-ক্লোজ টাইমার চালু
+        timer = threading.Timer(86400, auto_close_browser, args=[session_key])
+        timer.daemon = True
+        timer.start()
+
+        active_browsers[session_key] = {
+            "chat_id": chat_id,
+            "profile_name": profile_name,
+            "profile_path": profile_path,
+            "driver": driver,
+            "timer": timer,
+            "site_name": site_name,
+            "phone": phone,
+            "is_temp": is_temp,
+            "wingo_url": wingo_url
+        }
+
+        # ১. লগইন সফল মেসেজ পাঠানো
+        bot.edit_message_text(
+            f"🎉 **আপনার অ্যাকাউন্ট সফলভাবে লগইন হয়েছে!**\n\n"
+            f"🌐 **সাইট:** {site_name}\n"
+            f"📱 **অ্যাকাউন্ট:** `{phone}`\n"
+            f"📁 **প্রোফাইল:** `{profile_name}`\n\n"
+            f"⚡ এবার সরাসরি **WinGo 30S** গেমিং পেজ ট্রিগার করা হচ্ছে...",
+            chat_id=chat_id,
+            message_id=status_msg_id,
+            parse_mode="Markdown"
+        )
+
+        time.sleep(2)
+
+        # ২. অটোমেটিক WinGo 30S গেম লিংকে রিডাইরেক্ট করা
+        try:
+            driver.get(wingo_url)
+        except Exception as e:
+            print(f"Error navigating to wingo: {e}")
+
+        # পেজ লোড হওয়ার জন্য ৪ সেকেন্ড অপেক্ষা
+        time.sleep(4)
+
+        # ৩. পেজ থেকে বর্তমান ব্যালেন্স রিড করা
+        current_bal = 0.0
+        try:
+            bal_res = driver.execute_script(FETCH_BALANCE_JS)
+            if bal_res:
+                current_bal = float(bal_res)
+        except Exception:
+            current_bal = 0.0
+
+        # স্টেট আপডেট: ইউজার এখন টার্গেট প্রফিট অ্যামাউন্ট লিখবেন
+        user_states[chat_id] = {
+            "step": "WAITING_TARGET_PROFIT",
+            "session_key": session_key,
+            "site_name": site_name,
+            "profile_name": profile_name,
+            "current_balance": current_bal,
+            "wingo_url": wingo_url,
+            "driver": driver
+        }
+
+        # ৪. টেলিগ্রামে ট্রিগার ও ব্যালেন্স কনফার্মেশন সহ প্রফিট জানতে চাওয়া
+        bal_text = f"{current_bal:.2f} ৳" if current_bal > 0 else "রিফ্রেশ হচ্ছে / পেজে দেখা যাচ্ছে"
+
+        bot.send_message(
+            chat_id,
+            f"🎯 **গেম লিংক স্বয়ংক্রিয়ভাবে ট্রিগার হয়েছে!**\n\n"
+            f"🌐 **সাইট:** {site_name}\n"
+            f"🔗 **গেম পেজ:** WinGo 30S\n"
+            f"💰 **আপনার বর্তমান ব্যালেন্স:** `{bal_text}`\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"📈 **টার্গেট প্রফিট নির্ধারণ করুন:**\n"
+            f"আপনি মোট কত টাকা প্রফিট (লাভ) করতে চান? অনুগ্রহ করে সংখ্যা লিখে পাঠান (যেমন: `300` বা `500`):",
+            parse_mode="Markdown"
+        )
+
+    elif login_status == "ERROR":
         try:
             driver.quit()
         except Exception:
             pass
         bot.edit_message_text(
-            f"⚠️ **লগইন ব্যর্থ হয়েছে!**\n\n"
+            f"⚠️ **লগইন ব্যর্থ হয়েছে!**\n\n"
             f"🌐 **সাইট:** {site_name}\n"
-            f"❌ **কারণ:** {err_detail}\n\nদয়া করে সঠিক তথ্য দিয়ে আবার চেষ্টা করুন।",
+            f"📱 **অ্যাকাউন্ট:** `{phone}`\n"
+            f"❌ **কারণ:** {err_detail}\n\n"
+            f"দয়া করে ফোন নাম্বার ও পাসওয়ার্ড চেক করে /start দিয়ে পুনরায় চেষ্টা করুন।",
             chat_id=chat_id,
             message_id=status_msg_id,
             parse_mode="Markdown"
         )
-        return
-
-    # লগইন সফল হলে সেশন ডিকশনারিতে স্টোর করা
-    timer = threading.Timer(86400, auto_close_browser, args=[session_key])
-    timer.daemon = True
-    timer.start()
-
-    active_browsers[session_key] = {
-        "chat_id": chat_id,
-        "profile_name": profile_name,
-        "profile_path": profile_path,
-        "driver": driver,
-        "timer": timer,
-        "site_name": site_name,
-        "phone": phone,
-        "is_temp": is_temp
-    }
-
-    bot.edit_message_text(
-        f"🎉 **{site_name} লগইন সফল হয়েছে!**\n\n"
-        f"⚡ এখন সরাসরি **WinGo 30S** গেম পেজ ট্রিগার করা হচ্ছে...",
-        chat_id=chat_id,
-        message_id=status_msg_id,
-        parse_mode="Markdown"
-    )
-
-    # সংশ্লিষ্ট সাইটের গেম ইউআরএল নির্ধারণ
-    game_url = URL_AMARCLUB_GAME if site_name == "Amarclub1" else URL_DKWIN_GAME
-
-    try:
-        driver.get(game_url)
-        time.sleep(5)  # গেম পেজ ও ওয়ালেট লোড হওয়ার পর্যাপ্ত সময়
-
-        # জাভাস্ক্রিপ্ট মার্টিঙ্গেল ইঞ্জিন ইনজেক্ট করা
-        driver.execute_script(WINZY_MARTINGALE_PAYLOAD_JS)
-        time.sleep(1.5)
-
-        # ওয়ালেট ব্যালেন্স রিড করা
-        detected_bal = 0.0
-        try:
-            detected_bal = driver.execute_script("return (typeof window.chkBal === 'function') ? window.chkBal() : 0;")
-        except Exception:
-            pass
-
-        # ইউজার স্টেট আপডেট করা (টার্গেট প্রফিটের অপেক্ষায়)
-        user_states[chat_id]["step"] = "WAITING_TARGET_PROFIT"
-        user_states[chat_id]["session_key"] = session_key
-        user_states[chat_id]["game_url"] = game_url
-        user_states[chat_id]["live_bal"] = detected_bal
-
-        bal_str = f"{detected_bal:.2f} ৳" if detected_bal > 0 else "রিফ্রেশ হচ্ছে..."
-
-        bot.send_message(
-            chat_id,
-            f"✅ **গেম লিংক সফলভাবে ট্রিগার হয়েছে!**\n\n"
-            f"🌐 **প্ল্যাটফর্ম:** {site_name}\n"
-            f"🎮 **গেম:** WinGo 30S\n"
-            f"💰 **বর্তমান ওয়ালেট ব্যালেন্স:** `{bal_str}`\n\n"
-            f"🎯 **আপনি কত টাকা প্রফিট (Target Profit) করতে চান?**\n"
-            f"*(শুধু অ্যামাউন্ট লিখে পাঠান, যেমন: `500` বা `1000`)*",
-            parse_mode="Markdown"
-        )
-
-    except Exception as e:
-        bot.send_message(chat_id, f"❌ গেম লিংকে ঢুকতে সমস্যা হয়েছে:\n`{e}`", parse_mode="Markdown")
 
 # ==========================================
-# ৫. টেলিগ্রাম মেনু ও কলব্যাক হ্যান্ডলার
+# ৭. টেলিগ্রাম মেনু ও ইন্টারফেস
 # ==========================================
 def show_profile_menu(chat_id, message_id=None):
     profiles = get_user_profiles(chat_id)
@@ -730,7 +914,7 @@ def show_profile_menu(chat_id, message_id=None):
     )
 
     text = "⚙️ **প্রোফাইল মোড নির্বাচন করুন:**\n\n" \
-           "• **Fix Profile:** পার্মানেন্ট প্রোফাইল যা ফায়ারফক্সে সেভ থাকবে।\n" \
+           "• **Fix Profile:** পার্মানেন্ট প্রোফাইল যা ফায়ারফক্সে সেভ থাকবে।\n" \
            "• **Skip Profile:** সম্পূর্ণ ফ্রেশ আলাদা প্রোফাইল (কোনো ডাটা সেভ হবে না)।"
 
     if message_id:
@@ -738,6 +922,9 @@ def show_profile_menu(chat_id, message_id=None):
     else:
         bot.send_message(chat_id, text, reply_markup=markup, parse_mode="Markdown")
 
+# ==========================================
+# ৮. টেলিগ্রাম কমান্ড হ্যান্ডলার
+# ==========================================
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     markup = InlineKeyboardMarkup()
@@ -748,7 +935,7 @@ def send_welcome(message):
     )
     bot.send_message(
         message.chat.id, 
-        "🚀 **অটোমেশন ও ট্রেড প্যানেলে স্বাগতম!**\n\nপ্রথমে আপনার কাঙ্ক্ষিত প্ল্যাটফর্ম নির্বাচন করুন:", 
+        "🚀 **WinGo অটোমেশন ও ট্রেডিং প্যানেল**\n\nঅনুগ্রহ করে প্রথমে কাঙ্ক্ষিত সাইট নির্বাচন করুন:", 
         reply_markup=markup,
         parse_mode="Markdown"
     )
@@ -781,9 +968,10 @@ def handle_callbacks(call):
         })
         user_states[chat_id] = state
 
-        bot.answer_callback_query(call.id, "নতুন ফ্রেশ প্রোফাইল সক্রিয় হয়েছে...")
+        bot.answer_callback_query(call.id, "নতুন ফ্রেশ প্রোফাইল সক্রিয় হয়েছে...")
         bot.edit_message_text(
-            f"⚡ **Skip Profile মোড প্রস্তুত!**\n\n📱 আপনার **ফোন নাম্বার** লিখে পাঠান:",
+            f"⚡ **Skip Profile মোড প্রস্তুত!**\n\n"
+            f"📱 আপনার **ফোন নাম্বার (N)** লিখে পাঠান:",
             chat_id=chat_id,
             message_id=call.message.message_id,
             parse_mode="Markdown"
@@ -793,7 +981,7 @@ def handle_callbacks(call):
         user_states[chat_id]["step"] = "WAITING_NEW_PROFILE_NAME"
         bot.answer_callback_query(call.id)
         bot.edit_message_text(
-            "✍️ ফিক্সড প্রোফাইলের একটি নাম লিখে পাঠান (যেমন: Account1 বা ID_01):",
+            "✍️ ফিক্সড প্রোফাইলের জন্য একটি নাম লিখে পাঠান (যেমন: RDP1 বা Account1):",
             chat_id=chat_id,
             message_id=call.message.message_id,
             parse_mode="Markdown"
@@ -814,7 +1002,8 @@ def handle_callbacks(call):
 
         bot.answer_callback_query(call.id, f"প্রোফাইল: {prof_name}")
         bot.edit_message_text(
-            f"📁 **ফিক্সড প্রোফাইল:** `{prof_name}`\n\n📱 আপনার **ফোন নাম্বার** লিখে পাঠান:",
+            f"📁 **ফিক্সড প্রোফাইল:** `{prof_name}` নির্বাচিত হয়েছে।\n\n"
+            f"📱 আপনার **ফোন নাম্বার (N)** লিখে পাঠান:",
             chat_id=chat_id,
             message_id=call.message.message_id,
             parse_mode="Markdown"
@@ -829,7 +1018,7 @@ def handle_callbacks(call):
                 markup.add(InlineKeyboardButton(f"❌ বন্ধ করুন: {v['profile_name']} ({v['site_name']})", callback_data=f"kill_{k}"))
         markup.add(InlineKeyboardButton("🔙 ফিরে যান", callback_data="btn_back_to_prof"))
 
-        txt = "🌐 **সচল ব্রাউজার তালিকা:**\nযেকোনো ব্রাউজার অফ করতে ক্লিক করুন:" if found else "বর্তমানে কোনো সচল ব্রাউজার নেই।"
+        txt = "🌐 **বর্তমানে সচল থাকা ব্রাউজারসমূহ:**\nযেকোনো ব্রাউজার ম্যানুয়ালি বন্ধ করতে নিচের বাটনে ক্লিক করুন:" if found else "বর্তমানে আপনার কোনো সচল ব্রাউজার চালু নেই।"
         bot.edit_message_text(txt, chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup)
 
     elif data.startswith("kill_"):
@@ -840,7 +1029,7 @@ def handle_callbacks(call):
                 sess["driver"].quit()
             except Exception:
                 pass
-            bot.answer_callback_query(call.id, "ব্রাউজারটি বন্ধ করা হয়েছে!")
+            bot.answer_callback_query(call.id, "ব্রাউজারটি সফলভাবে বন্ধ করা হয়েছে!")
         show_profile_menu(chat_id, call.message.message_id)
 
     elif data == "btn_del_menu":
@@ -854,6 +1043,7 @@ def handle_callbacks(call):
     elif data.startswith("dodel_"):
         p_name = data.split("dodel_")[1]
         target_path = os.path.join(PROFILES_BASE_DIR, str(chat_id), p_name)
+        
         sk = f"{chat_id}_{p_name}"
         sess = active_browsers.pop(sk, None)
         if sess:
@@ -861,16 +1051,41 @@ def handle_callbacks(call):
                 sess["driver"].quit()
             except Exception:
                 pass
+
         if os.path.exists(target_path):
             shutil.rmtree(target_path, ignore_errors=True)
-        bot.answer_callback_query(call.id, f"{p_name} ডিলিট সম্পন্ন!")
+        bot.answer_callback_query(call.id, f"{p_name} প্রোফাইল ডিলিট সম্পন্ন!")
         show_profile_menu(chat_id, call.message.message_id)
 
     elif data == "btn_back_to_prof":
         show_profile_menu(chat_id, call.message.message_id)
 
+    elif data.startswith("chkbal_"):
+        sk = data.split("chkbal_")[1]
+        sess = active_browsers.get(sk)
+        if sess and sess.get("driver"):
+            try:
+                bal = sess["driver"].execute_script(FETCH_BALANCE_JS)
+                bot.answer_callback_query(call.id, f"বর্তমান ব্যালেন্স: {bal} ৳", show_alert=True)
+            except Exception as e:
+                bot.answer_callback_query(call.id, "ব্যালেন্স পড়তে সমস্যা হয়েছে।", show_alert=True)
+        else:
+            bot.answer_callback_query(call.id, "সেশনটি আর সচল নেই।", show_alert=True)
+
+    elif data.startswith("stoptrade_"):
+        sk = data.split("stoptrade_")[1]
+        sess = active_browsers.get(sk)
+        if sess and sess.get("driver"):
+            try:
+                sess["driver"].execute_script("let btn = document.querySelector('#sys-core-fin button'); if(btn) btn.click();")
+                bot.answer_callback_query(call.id, "অটো-ট্রেড বন্ধের কমান্ড পাঠানো হয়েছে!", show_alert=True)
+            except Exception:
+                bot.answer_callback_query(call.id, "কমান্ড পাঠাতে ব্যর্থ হয়েছে।", show_alert=True)
+        else:
+            bot.answer_callback_query(call.id, "সেশনটি আর সচল নেই।", show_alert=True)
+
 # ==========================================
-# ৬. টেক্সট ইনপুট ও ইন্টারঅ্যাক্টিভ ট্রেড কনফিগারেশন
+# ৯. টেক্সট মেসেজ ইনপুট হ্যান্ডলার (টার্গেট ও স্টেপ গ্রহণ)
 # ==========================================
 @bot.message_handler(func=lambda msg: msg.chat.id in user_states)
 def handle_text_inputs(message):
@@ -882,7 +1097,7 @@ def handle_text_inputs(message):
     if step == "WAITING_NEW_PROFILE_NAME":
         clean_name = "".join([c for c in text if c.isalnum() or c in ('_', '-')]).strip()
         if not clean_name:
-            bot.send_message(chat_id, "❌ নাম শুধুমাত্র ইংরেজি অক্ষর ও সংখ্যায় লিখুন:")
+            bot.send_message(chat_id, "❌ প্রোফাইল নামে কোনো স্পেশাল ক্যারেক্টার ব্যবহার করবেন না। আবার লিখুন:")
             return
 
         user_dir = os.path.join(PROFILES_BASE_DIR, str(chat_id), clean_name)
@@ -893,19 +1108,29 @@ def handle_text_inputs(message):
         state["is_temp"] = False
         state["step"] = "WAITING_PHONE"
 
-        bot.send_message(chat_id, f"✅ প্রোফাইল `{clean_name}` সংরক্ষিত!\n\n📱 আপনার **ফোন নাম্বার** লিখে পাঠান:", parse_mode="Markdown")
+        bot.send_message(
+            chat_id,
+            f"✅ ফিক্সড প্রোফাইল `{clean_name}` সংরক্ষিত হয়েছে!\n\n"
+            f"📱 এবার আপনার **ফোন নাম্বার (N)** লিখে পাঠান:",
+            parse_mode="Markdown"
+        )
 
     elif step == "WAITING_PHONE":
         state["phone"] = text
         state["step"] = "WAITING_PASSWORD"
-        bot.send_message(chat_id, f"📱 নাম্বার: `{text}` সংরক্ষিত।\n\n🔑 এবার **পাসওয়ার্ড** লিখে পাঠান:", parse_mode="Markdown")
+        bot.send_message(
+            chat_id,
+            f"📱 নাম্বার: `{text}` সংরক্ষিত হয়েছে।\n\n"
+            f"🔑 এবার আপনার **পাসওয়ার্ড (P)** লিখে পাঠান:",
+            parse_mode="Markdown"
+        )
 
     elif step == "WAITING_PASSWORD":
         state["password"] = text
-        state["step"] = "LOGGING_IN"
+        state["step"] = "COMPLETED_INPUTS"
 
         session_key = f"{chat_id}_{state['profile_name']}"
-        status_msg = bot.send_message(chat_id, "⏳ ব্রাউজার প্রস্তুত হচ্ছে... [ ⠋ ]")
+        status_msg = bot.send_message(chat_id, "⏳ ব্রাউজার চালু করে স্বয়ংক্রিয় লগইন শুরু হচ্ছে... [ ⠋ ]")
 
         threading.Thread(
             target=process_login,
@@ -913,82 +1138,81 @@ def handle_text_inputs(message):
             daemon=True
         ).start()
 
-    # টার্গেট প্রফিট গ্রহণ
+    # ২য় সেশন: টার্গেট প্রফিট গ্রহণ
     elif step == "WAITING_TARGET_PROFIT":
         try:
-            val = float(text)
-            if val <= 0:
-                bot.send_message(chat_id, "❌ অ্যামাউন্ট ০ এর বেশি হতে হবে। আবার লিখুন:")
-                return
-            state["target_profit"] = val
-            state["step"] = "WAITING_STEPS"
-
-            bot.send_message(
-                chat_id,
-                f"✅ **টার্গেট প্রফিট:** `{val}` ৳ সেট করা হয়েছে।\n\n"
-                f"🪜 **কতগুলো স্টেপ (Martingale Steps) সেট করতে চান?**\n"
-                f"*(যেমন: `5`, `7`, অথবা `10` লিখে পাঠান)*",
-                parse_mode="Markdown"
-            )
+            target_profit = float(text)
+            if target_profit <= 0:
+                raise ValueError()
         except ValueError:
-            bot.send_message(chat_id, "❌ অনুগ্রহ করে শুধুমাত্র সংখ্যার মান লিখুন (যেমন: `500`):")
+            bot.send_message(chat_id, "❌ অনুগ্রহ করে একটি সঠিক পজিটিভ সংখ্যা লিখুন (যেমন: `500`):", parse_mode="Markdown")
+            return
 
-    # স্টেপ গ্রহণ ও ব্রাউজারে অটো-ট্রেড স্টার্ট ট্রিগার
+        state["target_profit"] = target_profit
+        state["step"] = "WAITING_STEPS"
+
+        bot.send_message(
+            chat_id,
+            f"✅ **টার্গেট প্রফিট:** `{target_profit}` ৳ রেকর্ড করা হয়েছে।\n\n"
+            f"🔢 **মার্টিনগেল স্টেপ (Total Steps):**\n"
+            f"আপনি কত স্টেপ সিকোয়েন্স নিয়ে ট্রেড করতে চান? সংখ্যাটি লিখে পাঠান (যেমন: `7` বা `10`):",
+            parse_mode="Markdown"
+        )
+
+    # ৩য় সেশন: টোটাল স্টেপ গ্রহণ ও অটোমেশন চালু
     elif step == "WAITING_STEPS":
         try:
-            steps_val = int(text)
-            if steps_val <= 0:
-                steps_val = 1
-
-            session_key = state.get("session_key")
-            sess = active_browsers.get(session_key)
-
-            if not sess or not sess.get("driver"):
-                bot.send_message(chat_id, "❌ ব্রাউজার সেশনটি সচল পাওয়া যায়নি। অনুগ্রহ করে /start দিয়ে পুনরায় শুরু করুন।")
-                return
-
-            driver = sess["driver"]
-            target_profit = state.get("target_profit", 100)
-
-            # ব্রাউজারে ইনপুট ভ্যালু বসিয়ে START বাটনে ক্লিক করানো
-            START_TRADING_JS = f"""
-            let tInp = document.getElementById('drx_target_profit') || document.querySelector('input[placeholder*="TARGET PROFIT"]');
-            let sInp = document.getElementById('drx_total_steps') || document.querySelector('input[placeholder*="TOTAL STEPS"]');
-            let btn = document.getElementById('drx_btn_start') || document.querySelector('button.txt-blk-accent');
-
-            if(tInp) {{
-                tInp.value = "{target_profit}";
-                tInp.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                tInp.dispatchEvent(new Event('change', {{ bubbles: true }}));
-            }}
-            if(sInp) {{
-                sInp.value = "{steps_val}";
-                sInp.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                sInp.dispatchEvent(new Event('change', {{ bubbles: true }}));
-            }}
-            if(btn) {{
-                btn.click();
-                return "STARTED";
-            }}
-            return "NOT_FOUND";
-            """
-
-            res = driver.execute_script(START_TRADING_JS)
-            state["step"] = "RUNNING"
-
-            bot.send_message(
-                chat_id,
-                f"🚀 **অটো-ট্রেডিং সফলভাবে শুরু হয়েছে!**\n\n"
-                f"🌐 **প্ল্যাটফর্ম:** {sess['site_name']}\n"
-                f"🎯 **টার্গেট প্রফিট:** `{target_profit}` ৳\n"
-                f"🪜 **মোট স্টেপ:** `{steps_val}`\n"
-                f"⚡ **স্ট্যাটাস:** AI ভিআইপি প্রেডিকশন অনুযায়ী ট্রেড চলতে থাকবে। টার্গেট পৌঁছানো মাত্রই নিরাপদভাবে থেমে যাবে।",
-                parse_mode="Markdown"
-            )
-
+            total_steps = int(text)
+            if total_steps <= 0:
+                raise ValueError()
         except ValueError:
-            bot.send_message(chat_id, "❌ অনুগ্রহ করে পূর্ণসংখ্যায় স্টেপ লিখুন (যেমন: `7`):")
+            bot.send_message(chat_id, "❌ অনুগ্রহ করে সঠিক পূর্ণসংখ্যা লিখুন (যেমন: `7`):", parse_mode="Markdown")
+            return
+
+        state["total_steps"] = total_steps
+        state["step"] = "TRADING_RUNNING"
+
+        session_key = state.get("session_key")
+        sess = active_browsers.get(session_key)
+        target_profit = state.get("target_profit")
+        site_name = state.get("site_name")
+
+        if not sess or not sess.get("driver"):
+            bot.send_message(chat_id, "❌ ব্রাউজার সেশনটি পাওয়া যায়নি। অনুগ্রহ করে /start দিয়ে আবার শুরু করুন।")
+            return
+
+        driver = sess["driver"]
+
+        # ব্রাউজারে স্বয়ংক্রিয় অটো-ট্রেড স্ক্রিপ্ট ইঞ্জেক্ট করা
+        try:
+            driver.execute_script(WINGO_AUTOMATION_JS, target_profit, total_steps)
+        except Exception as e:
+            bot.send_message(chat_id, f"⚠️ স্ক্রিপ্ট ইঞ্জেকশনে ত্রুটি: `{e}`", parse_mode="Markdown")
+            return
+
+        # কন্ট্রোল মেনু বাটন তৈরি
+        markup = InlineKeyboardMarkup()
+        markup.row_width = 2
+        markup.add(
+            InlineKeyboardButton("📊 লাইভ ব্যালেন্স চেক", callback_data=f"chkbal_{session_key}"),
+            InlineKeyboardButton("🛑 অটো-ট্রেড বন্ধ", callback_data=f"stoptrade_{session_key}")
+        )
+        markup.add(
+            InlineKeyboardButton("❌ ব্রাউজার বন্ধ করুন", callback_data=f"kill_{session_key}")
+        )
+
+        bot.send_message(
+            chat_id,
+            f"🚀 **উইনগো অটো-ট্রেডিং সফলভাবে শুরু হয়েছে!**\n\n"
+            f"🌐 **প্ল্যাটফর্ম:** {site_name} (WinGo 30S)\n"
+            f"🎯 **টার্গেট প্রফিট:** `{target_profit}` ৳\n"
+            f"🔢 **মার্টিনগেল স্টেপ:** `{total_steps}` Steps\n"
+            f"⚡ **স্ট্যাটাস:** ব্রাউজার স্ক্রিনে লাইভ উইজেট সক্রিয় রয়েছে এবং সিগন্যাল অনুযায়ী অটো ট্রেড হচ্ছে।\n\n"
+            f"💡 *টার্গেট প্রফিট সম্পন্ন হলে ব্রাউজার স্বয়ংক্রিয়ভাবে থামবে অথবা নিচের বাটন দিয়ে নিয়ন্ত্রণ করতে পারেন:*",
+            reply_markup=markup,
+            parse_mode="Markdown"
+        )
 
 if __name__ == "__main__":
-    print("[*] টেলিগ্রাম বট সফলভাবে চালু হয়েছে...")
+    print("[*] টেলিগ্রাম বট সফলভাবে চালু হয়েছে...")
     bot.infinity_polling()
