@@ -86,25 +86,26 @@ active_sessions = {}
 SPINNER_FRAMES = ["◴", "◷", "◶", "◵"]
 
 # মারিওনেট সকেট সুরক্ষিত রাখার জন্য গ্লোবাল থ্রেড লক
-# এটি 'Failed to decode response from marionette' এরর ১০০% দূর করে
 DRIVER_LOCK = threading.RLock()
 
 # মাস্টার ব্রাউজার ইনস্ট্যান্স ভেরিয়েবল
 MASTER_DRIVER = None
 
+# প্রতিটি ট্যাবের আলাদা আইসোলেটেড স্টোরেজ/কুকিজ নিশ্চিত করার জন্য কনটেইনার আইডি কাউন্টার
+CONTAINER_COUNTER = 0
+
 # ==========================================
-# 4. Master Firefox Browser & Multi-Tab Engine
+# 4. Master Firefox Browser & Isolated Container Multi-Tab Engine
 # ==========================================
 def get_or_create_master_driver():
     """
-    একটি শক্তিশালী মাস্টার ব্রাউজার তৈরি করে যা ব্যাকগ্রাউন্ডে সবসময় সক্রিয় থাকে।
-    এটি ২০-৪০টি ট্যাব ওপেন রাখতে পারে এবং ক্র্যাশ রিকভারি স্ক্রিন সম্পূর্ণরূপে বন্ধ রাখে।
+    একটি মাস্টার ব্রাউজার তৈরি করে এবং এতে Firefox Container Tab (Contextual Identity) সক্রিয় করে।
+    ফলে প্রতিটি ট্যাবের জন্য আলাদা কুকিজ ও স্টোরেজ তৈরি করা সম্ভব হয়।
     """
     global MASTER_DRIVER
     with DRIVER_LOCK:
         if MASTER_DRIVER is not None:
             try:
-                # সকেট একটিভ আছে কি না যাচাই
                 _ = MASTER_DRIVER.current_window_handle
                 return MASTER_DRIVER
             except Exception:
@@ -125,7 +126,12 @@ def get_or_create_master_driver():
         if "DISPLAY" not in os.environ or not os.environ["DISPLAY"]:
             os.environ["DISPLAY"] = ":0"
 
-        # ক্র্যাশ রিকভারি (about:sessionrestore) স্থায়ীভাবে নিষ্ক্রিয়করণ
+        # ফায়ারফক্সের Multi-Account Container Tabs (Contextual Identity) সক্রিয়করণ
+        options.set_preference("privacy.userContext.enabled", True)
+        options.set_preference("privacy.userContext.ui.enabled", True)
+        options.set_preference("privacy.userContext.longPressBehavior", 2)
+
+        # ক্র্যাশ রিকভারি (about:sessionrestore) বন্ধ রাখা
         options.set_preference("browser.sessionstore.resume_from_crash", False)
         options.set_preference("browser.sessionstore.max_resumed_crashes", 0)
         options.set_preference("browser.tabs.warnOnClose", False)
@@ -151,23 +157,55 @@ def get_or_create_master_driver():
 
 def allocate_session_tab(session_id, target_url):
     """
-    প্রতিটি একাউন্টের জন্য ব্রাউজারের ভেতর একটি স্বতন্ত্র ট্যাব বরাদ্দ করে।
-    পূর্বে খোলা কোনো ট্যাব বন্ধ বা ক্লিয়ার করা হয় না।
+    প্রতিটি অ্যাকাউন্টের জন্য একটি সম্পূর্ণ স্বাধীন Container Tab খোলে।
+    এর ফলে ট্যাব-১ এর কুকি/স্টোরেজ ট্যাব-২ এর সাথে কখনো মিশবে না।
     """
+    global MASTER_DRIVER, CONTAINER_COUNTER
     driver = get_or_create_master_driver()
     with DRIVER_LOCK:
-        # বিদ্যমান উইন্ডো হ্যান্ডেল চেক
-        all_handles = driver.window_handles
-        
-        # যদি প্রথম ট্যাবটি ফাঁকা থাকে তবে সেটি ব্যবহার করবে, নয়তো নতুন ট্যাব খুলবে
-        if len(all_handles) == 1 and (driver.current_url == "about:blank" or "about:newtab" in driver.current_url):
-            target_handle = all_handles[0]
+        CONTAINER_COUNTER += 1
+        cid = CONTAINER_COUNTER
+        before_handles = set(driver.window_handles)
+        opened_via_container = False
+
+        # ফায়ারফক্স ক্রোম কনটেক্সট ব্যবহার করে স্বতন্ত্র Container Tab ওপেন করা
+        try:
+            with driver.context("chrome"):
+                driver.execute_script("""
+                    let uri = arguments[0];
+                    let cid = arguments[1];
+                    let tab = gBrowser.addTab(uri, {
+                        userContextId: cid,
+                        triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal()
+                    });
+                    gBrowser.selectedTab = tab;
+                """, target_url, cid)
+            opened_via_container = True
+        except Exception:
+            opened_via_container = False
+
+        if opened_via_container:
+            target_handle = None
+            for _ in range(20):
+                after_handles = set(driver.window_handles)
+                diff = after_handles - before_handles
+                if diff:
+                    target_handle = list(diff)[0]
+                    break
+                time.sleep(0.2)
+            if not target_handle:
+                target_handle = driver.current_window_handle
             driver.switch_to.window(target_handle)
         else:
-            driver.switch_to.new_window('tab')
-            target_handle = driver.current_window_handle
+            all_handles = driver.window_handles
+            if len(all_handles) == 1 and (driver.current_url == "about:blank" or "about:newtab" in driver.current_url):
+                target_handle = all_handles[0]
+                driver.switch_to.window(target_handle)
+            else:
+                driver.switch_to.new_window('tab')
+                target_handle = driver.current_window_handle
+            driver.get(target_url)
 
-        driver.get(target_url)
         return driver, target_handle
 
 def safe_tab_execute(sid, task_fn):
