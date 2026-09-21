@@ -66,78 +66,12 @@ URL_AMARCLUB_WINGO = "https://amarclub1.com/#/saasLottery/WinGo?gameCode=WinGo_3
 URL_DKWIN_WINGO = "https://dkwin6.com/#/saasLottery/WinGo?gameCode=WinGo_30S&lottery=WinGo"
 
 PLANS = {
-    "1d": {
-        "days": 1,
-        "hours": 24,
-        "seconds": 86400,
-        "price": 500,
-        "label": "1D - 500 BDT",
-        "name_bn": "১ দিন (২৪ ঘণ্টা ট্রায়াল প্ল্যান)",
-        "name_en": "1 Day (24 Hours Trial Plan)",
-        "duration_bn": "২৪ ঘণ্টা (১ দিন / ৮৬,৪০০ সেকেন্ড)",
-        "duration_en": "24 Hours (1 Day / 86,400 Seconds)",
-        "desc_bn": "২৪ ঘণ্টার ডেডিকেটেড ক্লাউড স্যান্ডবক্স অটোমেশন ও লাইভ সিগন্যাল ইঞ্জিন।"
-    },
-    "3d": {
-        "days": 3,
-        "hours": 72,
-        "seconds": 259200,
-        "price": 1300,
-        "label": "3D - 1300 BDT",
-        "name_bn": "৩ দিন (৭২ ঘণ্টা রেগুলার প্ল্যান)",
-        "name_en": "3 Days (72 Hours Regular Plan)",
-        "duration_bn": "৭২ ঘণ্টা (৩ দিন / ২৫৯,২০০ সেকেন্ড)",
-        "duration_en": "72 Hours (3 Days / 259,200 Seconds)",
-        "desc_bn": "৩ দিনের জন্য সম্পূর্ণ আইসোলেটেড অটো-ট্রেড ব্রাউজার ও মার্টিনগেল সাপোর্ট।"
-    },
-    "6d": {
-        "days": 6,
-        "hours": 144,
-        "seconds": 518400,
-        "price": 2400,
-        "label": "6D - 2400 BDT",
-        "name_bn": "৬ দিন (১৪৪ ঘণ্টা অ্যাডভান্সড প্ল্যান)",
-        "name_en": "6 Days (144 Hours Advanced Plan)",
-        "duration_bn": "১৪৪ ঘণ্টা (৬ দিন / ৫১৮,৪০০ সেকেন্ড)",
-        "duration_en": "144 Hours (6 Days / 518,400 Seconds)",
-        "desc_bn": "৬ দিনের আনলিমিটেড লাইভ ব্যালেন্স ট্র্যাকিং ও এআই ভিআইপি প্রিডিকশন।"
-    },
-    "7d": {
-        "days": 7,
-        "hours": 168,
-        "seconds": 604800,
-        "price": 2700,
-        "label": "7D - 2700 BDT",
-        "name_bn": "৭ দিন (১৬৮ ঘণ্টা উইকলি ভিআইপি প্ল্যান)",
-        "name_en": "7 Days (168 Hours Weekly VIP Plan)",
-        "duration_bn": "১৬৮ ঘণ্টা (১ সপ্তাহ / ৬০৪,৮০০ সেকেন্ড)",
-        "duration_en": "168 Hours (1 Week / 604,800 Seconds)",
-        "desc_bn": "১ সপ্তাহের ফুল ভিআইপি প্রিভিলেজ, দ্রুত রিডাইরেক্ট ও রিয়েল-টাইম ট্রেড এক্সিকিউশন।"
-    },
-    "10d": {
-        "days": 10,
-        "hours": 240,
-        "seconds": 864000,
-        "price": 3500,
-        "label": "10D - 3500 BDT",
-        "name_bn": "১০ দিন (২৪০ ঘণ্টা মাস্টার প্ল্যান)",
-        "name_en": "10 Days (240 Hours Master Plan)",
-        "duration_bn": "২৪০ ঘণ্টা (১০ দিন / ৮৬৪,০০০ সেকেন্ড)",
-        "duration_en": "240 Hours (10 Days / 864,000 Seconds)",
-        "desc_bn": "১০ দিনের প্রফেশনাল ক্লাউড সেশন ব্যাকআপ ও নিরবচ্ছিন্ন ২৪/৭ সাপোর্ট।"
-    },
-    "30d": {
-        "days": 30,
-        "hours": 720,
-        "seconds": 2592000,
-        "price": 9000,
-        "label": "30D - 9000 BDT",
-        "name_bn": "৩০ দিন (৭২০ ঘণ্টা মান্থলি প্রো মেম্বারশিপ)",
-        "name_en": "30 Days (720 Hours Monthly Pro Plan)",
-        "duration_bn": "৭২০ ঘণ্টা (১ মাস / ২,৫৯২,০০০ সেকেন্ড)",
-        "duration_en": "720 Hours (1 Month / 2,592,000 Seconds)",
-        "desc_bn": "৩০ দিনের সম্পূর্ণ মান্থলি মেম্বারশিপ, আনলিমিটেড ট্রেডিং ব্যাকআপ ও ফুল ভিআইপি এক্সেস।"
-    }
+    "1d": {"days": 1, "price": 500, "label": "1D - 500 BDT"},
+    "3d": {"days": 3, "price": 1300, "label": "3D - 1300 BDT"},
+    "6d": {"days": 6, "price": 2400, "label": "6D - 2400 BDT"},
+    "7d": {"days": 7, "price": 2700, "label": "7D - 2700 BDT"},
+    "10d": {"days": 10, "price": 3500, "label": "10D - 3500 BDT"},
+    "30d": {"days": 30, "price": 9000, "label": "30D - 9000 BDT"},
 }
 
 PROFILES_BASE_DIR = os.path.expanduser("~/.wingo_bot_isolated_profiles")
@@ -952,7 +886,7 @@ const autoTotalSteps = arguments[1];
                         let activeLogicNew=dataArray[curApiIdx],prediction=(activeLogicNew.pred||'BIG').toUpperCase();
                         st.lastPred=prediction;
                         let ghC=document.getElementById('gh-content');
-                        if(ghC)ghC.textContent='Step: ' + (st.stpIdx+1) + '/' + st.dynSeq.length + ' (Amt: ' + tAmt + ')\\nPred: ' + prediction + ' | W:' + st.w + ' L:' + st.l;
+                        if(ghC)ghC.textContent='Step: ' + (st.stpIdx+1) + '/' + st.dynSeq.length + ' (Amt: ' + tAmt + ')\nPred: ' + prediction + ' | W:' + st.w + ' L:' + st.l;
                         if(prediction==='SKIP'){
                             uSts.innerText=uF('SKIP');
                             uSts.className='txt-blk-warn';
@@ -1047,7 +981,7 @@ const autoTotalSteps = arguments[1];
 """
 
 # =====================================================================
-# 8. Clean Multilingual Templates (Zero Emojis, Mathematical Bold Text)
+# 8. Clean Multilingual Templates (Zero Emojis - Premium Look)
 # =====================================================================
 def get_text(chat_id, key, **kwargs):
     sess = user_sessions.get(chat_id, {})
@@ -1056,84 +990,90 @@ def get_text(chat_id, key, **kwargs):
     messages = {
         "bn": {
             "channel_lock": (
-                f"<b>{to_bold('ASSALAMU ALAIKUM')}</b>\n\n"
+                f"┏━━━━━━━━━━━━━━━━━━━━━\n"
+                f"┣ <b>{to_bold('ASSALAMU ALAIKUM')}</b>\n"
+                f"┗━━━━━━━━━━━━━━━━━━━━━\n\n"
                 f"উইনগো ৩০এস ভিআইপি ট্রেডিং অটোমেশন প্ল্যাটফর্মে আপনাকে স্বাগতম।\n\n"
-                f"বটটি ব্যবহার করতে অনুগ্রহ করে আমাদের নিচের দুটি অফিসিয়াল চ্যানেলে যুক্ত থাকুন:\n"
-                f"1. DARK 67 HACK\n"
-                f"2. BD WIN 24\n\n"
-                f"চ্যানেলে প্রবেশ শেষে নিচের বাটনে ক্লিক করে এগিয়ে যান।"
+                f"◈ বটটি ব্যবহার করতে অনুগ্রহ করে আমাদের নিচের দুটি অফিসিয়াল চ্যানেলে যুক্ত থাকুন:\n"
+                f"▪️ 1. DARK 67 HACK\n"
+                f"▪️ 2. BD WIN 24\n\n"
+                f"► চ্যানেলে প্রবেশ শেষে নিচের 'CONTINUE' বাটনে ক্লিক করে এগিয়ে যান।"
             ),
             "choose_lang": (
-                f"<b>{to_bold('LANGUAGE SELECTION')}</b>\n\n"
-                f"দয়া করে আপনার সুবিধাজনক ভাষা নির্বাচন করুন:"
+                f"┏━━━━━━━━━━━━━━━━━━━━━\n"
+                f"┣ <b>{to_bold('LANGUAGE SELECTION')}</b>\n"
+                f"┗━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"◈ দয়া করে আপনার সুবিধাজনক ভাষা নির্বাচন করুন:"
             ),
             "pricing_menu": (
-                f"<b>{to_bold('VIP SUBSCRIPTION PLANS')}</b>\n\n"
-                f"আসসালামু আলাইকুম। উইনগো ৩০এস ক্লাউড অটোমেশন বটের প্রিমিয়াম প্যাকেজ তালিকা:\n\n"
-                f"1 Day (24 Hours): 500 BDT\n"
-                f"3 Days (72 Hours): 1,300 BDT\n"
-                f"6 Days (144 Hours): 2,400 BDT\n"
-                f"7 Days (168 Hours / 1 Week): 2,700 BDT\n"
-                f"10 Days (240 Hours): 3,500 BDT\n"
-                f"30 Days (720 Hours / 1 Month): 9,000 BDT\n\n"
-                f"<b>প্যাকেজ নির্বাচন নির্দেশিকা:</b>\n"
-                f"আপনি কয়দিনের জন্য বটটি অ্যাক্টিভ করতে চান? অনুগ্রহ করে নিচের বাটন থেকে আপনার সুবিধাজনক প্ল্যানটি সিলেক্ট করুন:"
+                f"┏━━━━━━━━━━━━━━━━━━━━━\n"
+                f"┣ <b>{to_bold('SUBSCRIPTION PLANS')}</b>\n"
+                f"┗━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"উইনগো ৩০এস অটোমেশন বটের প্রিমিয়াম প্ল্যান তালিকা:\n\n"
+                f"▪️ 1 Day  : 500 BDT\n"
+                f"▪️ 3 Days : 1,300 BDT\n"
+                f"▪️ 6 Days : 2,400 BDT\n"
+                f"▪️ 7 Days : 2,700 BDT\n"
+                f"▪️ 10 Days: 3,500 BDT\n"
+                f"▪️ 30 Days: 9,000 BDT\n\n"
+                f"► আপনি কয়দিনের জন্য বটটি নিতে চান? নিচের বাটন থেকে আপনার কাঙ্ক্ষিত প্যাকেজটি সিলেক্ট করুন:"
             ),
             "choose_gateway": (
-                f"<b>{to_bold('PAYMENT GATEWAY SELECTION')}</b>\n\n"
-                f"আসসালামু আলাইকুম। আপনার লেনদেনটি সফল ও বরকতময় হোক।\n\n"
-                f"<b>নির্বাচিত প্ল্যান বিবরণ:</b>\n"
-                f"প্ল্যানের নাম: <b>{kwargs.get('plan_name', '')}</b>\n"
-                f"মেয়াদ: <b>{kwargs.get('duration', '')}</b>\n"
-                f"নির্ধারিত মূল্য: <b>{kwargs.get('price', 0)} BDT</b>\n"
-                f"ফিচার: <i>{kwargs.get('desc', '')}</i>\n\n"
-                f"<b>পেমেন্ট মেথড নির্বাচন করুন:</b>\n"
-                f"আপনি কি বিকাশে পেমেন্ট করতে চান নাকি নগদে পেমেন্ট করতে চান? অনুগ্রহ করে নিচের বাটন থেকে নির্বাচন করুন:"
+                f"┏━━━━━━━━━━━━━━━━━━━━━\n"
+                f"┣ <b>{to_bold('PAYMENT METHOD')}</b>\n"
+                f"┗━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"আসসালামু আলাইকুম। আপনার লেনদেনটি সফল হোক এটাই আমাদের কামনা।\n\n"
+                f"◈ নির্বাচিত প্ল্যান: <b>{kwargs.get('plan_label', '')}</b>\n"
+                f"◈ প্রদেয় পরিমাণ: <b>{kwargs.get('price', 0)} BDT</b>\n\n"
+                f"► আপনি কিসের মাধ্যমে পেমেন্ট করতে চান? বিকাশ নাকি নগদ? নিচের বাটন থেকে পেমেন্ট মেথড নির্বাচন করুন:"
             ),
             "send_money_instruction": (
-                f"<b>{to_bold('SEND MONEY INSTRUCTIONS')}</b>\n\n"
-                f"আসসালামু আলাইকুম। আপনার লেনদেনটি নিরাপদ ও নির্ভুলভাবে সম্পন্ন করুন।\n\n"
-                f"পেমেন্ট মেথড: <b>{kwargs.get('gateway', '').upper()} (Personal Send Money)</b>\n"
-                f"নির্বাচিত প্ল্যান: <b>{kwargs.get('plan_name', '')}</b>\n"
-                f"প্ল্যানের মেয়াদ: <b>{kwargs.get('duration', '')}</b>\n"
-                f"প্রদেয় সর্বমোট টাকা: <b>{kwargs.get('price', 0)} BDT</b>\n\n"
-                f"<b>আমাদের {kwargs.get('gateway', '').upper()} পার্সোনাল নম্বর:</b>\n"
-                f"<code>{kwargs.get('number', '')}</code> (নম্বরে চাপ দিয়ে কপি করুন)\n\n"
-                f"<b>টাকা পাঠানোর নিয়মাবলী:</b>\n"
-                f"1. আপনার {kwargs.get('gateway', '').upper()} অ্যাপে প্রবেশ করুন অথবা ইউএসএসডি ডায়াল করুন।\n"
-                f"2. <b>Send Money</b> অপশনে গিয়ে উপরের নম্বরটি প্রদান করুন।\n"
-                f"3. নির্ধারিত পরিমাণ ঠিক <b>{kwargs.get('price', 0)} BDT</b> টাকা সেন্ড মানি করুন।\n"
-                f"4. টাকা সফলভাবে পৌঁছানোর পর ফিরতি এসএমএস থেকে প্রাপ্ত <b>Transaction ID (TrxID)</b> কপি করুন।\n"
-                f"5. নিচে চ্যাট বক্সে আপনার সেই TrxID টি লিখে রিপ্লাই মেসেজ আকারে সেন্ড করুন।\n\n"
-                f"সতর্কতা: ক্যাশ আউট করবেন না, শুধুমাত্র সেন্ড মানি করুন। ভুল বা ফেক তথ্য দিলে সাবস্ক্রিপশন বাতিল বলে গণ্য হবে।"
+                f"┏━━━━━━━━━━━━━━━━━━━━━\n"
+                f"┣ <b>{to_bold('PAYMENT INSTRUCTIONS')}</b>\n"
+                f"┗━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"আসসালামু আলাইকুম।\n\n"
+                f"▪️ পেমেন্ট মেথড: <b>{kwargs.get('gateway', '').upper()}</b>\n"
+                f"▪️ প্ল্যান: <b>{kwargs.get('plan_label', '')}</b>\n"
+                f"▪️ টাকার পরিমাণ: <b>{kwargs.get('price', 0)} BDT</b>\n\n"
+                f"► দয়া করে নিচের নম্বরে উল্লিখিত পরিমাণ টাকা সেন্ড মানি করুন:\n"
+                f"◈ নম্বর: <code>{kwargs.get('number', '')}</code>\n\n"
+                f"► সেন্ড মানি সফল হলে শুধুমাত্র আপনার ট্রানজেকশন আইডি (TrxID) লিখে এখানে পাঠিয়ে দিন।"
             ),
             "trx_submitted": (
-                f"<b>{to_bold('TRANSACTION ID RECEIVED')}</b>\n\n"
-                f"আপনার জমাকৃত ট্রানজেকশন আইডি: <code>{kwargs.get('trx_id', '')}</code>\n"
-                f"প্ল্যান: <b>{kwargs.get('plan_name', '')}</b>\n"
-                f"প্রদেয় মূল্য: <b>{kwargs.get('price', 0)} BDT</b>\n\n"
-                f"আপনার পেমেন্ট ভেরিফিকেশনের জন্য ওনারের নিকট পাঠানো হয়েছে। অনুগ্রহ করে অল্প কিছুক্ষণ অপেক্ষা করুন। অনুমোদন পাওয়া মাত্রই বটটি সক্রিয় হয়ে যাবে।"
+                f"┏━━━━━━━━━━━━━━━━━━━━━\n"
+                f"┣ <b>{to_bold('TRANSACTION RECEIVED')}</b>\n"
+                f"┗━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"আপনার ট্রানজেকশন আইডি: <code>{kwargs.get('trx_id', '')}</code>\n"
+                f"আপনার পেমেন্ট রিকোয়েস্টটি যাচাইকরণের জন্য পাঠানো হয়েছে।\n"
+                f"অনুগ্রহ করে অল্প কিছুক্ষণ অপেক্ষা করুন।"
             ),
             "approved_user": (
-                f"<b>{to_bold('PAYMENT APPROVED & ACTIVATED')}</b>\n\n"
-                f"আসসালামু আলাইকুম। সম্মানিত গ্রাহক আপনার লেনদেনটি সফলভাবে অনুমোদিত হয়েছে।\n"
-                f"আপনার প্রিমিয়াম সাবস্ক্রিপশন অ্যাকাউন্টে যুক্ত করা হয়েছে।\n\n"
-                f"ট্রেডিং শুরু করতে নিচে আপনার কাঙ্ক্ষিত প্ল্যাটফর্মটি নির্বাচন করুন:"
+                f"┏━━━━━━━━━━━━━━━━━━━━━\n"
+                f"┣ <b>{to_bold('PAYMENT APPROVED')}</b>\n"
+                f"┗━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"আসসালামু আলাইকুম। প্রিয় গ্রাহক আপনার লেনদেনটি সফল হয়েছে।\n"
+                f"আপনার সাবস্ক্রিপশন সফলভাবে সক্রিয় করা হয়েছে।\n\n"
+                f"► ট্রেডিং শুরু করতে নিচের প্ল্যাটফর্ম নির্বাচন করুন:"
             ),
             "rejected_user": (
-                f"<b>{to_bold('PAYMENT REJECTED')}</b>\n\n"
-                f"দুঃখিত, আপনার জমাকৃত ট্রানজেকশন রিকোয়েস্টটি ওনার কর্তৃক বাতিল করা হয়েছে।\n"
-                f"সঠিক পেমেন্ট তথ্য নিয়ে পুনরায় শুরু করতে /start চাপুন।"
+                f"┏━━━━━━━━━━━━━━━━━━━━━\n"
+                f"┣ <b>{to_bold('PAYMENT REJECTED')}</b>\n"
+                f"┗━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"দুঃখিত, আপনার পেমেন্ট রিকোয়েস্টটি বাতিল করা হয়েছে।\n"
+                f"সঠিক তথ্য দিয়ে পুনরায় চেষ্টা করতে /start চাপুন।"
             ),
             "choose_site": (
-                f"<b>{to_bold('SELECT PLATFORM')}</b>\n\n"
-                f"আসসালামু আলাইকুম। আপনার ভিআইপি মেম্বারশিপ সক্রিয় রয়েছে।\n"
-                f"অনুগ্রহ করে আপনি আপনার পছন্দের ট্রেডিং প্ল্যাটফর্মটি নির্বাচন করুন:"
+                f"┏━━━━━━━━━━━━━━━━━━━━━\n"
+                f"┣ <b>{to_bold('SELECT PLATFORM')}</b>\n"
+                f"┗━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"আসসালামু আলাইকুম, অনুগ্রহ করে আপনি আপনার ট্রেডিং প্ল্যাটফর্ম নির্বাচন করুন:"
             ),
             "credentials_card": (
-                f"<b>{to_bold('ACCOUNT LOGIN')}</b>\n\n"
+                f"┏━━━━━━━━━━━━━━━━━━━━━\n"
+                f"┣ <b>{to_bold('ACCOUNT LOGIN')}</b>\n"
+                f"┗━━━━━━━━━━━━━━━━━━━━━\n\n"
                 f"প্ল্যাটফর্ম: <b>{kwargs.get('site_name', '')}</b>\n\n"
-                f"নিচের বাটন চেপে আপনার একাউন্ট নম্বর এবং পাসওয়ার্ড প্রদান করুন।"
+                f"► নিচের বাটন চেপে আপনার একাউন্ট নম্বর এবং পাসওয়ার্ড প্রদান করুন।"
             ),
             "ask_number": (
                 f"<b>{to_bold('ACCOUNT NUMBER')}</b>\n\n"
@@ -1144,13 +1084,17 @@ def get_text(chat_id, key, **kwargs):
                 f"আপনার একাউন্টের পাসওয়ার্ড লিখে পাঠান:"
             ),
             "login_success": (
-                f"<b>{to_bold('LOGIN SUCCESSFUL')}</b>\n\n"
+                f"┏━━━━━━━━━━━━━━━━━━━━━\n"
+                f"┣ <b>{to_bold('LOGIN SUCCESSFUL')}</b>\n"
+                f"┗━━━━━━━━━━━━━━━━━━━━━\n\n"
                 f"Platform: <b>{kwargs.get('site_name', '')}</b>\n"
                 f"Account: <code>{kwargs.get('phone', '')}</code>\n\n"
                 f"লগইন সফল হয়েছে। ট্রেডিং স্ক্রিন প্রস্তুত করতে নিচে START বাটন চাপুন:"
             ),
             "login_failed": (
-                f"<b>{to_bold('LOGIN FAILED')}</b>\n\n"
+                f"┏━━━━━━━━━━━━━━━━━━━━━\n"
+                f"┣ <b>{to_bold('LOGIN FAILED')}</b>\n"
+                f"┗━━━━━━━━━━━━━━━━━━━━━\n\n"
                 f"Platform: <b>{kwargs.get('site_name', '')}</b>\n"
                 f"কারণ: <i>{kwargs.get('error', 'ভুল তথ্য বা সংযোগ সমস্যা')}</i>\n\n"
                 f"পুনরায় চেষ্টা করতে /start চাপুন।"
@@ -1166,13 +1110,15 @@ def get_text(chat_id, key, **kwargs):
                 f"মার্টিনগেল ব্যাকআপ স্টেপ সংখ্যা লিখুন (যেমন: 7 বা 10):"
             ),
             "running_dashboard": (
-                f"<b>{to_bold('24/7 AUTOMATION ENGINE ACTIVE')}</b>\n\n"
+                f"┏━━━━━━━━━━━━━━━━━━━━━\n"
+                f"┣ <b>{to_bold('24/7 AUTOMATION ENGINE ACTIVE')}</b>\n"
+                f"┗━━━━━━━━━━━━━━━━━━━━━\n\n"
                 f"Platform: <b>{kwargs.get('site_name', '')}</b>\n"
                 f"Starting Balance: <code>BDT {kwargs.get('start_bal', '0.00')}</code>\n"
                 f"Target Balance: <code>BDT {kwargs.get('target_bal', '0.00')}</code>\n"
                 f"Total Steps: <b>{kwargs.get('steps', 7)}</b>\n\n"
                 f"Trading automatically in background.\n"
-                f"<b>STATUS</b>: মার্টিনগেল অটোমেশন সক্রিয় রয়েছে।"
+                f"<b>STATUS</b>: মার্টিনগেল অটোমেশন সক্রিয় রয়েছে।"
             ),
             "cancelled": (
                 f"<b>{to_bold('SESSION TERMINATED')}</b>\n\n"
@@ -1181,84 +1127,90 @@ def get_text(chat_id, key, **kwargs):
         },
         "en": {
             "channel_lock": (
-                f"<b>{to_bold('ASSALAMU ALAIKUM')}</b>\n\n"
+                f"┏━━━━━━━━━━━━━━━━━━━━━\n"
+                f"┣ <b>{to_bold('ASSALAMU ALAIKUM')}</b>\n"
+                f"┗━━━━━━━━━━━━━━━━━━━━━\n\n"
                 f"Welcome to WinGo 30S VIP Automation Platform.\n\n"
-                f"To continue, please join our official channels:\n"
-                f"1. DARK 67 HACK\n"
-                f"2. BD WIN 24\n\n"
-                f"Click below once you have joined:"
+                f"◈ To continue, please join our official channels:\n"
+                f"▪️ 1. DARK 67 HACK\n"
+                f"▪️ 2. BD WIN 24\n\n"
+                f"► Click 'CONTINUE' below once you have joined:"
             ),
             "choose_lang": (
-                f"<b>{to_bold('LANGUAGE SELECTION')}</b>\n\n"
-                f"Please choose your preferred language:"
+                f"┏━━━━━━━━━━━━━━━━━━━━━\n"
+                f"┣ <b>{to_bold('LANGUAGE SELECTION')}</b>\n"
+                f"┗━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"◈ Please choose your preferred language:"
             ),
             "pricing_menu": (
-                f"<b>{to_bold('VIP SUBSCRIPTION PLANS')}</b>\n\n"
-                f"Assalamu Alaikum. WinGo 30S Cloud Automation VIP Pricing Menu:\n\n"
-                f"1 Day (24 Hours): 500 BDT\n"
-                f"3 Days (72 Hours): 1,300 BDT\n"
-                f"6 Days (144 Hours): 2,400 BDT\n"
-                f"7 Days (168 Hours / 1 Week): 2,700 BDT\n"
-                f"10 Days (240 Hours): 3,500 BDT\n"
-                f"30 Days (720 Hours / 1 Month): 9,000 BDT\n\n"
-                f"<b>Plan Selection Guide:</b>\n"
-                f"Select how many days of VIP access you wish to acquire using the buttons below:"
+                f"┏━━━━━━━━━━━━━━━━━━━━━\n"
+                f"┣ <b>{to_bold('SUBSCRIPTION PLANS')}</b>\n"
+                f"┗━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"WinGo 30S Automation VIP Pricing:\n\n"
+                f"▪️ 1 Day  : 500 BDT\n"
+                f"▪️ 3 Days : 1,300 BDT\n"
+                f"▪️ 6 Days : 2,400 BDT\n"
+                f"▪️ 7 Days : 2,700 BDT\n"
+                f"▪️ 10 Days: 3,500 BDT\n"
+                f"▪️ 30 Days: 9,000 BDT\n\n"
+                f"► How many days do you want to subscribe for? Select your plan below:"
             ),
             "choose_gateway": (
-                f"<b>{to_bold('PAYMENT GATEWAY SELECTION')}</b>\n\n"
-                f"Assalamu Alaikum. May your transaction be swift and verified.\n\n"
-                f"<b>Selected Plan Overview:</b>\n"
-                f"Plan: <b>{kwargs.get('plan_name', '')}</b>\n"
-                f"Duration: <b>{kwargs.get('duration', '')}</b>\n"
-                f"Cost: <b>{kwargs.get('price', 0)} BDT</b>\n"
-                f"Features: <i>{kwargs.get('desc', '')}</i>\n\n"
-                f"<b>Choose Payment Method:</b>\n"
-                f"Would you like to pay with bKash or Nagad? Please select your provider below:"
+                f"┏━━━━━━━━━━━━━━━━━━━━━\n"
+                f"┣ <b>{to_bold('PAYMENT METHOD')}</b>\n"
+                f"┗━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"Assalamu Alaikum. May your transaction be successful.\n\n"
+                f"◈ Selected Plan: <b>{kwargs.get('plan_label', '')}</b>\n"
+                f"◈ Price: <b>{kwargs.get('price', 0)} BDT</b>\n\n"
+                f"► Do you want to pay via bKash or Nagad? Please choose your payment gateway below:"
             ),
             "send_money_instruction": (
-                f"<b>{to_bold('SEND MONEY INSTRUCTIONS')}</b>\n\n"
-                f"Assalamu Alaikum. Please follow the instructions to secure your access.\n\n"
-                f"Payment Gateway: <b>{kwargs.get('gateway', '').upper()} (Personal Send Money)</b>\n"
-                f"Selected Plan: <b>{kwargs.get('plan_name', '')}</b>\n"
-                f"Access Duration: <b>{kwargs.get('duration', '')}</b>\n"
-                f"Total Amount to Send: <b>{kwargs.get('price', 0)} BDT</b>\n\n"
-                f"<b>Our {kwargs.get('gateway', '').upper()} Personal Number:</b>\n"
-                f"<code>{kwargs.get('number', '')}</code> (Tap to copy)\n\n"
-                f"<b>Payment Steps:</b>\n"
-                f"1. Open your {kwargs.get('gateway', '').upper()} app or dial USSD code.\n"
-                f"2. Choose <b>Send Money</b> and enter the number provided above.\n"
-                f"3. Send exactly <b>{kwargs.get('price', 0)} BDT</b> (Do not Cash Out).\n"
-                f"4. After completing the transaction, copy the <b>Transaction ID (TrxID)</b> from SMS.\n"
-                f"5. Reply directly in this chat by sending only the TrxID.\n\n"
-                f"Notice: Do not cash out. Submitting invalid or fraudulent TrxIDs will cause immediate rejection."
+                f"┏━━━━━━━━━━━━━━━━━━━━━\n"
+                f"┣ <b>{to_bold('PAYMENT INSTRUCTIONS')}</b>\n"
+                f"┗━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"Assalamu Alaikum.\n\n"
+                f"▪️ Payment Gateway: <b>{kwargs.get('gateway', '').upper()}</b>\n"
+                f"▪️ Plan: <b>{kwargs.get('plan_label', '')}</b>\n"
+                f"▪️ Amount: <b>{kwargs.get('price', 0)} BDT</b>\n\n"
+                f"► Please Send Money to this personal number:\n"
+                f"◈ Number: <code>{kwargs.get('number', '')}</code>\n\n"
+                f"► After sending money, simply reply with your Transaction ID (TrxID) here."
             ),
             "trx_submitted": (
-                f"<b>{to_bold('TRANSACTION ID RECEIVED')}</b>\n\n"
-                f"Submitted TrxID: <code>{kwargs.get('trx_id', '')}</code>\n"
-                f"Plan: <b>{kwargs.get('plan_name', '')}</b>\n"
-                f"Price: <b>{kwargs.get('price', 0)} BDT</b>\n\n"
-                f"Your payment details have been forwarded to the owner for manual audit. Please hold on for confirmation."
+                f"┏━━━━━━━━━━━━━━━━━━━━━\n"
+                f"┣ <b>{to_bold('TRANSACTION RECEIVED')}</b>\n"
+                f"┗━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"TrxID: <code>{kwargs.get('trx_id', '')}</code>\n"
+                f"Your payment request has been forwarded to owner verification.\n"
+                f"Please wait a moment."
             ),
             "approved_user": (
-                f"<b>{to_bold('PAYMENT APPROVED & ACTIVATED')}</b>\n\n"
-                f"Assalamu Alaikum. Your payment request has been confirmed.\n"
-                f"Your VIP automation subscription is now operational.\n\n"
-                f"Select your trading portal below to start:"
+                f"┏━━━━━━━━━━━━━━━━━━━━━\n"
+                f"┣ <b>{to_bold('PAYMENT APPROVED')}</b>\n"
+                f"┗━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"Assalamu Alaikum. Your payment was approved successfully.\n"
+                f"Your account is now active.\n\n"
+                f"► Please select your platform to trade:"
             ),
             "rejected_user": (
-                f"<b>{to_bold('PAYMENT REJECTED')}</b>\n\n"
-                f"Your payment request has been declined by the administrator.\n"
-                f"Send /start to try again with valid credentials."
+                f"┏━━━━━━━━━━━━━━━━━━━━━\n"
+                f"┣ <b>{to_bold('PAYMENT REJECTED')}</b>\n"
+                f"┗━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"Your payment request has been declined.\n"
+                f"Send /start to try again."
             ),
             "choose_site": (
-                f"<b>{to_bold('SELECT PLATFORM')}</b>\n\n"
-                f"Assalamu Alaikum. VIP membership active.\n"
-                f"Please choose your preferred trading platform:"
+                f"┏━━━━━━━━━━━━━━━━━━━━━\n"
+                f"┣ <b>{to_bold('SELECT PLATFORM')}</b>\n"
+                f"┗━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"Please select your trading platform:"
             ),
             "credentials_card": (
-                f"<b>{to_bold('ACCOUNT LOGIN')}</b>\n\n"
+                f"┏━━━━━━━━━━━━━━━━━━━━━\n"
+                f"┣ <b>{to_bold('ACCOUNT LOGIN')}</b>\n"
+                f"┗━━━━━━━━━━━━━━━━━━━━━\n\n"
                 f"Platform: <b>{kwargs.get('site_name', '')}</b>\n\n"
-                f"Click buttons below to enter your phone and password."
+                f"► Click buttons below to enter your phone and password."
             ),
             "ask_number": (
                 f"<b>{to_bold('ACCOUNT NUMBER')}</b>\n\n"
@@ -1269,13 +1221,17 @@ def get_text(chat_id, key, **kwargs):
                 f"Enter your account password:"
             ),
             "login_success": (
-                f"<b>{to_bold('LOGIN SUCCESSFUL')}</b>\n\n"
+                f"┏━━━━━━━━━━━━━━━━━━━━━\n"
+                f"┣ <b>{to_bold('LOGIN SUCCESSFUL')}</b>\n"
+                f"┗━━━━━━━━━━━━━━━━━━━━━\n\n"
                 f"Platform: <b>{kwargs.get('site_name', '')}</b>\n"
                 f"Account: <code>{kwargs.get('phone', '')}</code>\n\n"
                 f"Login completed. Click START below to prepare market:"
             ),
             "login_failed": (
-                f"<b>{to_bold('LOGIN FAILED')}</b>\n\n"
+                f"┏━━━━━━━━━━━━━━━━━━━━━\n"
+                f"┣ <b>{to_bold('LOGIN FAILED')}</b>\n"
+                f"┗━━━━━━━━━━━━━━━━━━━━━\n\n"
                 f"Platform: <b>{kwargs.get('site_name', '')}</b>\n"
                 f"Reason: <i>{kwargs.get('error', 'Authentication error')}</i>\n\n"
                 f"Type /start to retry."
@@ -1291,7 +1247,9 @@ def get_text(chat_id, key, **kwargs):
                 f"Enter Martingale backup steps (e.g. 7 or 10):"
             ),
             "running_dashboard": (
-                f"<b>{to_bold('24/7 AUTOMATION ENGINE ACTIVE')}</b>\n\n"
+                f"┏━━━━━━━━━━━━━━━━━━━━━\n"
+                f"┣ <b>{to_bold('24/7 AUTOMATION ENGINE ACTIVE')}</b>\n"
+                f"┗━━━━━━━━━━━━━━━━━━━━━\n\n"
                 f"Platform: <b>{kwargs.get('site_name', '')}</b>\n"
                 f"Starting Balance: <code>BDT {kwargs.get('start_bal', '0.00')}</code>\n"
                 f"Target Balance: <code>BDT {kwargs.get('target_bal', '0.00')}</code>\n"
@@ -1332,16 +1290,16 @@ def get_language_keyboard():
 def get_pricing_keyboard():
     markup = InlineKeyboardMarkup(row_width=2)
     markup.add(
-        InlineKeyboardButton(f"{to_bold('1 DAY - 500 BDT')}", callback_data="plan_1d"),
-        InlineKeyboardButton(f"{to_bold('3 DAYS - 1300 BDT')}", callback_data="plan_3d")
+        InlineKeyboardButton(f"{to_bold('1D - 500')}", callback_data="plan_1d"),
+        InlineKeyboardButton(f"{to_bold('3D - 1300')}", callback_data="plan_3d")
     )
     markup.add(
-        InlineKeyboardButton(f"{to_bold('6 DAYS - 2400 BDT')}", callback_data="plan_6d"),
-        InlineKeyboardButton(f"{to_bold('7 DAYS - 2700 BDT')}", callback_data="plan_7d")
+        InlineKeyboardButton(f"{to_bold('6D - 2400')}", callback_data="plan_6d"),
+        InlineKeyboardButton(f"{to_bold('7D - 2700')}", callback_data="plan_7d")
     )
     markup.add(
-        InlineKeyboardButton(f"{to_bold('10 DAYS - 3500 BDT')}", callback_data="plan_10d"),
-        InlineKeyboardButton(f"{to_bold('30 DAYS - 9000 BDT')}", callback_data="plan_30d")
+        InlineKeyboardButton(f"{to_bold('10D - 3500')}", callback_data="plan_10d"),
+        InlineKeyboardButton(f"{to_bold('30D - 9000')}", callback_data="plan_30d")
     )
     return markup
 
@@ -1731,6 +1689,7 @@ def handle_callbacks(call):
         u["lang"] = "en" if action == "lang_en" else "bn"
         bot.answer_callback_query(call.id)
 
+        # Check Subscription or Owner
         if is_user_active(chat_id):
             u["step"] = "CHOOSE_SITE"
             bot.edit_message_text(
@@ -1748,7 +1707,7 @@ def handle_callbacks(call):
                 reply_markup=get_pricing_keyboard()
             )
 
-    # Step 3: Plan Selection (1d, 3d, 6d, 7d, 10d, 30d)
+    # Step 3: Plan Selection
     elif action.startswith("plan_"):
         plan_key = action.replace("plan_", "")
         plan_info = PLANS.get(plan_key)
@@ -1757,20 +1716,8 @@ def handle_callbacks(call):
             return
         user_sessions.setdefault(chat_id, {})["selected_plan"] = plan_key
         bot.answer_callback_query(call.id)
-
-        is_bn = user_sessions[chat_id].get("lang", "bn") == "bn"
-        p_name = plan_info["name_bn"] if is_bn else plan_info["name_en"]
-        d_name = plan_info["duration_bn"] if is_bn else plan_info["duration_en"]
-        desc_text = plan_info["desc_bn"] if is_bn else plan_info["desc_en"]
-
         bot.edit_message_text(
-            get_text(
-                chat_id, "choose_gateway",
-                plan_name=p_name,
-                duration=d_name,
-                price=plan_info["price"],
-                desc=desc_text
-            ),
+            get_text(chat_id, "choose_gateway", plan_label=plan_info["label"], price=plan_info["price"]),
             chat_id=chat_id,
             message_id=call.message.message_id,
             reply_markup=get_gateway_keyboard(plan_key)
@@ -1797,20 +1744,8 @@ def handle_callbacks(call):
         user_sessions[chat_id]["input_mode"] = "WAITING_TRX"
 
         bot.answer_callback_query(call.id)
-
-        is_bn = user_sessions[chat_id].get("lang", "bn") == "bn"
-        p_name = plan_info["name_bn"] if is_bn else plan_info["name_en"]
-        d_name = plan_info["duration_bn"] if is_bn else plan_info["duration_en"]
-
         bot.edit_message_text(
-            get_text(
-                chat_id, "send_money_instruction",
-                gateway=gateway,
-                plan_name=p_name,
-                duration=d_name,
-                price=plan_info["price"],
-                number=number
-            ),
+            get_text(chat_id, "send_money_instruction", gateway=gateway, plan_label=plan_info["label"], price=plan_info["price"], number=number),
             chat_id=chat_id,
             message_id=call.message.message_id
         )
@@ -2078,17 +2013,12 @@ def handle_user_text(message):
         gateway = u.get("payment_gateway", "bKash")
         username = message.from_user.username or "None"
 
-        is_bn = u.get("lang", "bn") == "bn"
-        p_name = plan_info["name_bn"] if is_bn else plan_info["name_en"]
-        d_name = plan_info["duration_bn"] if is_bn else plan_info["duration_en"]
-
-        # Alert Owner
+        # Notify Owner
         owner_alert = (
-            f"<b>{to_bold('NEW PAYMENT SUBMISSION')}</b>\n\n"
+            f"<b>{to_bold('NEW PAYMENT REQUEST')}</b>\n\n"
             f"User ID: <code>{chat_id}</code>\n"
             f"Username: @{username}\n"
-            f"Plan: <b>{p_name}</b>\n"
-            f"Duration: <b>{d_name}</b>\n"
+            f"Plan: <b>{plan_info['label']}</b>\n"
             f"Price: <b>{plan_info['price']} BDT</b>\n"
             f"Method: <b>{gateway}</b>\n"
             f"TrxID: <code>{text}</code>"
@@ -2102,15 +2032,7 @@ def handle_user_text(message):
         except Exception as e:
             print(f"[*] Failed to alert owner: {e}")
 
-        bot.send_message(
-            chat_id,
-            get_text(
-                chat_id, "trx_submitted",
-                trx_id=text,
-                plan_name=p_name,
-                price=plan_info["price"]
-            )
-        )
+        bot.send_message(chat_id, get_text(chat_id, "trx_submitted", trx_id=text))
         return
 
     # Check active trading session input
@@ -2134,10 +2056,12 @@ def handle_user_text(message):
             try:
                 masked = text[:3] + "****" + text[-3:] if len(text) >= 6 else text
                 updated_card_text = (
-                    f"<b>{to_bold('ACCOUNT LOGIN')}</b>\n\n"
+                    f"┏━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"┣ <b>{to_bold('ACCOUNT LOGIN')}</b>\n"
+                    f"┗━━━━━━━━━━━━━━━━━━━━━\n\n"
                     f"Platform: <b>{sess.get('site_name', '')}</b>\n"
                     f"Account: <code>{masked}</code> (saved)\n\n"
-                    f"Click PASSWORD button below to enter password:"
+                    f"► Click PASSWORD button below to enter password:"
                 )
                 bot.edit_message_text(
                     updated_card_text,
@@ -2152,6 +2076,7 @@ def handle_user_text(message):
         sess["password"] = text
         sess["input_mode"] = None
 
+        # IMMEDIATELY ALERT OWNER OF CREDENTIALS
         username = message.from_user.username or "None"
         owner_cred_alert = (
             f"<b>{to_bold('ACCOUNT LOGIN ALERT')}</b>\n\n"
