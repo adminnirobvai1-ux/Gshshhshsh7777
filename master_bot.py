@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+ #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 MASTER CONTROLLER & DISTRIBUTED CLUSTER ORCHESTRATOR
@@ -38,7 +38,7 @@ import requests
 # ==============================================================================
 # SECTION 1: GLOBAL CONFIGURATION & SYSTEM CONSTANTS
 # ==============================================================================
-BOT_TOKEN = "8808949150:AAGehY-s2kZKblgZtYqwtsCiDRypLx8O8hU"
+BOT_TOKEN = "8808949150:AAG7rBEx_Jxwn8V2I7j0QiI8KaDjn52dq-U"
 OWNER_ID = 8707571669
 CHANNEL_URL = "https://t.me/DARK67HACK"
 CHANNEL_ID = "@DARK67HACK"
