@@ -8,6 +8,7 @@ import json
 import base64
 import random
 import string
+import socket
 
 # ==========================================
 # 1. Automatic Package Installer
@@ -30,35 +31,54 @@ from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.firefox.service import Service as FirefoxService
 
 # ==========================================
-# 2. Worker Configuration & Node Persistence
+# 2. Mathematical Bold Unicode & System Utils
 # ==========================================
-# সেন্ট্রাল মাস্টার সার্ভারের আইপি বা ডোমেইন অ্যাড্রেস এখানে দিন
-MASTER_SERVER_URL = "http://127.0.0.1:8088"
+def to_bold(text: str) -> str:
+    res = []
+    for c in str(text):
+        n = ord(c)
+        if 65 <= n <= 90:
+            res.append(chr(n + 119743))
+        elif 97 <= n <= 122:
+            res.append(chr(n + 119737))
+        elif 48 <= n <= 57:
+            res.append(chr(n + 120764))
+        else:
+            res.append(c)
+    return "".join(res)
 
-NODE_ID_FILE = "node_id.txt"
+# ==========================================
+# 3. Persistent Node Identity & Config
+# ==========================================
+MASTER_API_URL = os.environ.get("MASTER_API_URL", "http://127.0.0.1:8080")
+NODE_ID_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "node_id.txt")
 
 def get_or_create_node_id():
     if os.path.exists(NODE_ID_FILE):
         try:
-            with open(NODE_ID_FILE, "r") as f:
-                nid = f.read().strip()
-                if nid:
-                    return nid
+            with open(NODE_ID_FILE, "r", encoding="utf-8") as f:
+                saved_id = f.read().strip()
+                if saved_id:
+                    return saved_id
         except Exception:
             pass
-    
-    # 00AB2, 00934A স্টাইলের আলফানিউমেরিক আইডি
+
+    # Generate alphanumeric node ID like 00AB2, 00934A, 00F4D1
     prefix = "00"
     suffix = "".join(random.choices(string.ascii_uppercase + string.digits, k=4))
-    new_id = f"{prefix}{suffix}"
+    node_id = f"{prefix}{suffix}"
+
     try:
-        with open(NODE_ID_FILE, "w") as f:
-            f.write(new_id)
-    except Exception:
-        pass
-    return new_id
+        with open(NODE_ID_FILE, "w", encoding="utf-8") as f:
+            f.write(node_id)
+    except Exception as e:
+        print(f"[*] Warning: Could not write node_id.txt: {e}")
+
+    return node_id
 
 NODE_ID = get_or_create_node_id()
+PROFILES_BASE_DIR = os.path.expanduser(f"~/.ff_bot_profiles_{NODE_ID}")
+os.makedirs(PROFILES_BASE_DIR, exist_ok=True)
 
 URL_AMARCLUB_LOGIN = "https://amarclub1.com/#/login"
 URL_DKWIN_LOGIN = "https://dkwin6.com/#/login"
@@ -66,23 +86,23 @@ URL_DKWIN_LOGIN = "https://dkwin6.com/#/login"
 URL_AMARCLUB_WINGO = "https://amarclub1.com/#/saasLottery/WinGo?gameCode=WinGo_30S&lottery=WinGo"
 URL_DKWIN_WINGO = "https://dkwin6.com/#/saasLottery/WinGo?gameCode=WinGo_30S&lottery=WinGo"
 
-PROFILES_BASE_DIR = os.path.expanduser("~/.worker_node_profiles")
-os.makedirs(PROFILES_BASE_DIR, exist_ok=True)
-
-worker_state = {
-    "node_id": NODE_ID,
-    "status": "IDLE", # IDLE, BUSY
-    "driver": None,
-    "lock": threading.RLock(),
+# Node Local Runtime State
+node_state = {
+    "status": "IDLE",           # IDLE | BUSY
     "current_chat_id": None,
     "active_site": None,
+    "driver": None,
+    "lock": threading.RLock(),
     "is_trading": False,
-    "session_created_at": 0,
-    "profile_dir": None
+    "session_started_at": 0,
+    "current_balance": 0.0,
+    "target_profit": 0.0,
+    "total_steps": 7,
+    "phone": None
 }
 
 # ==========================================
-# 3. In-Browser JavaScript Automation Code
+# 4. In-Browser JavaScript Automation Code
 # ==========================================
 AUTO_FILL_AND_CLICK_JS = """
 const phone = arguments[0];
@@ -156,8 +176,8 @@ if (dialog) {
 
 const isBonusModal = bodyText.includes('BONUS DAILY RECHARGE') || 
                      bodyText.includes('DAILY RECHARGE') || 
-                     bodyText.includes('Daily Bonus') ||
-                     bodyText.includes('Deposit Bonus') ||
+                     bodyText.includes('Daily Bonus') || 
+                     bodyText.includes('Deposit Bonus') || 
                      bodyText.includes('Announcement');
 
 if (isBonusModal) {
@@ -815,181 +835,148 @@ const autoTotalSteps = arguments[1];
 """
 
 # ==========================================
-# 4. Isolated Browser Lifecycle Management
+# 5. Isolated WebDriver Allocation & Execution
 # ==========================================
 def allocate_driver(target_url):
-    with worker_state["lock"]:
-        if worker_state["driver"]:
+    with node_state["lock"]:
+        if node_state["driver"]:
             try:
-                worker_state["driver"].quit()
+                node_state["driver"].quit()
             except Exception:
                 pass
+            node_state["driver"] = None
 
-        profile_dir = os.path.join(PROFILES_BASE_DIR, f"profile_{worker_state['node_id']}")
-        if os.path.exists(profile_dir):
-            shutil.rmtree(profile_dir, ignore_errors=True)
+        profile_dir = os.path.join(PROFILES_BASE_DIR, f"profile_{node_state.get('current_chat_id', 'default')}")
         os.makedirs(profile_dir, exist_ok=True)
-        worker_state["profile_dir"] = profile_dir
 
         options = FirefoxOptions()
         options.add_argument("--headless")
         options.add_argument("-profile")
         options.add_argument(profile_dir)
 
-        # মেমোরি ও ক্যাশ অপ্টিমাইজেশন
+        # Performance and cache tuning
         options.set_preference("browser.cache.disk.enable", False)
         options.set_preference("browser.cache.memory.enable", True)
         options.set_preference("network.http.use-cache", False)
 
         service = FirefoxService(log_output=os.devnull)
-        driver = webdriver.Firefox(service=service, options=options)
-        driver.set_window_size(390, 844) # iPhone 12 ভিউপোর্ট
-        driver.get(target_url)
 
-        worker_state["driver"] = driver
-        return driver
+        try:
+            driver = webdriver.Firefox(service=service, options=options)
+            driver.set_window_size(390, 844)  # Mobile View
+            driver.get(target_url)
+            node_state["driver"] = driver
+            return driver
+        except Exception as e:
+            print(f"[*] Driver launch error: {e}")
+            raise e
 
-def safe_driver_exec(task_fn):
-    with worker_state["lock"]:
-        drv = worker_state["driver"]
+def safe_driver_exec(fn):
+    with node_state["lock"]:
+        drv = node_state.get("driver")
         if not drv:
             return None
         try:
-            return task_fn(drv)
+            return fn(drv)
         except Exception as e:
             print(f"[*] Driver exec exception: {e}")
             return None
 
-def capture_base64_screenshot():
-    with worker_state["lock"]:
-        drv = worker_state["driver"]
-        if not drv:
-            return None
-        try:
-            png_bytes = drv.get_screenshot_as_png()
-            return base64.b64encode(png_bytes).decode("utf-8")
-        except Exception:
-            return None
+def capture_screenshot_base64():
+    def _shot(drv):
+        snap_path = os.path.join(PROFILES_BASE_DIR, "temp_shot.png")
+        drv.save_screenshot(snap_path)
+        if os.path.exists(snap_path):
+            with open(snap_path, "rb") as f:
+                b64 = base64.b64encode(f.read()).decode("utf-8")
+            try:
+                os.remove(snap_path)
+            except Exception:
+                pass
+            return b64
+        return None
+    return safe_driver_exec(_shot)
 
-def terminate_driver_and_cleanup():
-    """ট্যাব বন্ধ করে, ড্রাইভার কুইট করে ও প্রোফাইল ফোল্ডার ডিলিট করে র‍্যাম ১০০% ফ্রি করে"""
-    with worker_state["lock"]:
-        worker_state["is_trading"] = False
-        drv = worker_state["driver"]
+def close_worker_browser_and_cleanup():
+    with node_state["lock"]:
+        node_state["is_trading"] = False
+        drv = node_state.get("driver")
         if drv:
             try:
                 drv.quit()
             except Exception:
                 pass
-            worker_state["driver"] = None
+            node_state["driver"] = None
 
-        if worker_state["profile_dir"] and os.path.exists(worker_state["profile_dir"]):
-            shutil.rmtree(worker_state["profile_dir"], ignore_errors=True)
-            worker_state["profile_dir"] = None
+        # Clean isolated profile to instantly free RAM
+        chat_id = node_state.get("current_chat_id")
+        if chat_id:
+            profile_dir = os.path.join(PROFILES_BASE_DIR, f"profile_{chat_id}")
+            if os.path.exists(profile_dir):
+                shutil.rmtree(profile_dir, ignore_errors=True)
 
-        worker_state["status"] = "IDLE"
-        worker_state["current_chat_id"] = None
-        worker_state["active_site"] = None
-        print(f"[*] Node {NODE_ID} reset cleanly to IDLE state.")
+        node_state["status"] = "IDLE"
+        node_state["current_chat_id"] = None
+        node_state["active_site"] = None
+        print(f"[*] Node {NODE_ID} released browser and returned to IDLE state.")
 
 # ==========================================
-# 5. Remote API Communications Engine
+# 6. Master Communication & Telemetry Sync
 # ==========================================
-def register_to_master():
-    url = f"{MASTER_SERVER_URL}/api/node/register"
-    payload = {"node_id": NODE_ID}
+def sync_with_master(endpoint, payload):
     try:
-        r = requests.post(url, json=payload, timeout=5)
-        return r.status_code == 200
+        url = f"{MASTER_API_URL}{endpoint}"
+        resp = requests.post(url, json=payload, timeout=8)
+        if resp.status_code == 200:
+            return resp.json()
     except Exception as e:
-        print(f"[*] Failed to register to master: {e}")
-        return False
-
-def send_heartbeat():
-    url = f"{MASTER_SERVER_URL}/api/node/heartbeat"
-    payload = {
-        "node_id": NODE_ID,
-        "status": worker_state["status"],
-        "current_chat_id": worker_state["current_chat_id"],
-        "active_site": worker_state["active_site"]
-    }
-    try:
-        requests.post(url, json=payload, timeout=4)
-    except Exception:
-        pass
-
-def poll_master_task():
-    url = f"{MASTER_SERVER_URL}/api/node/task?node_id={NODE_ID}"
-    try:
-        r = requests.get(url, timeout=5)
-        if r.status_code == 200:
-            data = r.json()
-            if data.get("has_task"):
-                return data.get("task")
-    except Exception:
-        pass
+        print(f"[*] Master API sync failed on {endpoint}: {e}")
     return None
 
-def report_session_update(chat_id, status, live_bal, wins=0, losses=0, step=1, include_screenshot=True):
-    url = f"{MASTER_SERVER_URL}/api/session/update"
+def post_session_update(update_dict):
+    chat_id = node_state.get("current_chat_id")
+    if not chat_id:
+        return
     payload = {
-        "chat_id": chat_id,
         "node_id": NODE_ID,
-        "status": status,
-        "live_balance": str(live_bal),
-        "wins": wins,
-        "losses": losses,
-        "step_level": step
-    }
-    if include_screenshot:
-        payload["screenshot_base64"] = capture_base64_screenshot()
-
-    try:
-        requests.post(url, json=payload, timeout=8)
-    except Exception as e:
-        print(f"[*] Report update failed: {e}")
-
-def report_session_completion(chat_id, reason, final_bal):
-    url = f"{MASTER_SERVER_URL}/api/session/complete"
-    payload = {
         "chat_id": chat_id,
-        "node_id": NODE_ID,
-        "reason": reason,
-        "final_balance": str(final_bal),
-        "screenshot_base64": capture_base64_screenshot()
+        **update_dict
     }
-    try:
-        requests.post(url, json=payload, timeout=8)
-    except Exception:
-        pass
+    sync_with_master("/api/node/sync_session", payload)
 
 # ==========================================
-# 6. Automation Workflows (Execution Engine)
+# 7. Action Execution Routines
 # ==========================================
 def execute_login_task(task):
-    chat_id = task.get("chat_id")
+    chat_id = task["chat_id"]
     site = task.get("site", "amarclub")
-    phone = task.get("phone")
-    password = task.get("password")
+    phone = task.get("phone", "")
+    password = task.get("password", "")
 
-    worker_state["status"] = "BUSY"
-    worker_state["current_chat_id"] = chat_id
-    worker_state["active_site"] = site
-    worker_state["session_created_at"] = time.time()
+    node_state["status"] = "BUSY"
+    node_state["current_chat_id"] = chat_id
+    node_state["active_site"] = "Amar Club" if site == "amarclub" else "DK Win"
+    node_state["session_started_at"] = time.time()
+    node_state["phone"] = phone
 
-    login_url = URL_AMARCLUB_LOGIN if site == "amarclub" else URL_DKWIN_LOGIN
+    target_login_url = URL_AMARCLUB_LOGIN if site == "amarclub" else URL_DKWIN_LOGIN
 
     try:
-        allocate_driver(login_url)
+        allocate_driver(target_login_url)
     except Exception as e:
-        report_session_update(chat_id, "ERROR", 0.0)
-        terminate_driver_and_cleanup()
+        post_session_update({
+            "status": "LOGIN_FAILED",
+            "error_message": f"Browser initialization failed: {e}"
+        })
+        close_worker_browser_and_cleanup()
         return
 
-    # ১. অটো-ফিল এবং ক্লিক
+    # Attempt form fill with retry
     fill_ok = False
     for _ in range(70):
-        res = safe_driver_exec(lambda d: d.execute_script(AUTO_FILL_AND_CLICK_JS, phone, password))
+        def _fill(drv):
+            return drv.execute_script(AUTO_FILL_AND_CLICK_JS, phone, password)
+        res = safe_driver_exec(_fill)
         if res == "SUCCESS":
             fill_ok = True
             time.sleep(2.0)
@@ -997,14 +984,20 @@ def execute_login_task(task):
         time.sleep(0.4)
 
     if not fill_ok:
-        report_session_update(chat_id, "LOGIN_FAILED", 0.0)
-        terminate_driver_and_cleanup()
+        post_session_update({
+            "status": "LOGIN_FAILED",
+            "error_message": "লগইন ফর্ম পাওয়া যায়নি বা সাইট সাড়া দিচ্ছে না"
+        })
+        close_worker_browser_and_cleanup()
         return
 
-    # ২. লগইন স্ট্যাটাস ভেরিফাই
+    # Check login validation
     login_status = "PENDING"
+    err_detail = ""
     for _ in range(40):
-        res = safe_driver_exec(lambda d: d.execute_script(CHECK_LOGIN_STATUS_JS))
+        def _chk(drv):
+            return drv.execute_script(CHECK_LOGIN_STATUS_JS)
+        res = safe_driver_exec(_chk)
         if isinstance(res, dict):
             if res.get("status") == "SUCCESS":
                 login_status = "SUCCESS"
@@ -1014,145 +1007,225 @@ def execute_login_task(task):
                 continue
             elif res.get("status") == "ERROR":
                 login_status = "ERROR"
+                err_detail = res.get("message", "ভুল ফোন বা পাসওয়ার্ড")
                 break
         time.sleep(0.5)
 
-    token_found = safe_driver_exec(lambda d: d.execute_script("return !!(localStorage.getItem('token') || sessionStorage.getItem('token'));"))
-    if token_found:
+    def _token_chk(drv):
+        return drv.execute_script("return !!(localStorage.getItem('token') || sessionStorage.getItem('token'));")
+    if safe_driver_exec(_token_chk):
         login_status = "SUCCESS"
 
-    if login_status != "SUCCESS":
-        report_session_update(chat_id, "LOGIN_FAILED", 0.0)
-        terminate_driver_and_cleanup()
+    if login_status == "ERROR":
+        post_session_update({
+            "status": "LOGIN_FAILED",
+            "error_message": err_detail
+        })
+        close_worker_browser_and_cleanup()
         return
 
     time.sleep(1.5)
+    screenshot_b64 = capture_screenshot_base64()
 
-    # ৩. উইনগো পেইজে নেভিগেশন
-    wingo_url = URL_AMARCLUB_WINGO if site == "amarclub" else URL_DKWIN_WINGO
-    safe_driver_exec(lambda d: d.execute_script(WINGO_RUNBOX_AND_CLICK_JS))
-    safe_driver_exec(lambda d: d.execute_script("window.location.href = arguments[0];", wingo_url))
-    time.sleep(2.0)
+    post_session_update({
+        "status": "LOGGED_IN",
+        "screenshot_base64": screenshot_b64
+    })
+    print(f"[*] Node {NODE_ID}: User {chat_id} logged in successfully.")
 
+def execute_prepare_wingo_task(task):
+    chat_id = task["chat_id"]
+    site = node_state.get("active_site", "Amar Club")
+    wingo_url = URL_AMARCLUB_WINGO if "AMAR" in site.upper() else URL_DKWIN_WINGO
+
+    def _nav(drv):
+        try:
+            drv.execute_script(WINGO_RUNBOX_AND_CLICK_JS)
+        except Exception:
+            pass
+        try:
+            drv.execute_script("""
+                const target = arguments[0];
+                if (!window.location.href.includes('WinGo')) {
+                    window.location.href = target;
+                }
+            """, wingo_url)
+        except Exception:
+            pass
+    safe_driver_exec(_nav)
+    time.sleep(1.5)
+
+    # Wait for WinGo ready
     for _ in range(30):
-        ready = safe_driver_exec(lambda d: d.execute_script(CHECK_WINGO_READY_JS))
-        if ready:
+        def _rdy(drv):
+            return drv.execute_script(CHECK_WINGO_READY_JS)
+        if safe_driver_exec(_rdy):
             break
         time.sleep(0.8)
 
-    # ৪. লাইভ ব্যালেন্স ফেচ
+    # Fetch live balance
     current_bal = 0.0
-    for _ in range(15):
-        bal = safe_driver_exec(lambda d: d.execute_script(FETCH_BALANCE_JS))
+    for _ in range(12):
+        def _bal(drv):
+            return drv.execute_script(FETCH_BALANCE_JS)
+        bal = safe_driver_exec(_bal)
         if bal and float(bal) > 0:
             current_bal = float(bal)
             break
         time.sleep(0.5)
 
-    report_session_update(chat_id, "LOGGED_IN", current_bal, include_screenshot=True)
+    node_state["current_balance"] = current_bal
+    screenshot_b64 = capture_screenshot_base64()
 
-def execute_trading_task(task):
-    chat_id = task.get("chat_id")
-    target_profit = task.get("target_profit", 500)
+    post_session_update({
+        "status": "WINGO_READY",
+        "live_balance": f"{current_bal:.2f}",
+        "screenshot_base64": screenshot_b64
+    })
+    print(f"[*] Node {NODE_ID}: WinGo 30S market loaded. Balance: {current_bal}")
+
+def execute_start_trading_task(task):
+    target_profit = task.get("target_profit", 0)
     total_steps = task.get("total_steps", 7)
+    node_state["target_profit"] = target_profit
+    node_state["total_steps"] = total_steps
+    node_state["is_trading"] = True
 
-    worker_state["is_trading"] = True
+    def _run_core(drv):
+        drv.execute_script(WINGO_CORE_JS, target_profit, total_steps)
+    safe_driver_exec(_run_core)
 
-    # কোর জাভাস্ক্রিপ্ট ইঞ্জিন ইনজেক্ট করা
-    safe_driver_exec(lambda d: d.execute_script(WINGO_CORE_JS, target_profit, total_steps))
     time.sleep(2.0)
+    screenshot_b64 = capture_screenshot_base64()
 
-    cur_bal = safe_driver_exec(lambda d: d.execute_script(FETCH_BALANCE_JS)) or 0.0
-    report_session_update(chat_id, "RUNNING", cur_bal, include_screenshot=True)
+    post_session_update({
+        "status": "RUNNING",
+        "live_balance": f"{node_state['current_balance']:.2f}",
+        "screenshot_base64": screenshot_b64
+    })
+    print(f"[*] Node {NODE_ID}: Trading automation injected and started.")
 
-    # ট্রেডিং ট্র্যাকিং থ্রেড চালু
-    threading.Thread(target=autonomous_trading_watchdog, args=(chat_id,), daemon=True).start()
+    threading.Thread(target=trading_monitoring_loop, daemon=True).start()
 
-def autonomous_trading_watchdog(chat_id):
-    """২৪ ঘণ্টা ব্যাকগ্রাউন্ডে মনিটর ও লাইভ ডেটা পুশ করার ইঞ্জিন"""
-    while worker_state["is_trading"]:
-        try:
-            def _get_st(drv):
-                return drv.execute_script("""
-                    if (window.__WINGO_ST) {
-                        return {
-                            isRun: window.__WINGO_ST.isRun,
-                            curBal: window.__WINGO_ST.curBal || 0,
-                            tgtAmt: window.__WINGO_ST.tgtAmt || 0,
-                            startBal: window.__WINGO_ST.startBal || 0,
-                            w: window.__WINGO_ST.w || 0,
-                            l: window.__WINGO_ST.l || 0,
-                            stpIdx: window.__WINGO_ST.stpIdx || 0
-                        };
-                    }
-                    return null;
-                """)
+def trading_monitoring_loop():
+    while node_state.get("is_trading"):
+        def _get_st(drv):
+            return drv.execute_script("""
+                if (window.__WINGO_ST) {
+                    return {
+                        isRun: window.__WINGO_ST.isRun,
+                        curBal: window.__WINGO_ST.curBal || 0,
+                        tgtAmt: window.__WINGO_ST.tgtAmt || 0,
+                        startBal: window.__WINGO_ST.startBal || 0,
+                        w: window.__WINGO_ST.w || 0,
+                        l: window.__WINGO_ST.l || 0,
+                        step: (window.__WINGO_ST.stpIdx || 0) + 1,
+                        maxStep: (window.__WINGO_ST.dynSeq || []).length
+                    };
+                }
+                return null;
+            """)
+        js_data = safe_driver_exec(_get_st)
 
-            data = safe_driver_exec(_get_st)
-            if data:
-                cur_bal = data.get("curBal", 0)
-                tgt_amt = data.get("tgtAmt", 0)
-                wins = data.get("w", 0)
-                losses = data.get("l", 0)
-                step_level = data.get("stpIdx", 0) + 1
+        if js_data:
+            cur_bal = js_data.get("curBal", 0)
+            tgt_amt = js_data.get("tgtAmt", 0)
+            node_state["current_balance"] = cur_bal
 
-                # টার্গেট পূর্ণ হলে
-                if cur_bal >= tgt_amt and tgt_amt > 0 and cur_bal > 0:
-                    worker_state["is_trading"] = False
-                    report_session_completion(chat_id, "TARGET_ACHIEVED", cur_bal)
-                    terminate_driver_and_cleanup()
-                    break
+            if cur_bal >= tgt_amt and tgt_amt > 0 and cur_bal > 0:
+                node_state["is_trading"] = False
+                start_b = js_data.get("startBal", 0)
+                profit = cur_bal - start_b
+                screenshot_b64 = capture_screenshot_base64()
 
-                # মাস্টারকে রিয়েল-টাইম স্টেট রিপোর্ট করা
-                report_session_update(chat_id, "RUNNING", cur_bal, wins, losses, step_level, include_screenshot=False)
-        except Exception as e:
-            print(f"[*] Monitoring loop error: {e}")
-        time.sleep(5)
+                post_session_update({
+                    "status": "TARGET_REACHED",
+                    "target_reached": True,
+                    "live_balance": f"{cur_bal:.2f}",
+                    "profit": profit,
+                    "wins": js_data.get("w", 0),
+                    "losses": js_data.get("l", 0),
+                    "screenshot_base64": screenshot_b64
+                })
+                print(f"[*] Node {NODE_ID}: Target achieved! Profit: {profit}")
+                close_worker_browser_and_cleanup()
+                break
 
-# ==========================================
-# 7. Worker Node Daemon Lifecycle Loop
-# ==========================================
-def worker_daemon_loop():
-    print(f"[*] Autonomous Worker [{NODE_ID}] online. Connecting to Master...")
-    while not register_to_master():
         time.sleep(3)
 
-    print(f"[*] Registered successfully with Master at {MASTER_SERVER_URL}")
-
-    last_hb = 0
+# ==========================================
+# 8. Heartbeat & Task Listener Loops
+# ==========================================
+def worker_heartbeat_daemon():
     while True:
-        now = time.time()
+        try:
+            payload = {
+                "node_id": NODE_ID,
+                "status": node_state.get("status", "IDLE"),
+                "active_site": node_state.get("active_site"),
+                "current_chat_id": node_state.get("current_chat_id")
+            }
+            sync_with_master("/api/node/heartbeat", payload)
+        except Exception as e:
+            pass
+        time.sleep(10)
 
-        # প্রতি ৮ সেকেন্ড পর পর হার্টবিট পাঠানো
-        if now - last_hb >= 8:
-            send_heartbeat()
-            last_hb = now
+def worker_task_listener_daemon():
+    while True:
+        try:
+            res = sync_with_master("/api/node/pull_task", {"node_id": NODE_ID})
+            if res and res.get("task"):
+                task = res["task"]
+                action = task.get("action")
+                print(f"[*] Node {NODE_ID}: Received task -> {action}")
+                # Acknowledge task immediately
+                sync_with_master("/api/node/ack_task", {"node_id": NODE_ID})
 
-        # মাস্টার থেকে টাস্ক পুল করা
-        task = poll_master_task()
-        if task:
-            action = task.get("action")
-            chat_id = task.get("chat_id")
-
-            if action == "INIT_LOGIN":
-                threading.Thread(target=execute_login_task, args=(task,), daemon=True).start()
-
-            elif action == "START_TRADING":
-                threading.Thread(target=execute_trading_task, args=(task,), daemon=True).start()
-
-            elif action == "CAPTURE_FRAME":
-                bal = safe_driver_exec(lambda d: d.execute_script(FETCH_BALANCE_JS)) or 0.0
-                report_session_update(chat_id, "RUNNING", bal, include_screenshot=True)
-
-            elif action == "PAUSE_TRADING":
-                safe_driver_exec(lambda d: d.execute_script("let btn = document.querySelector('#sys-core-fin button'); if(btn) btn.click();"))
-                worker_state["is_trading"] = False
-
-            elif action == "TERMINATE_SESSION":
-                # ট্যাব এবং প্রোফাইল সম্পূর্ণ কেটে র‍্যাম ক্লিয়ার করা
-                terminate_driver_and_cleanup()
-
+                if action == "LOGIN":
+                    threading.Thread(target=execute_login_task, args=(task,), daemon=True).start()
+                elif action == "PREPARE_WINGO":
+                    threading.Thread(target=execute_prepare_wingo_task, args=(task,), daemon=True).start()
+                elif action == "START_TRADING":
+                    threading.Thread(target=execute_start_trading_task, args=(task,), daemon=True).start()
+                elif action == "CAPTURE_SHOT":
+                    shot_b64 = capture_screenshot_base64()
+                    post_session_update({"screenshot_base64": shot_b64})
+                elif action == "FETCH_BALANCE":
+                    def _b(drv): return drv.execute_script(FETCH_BALANCE_JS)
+                    b = safe_driver_exec(_b)
+                    if b is not None:
+                        node_state["current_balance"] = float(b)
+                        post_session_update({"live_balance": f"{float(b):.2f}"})
+                elif action == "STOP_TRADING":
+                    node_state["is_trading"] = False
+                    def _stop(drv):
+                        drv.execute_script("let btn = document.querySelector('#sys-core-fin button'); if(btn) btn.click();")
+                    safe_driver_exec(_stop)
+                elif action == "LOGOUT_AND_CLOSE":
+                    close_worker_browser_and_cleanup()
+        except Exception as e:
+            pass
         time.sleep(1.5)
 
+# ==========================================
+# 9. Main Worker Entry Point
+# ==========================================
 if __name__ == "__main__":
-    worker_daemon_loop()
+    print("=" * 60)
+    print(f"[*] {to_bold('WINGO 30S DISTRIBUTED WORKER NODE ACTIVE')}...")
+    print(f"[*] ASSIGNED NODE ID: {NODE_ID}")
+    print(f"[*] MASTER COORDINATOR URL: {MASTER_API_URL}")
+    print(f"[*] ISOLATED PROFILE STORAGE: {PROFILES_BASE_DIR}")
+    print("=" * 60)
+
+    # Start background threads
+    threading.Thread(target=worker_heartbeat_daemon, daemon=True).start()
+    threading.Thread(target=worker_task_listener_daemon, daemon=True).start()
+
+    # Keep main thread alive
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print(f"[*] Terminating Node {NODE_ID}...")
+        close_worker_browser_and_cleanup()
