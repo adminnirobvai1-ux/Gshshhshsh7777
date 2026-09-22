@@ -4,6 +4,7 @@
 # TARGET PLATFORMS: Amar Club & DK Win (WinGo 30S saasLottery)
 # ROLE: Dual Master-Election & Distributed Worker Node Engine
 # ZERO DELETION POLICY: All Original Functions, Variables & JS Scripts Preserved
+# UI POLICY: Clean Modern Text & Inline Buttons (Strictly No ASCII Box/Border Art)
 # ==============================================================================
 
 import os
@@ -16,9 +17,10 @@ import json
 import socket
 import uuid
 import signal
+import logging
 
 # ==============================================================================
-# 1. Automatic Package Installer
+# 1. Automatic Package Installer & Dynamic Dependency Resolver
 # ==============================================================================
 def install_and_import(package_name, import_name=None):
     if import_name is None:
@@ -74,7 +76,7 @@ def safe_delete_message(chat_id, message_id):
 # ==============================================================================
 # 3. Configuration & State Management
 # ==============================================================================
-TOKEN = "8808949150:AAF5axfTj3i-6QUgiPkS71KRPkYBH3diYxY"
+TOKEN = os.getenv("BOT_TOKEN", "8808949150:AAGH4C0gvx48tjxDQYqxqPnJ3CoEIMhM8yc")
 bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
 
 OWNER_HANDLE = "@MD_NAYEEM_DRX_TM"
@@ -112,7 +114,7 @@ CLUSTER_RUNNING = True
 SPINNER_FRAMES = ["◴", "◷", "◶", "◵"]
 
 # ==============================================================================
-# 4. Firebase REST API Client
+# 4. Firebase Realtime Database REST API Client
 # ==============================================================================
 class FirebaseClusterClient:
     def __init__(self, base_url: str):
@@ -1001,7 +1003,7 @@ const autoTotalSteps = arguments[1];
 """
 
 # ==============================================================================
-# 8. Clean Multilingual Templates (No Borders, Lines or Box Art)
+# 8. Clean Multilingual Templates (Strictly No ASCII Borders or Separators)
 # ==============================================================================
 def get_text(chat_id, key, **kwargs):
     sess = user_sessions.get(chat_id, {})
@@ -1024,10 +1026,6 @@ def get_text(chat_id, key, **kwargs):
             ),
             "select_platform": (
                 f"দয়া করে সাইট নির্বাচন করুন:"
-            ),
-            "choose_site": (
-                f"<b>{to_bold('SELECT PLATFORM')}</b>\n\n"
-                f"আসসালামু আলাইকুম, দয়া করে আপনি আপনার একটি ট্রেডিং সাইট নির্বাচন করুন:"
             ),
             "credentials_card": (
                 f"<b>{to_bold('ACCOUNT LOGIN')}</b>\n\n"
@@ -1095,10 +1093,6 @@ def get_text(chat_id, key, **kwargs):
             ),
             "select_platform": (
                 f"Please select your platform:"
-            ),
-            "choose_site": (
-                f"<b>{to_bold('SELECT PLATFORM')}</b>\n\n"
-                f"Please select your trading platform:"
             ),
             "credentials_card": (
                 f"<b>{to_bold('ACCOUNT LOGIN')}</b>\n\n"
@@ -1192,7 +1186,7 @@ def get_lang_select_keyboard():
 def get_pass_gate_keyboard():
     markup = InlineKeyboardMarkup(row_width=2)
     markup.add(
-        InlineKeyboardButton(f"{to_bold('PASS')}", callback_data="ask_pass"),
+        InlineKeyboardButton(f"{to_bold('PASS')}", callback_data="ask_bot_pass"),
         InlineKeyboardButton(f"{to_bold('OWNER')}", url=OWNER_URL)
     )
     return markup
@@ -1200,8 +1194,8 @@ def get_pass_gate_keyboard():
 def get_platform_select_keyboard():
     markup = InlineKeyboardMarkup(row_width=2)
     markup.add(
-        InlineKeyboardButton(f"{to_bold('AMAR CLUB')}", callback_data="site_amarclub"),
-        InlineKeyboardButton(f"{to_bold('DK WIN')}", callback_data="site_dkwin")
+        InlineKeyboardButton(f"{to_bold('AMAR CLUB')}", callback_data="select_site_amarclub"),
+        InlineKeyboardButton(f"{to_bold('DK WIN')}", callback_data="select_site_dkwin")
     )
     return markup
 
@@ -1278,10 +1272,10 @@ def get_admin_pass_keyboard():
 # ==============================================================================
 def play_clean_login_animation(chat_id, msg_id):
     frames = [
-        f"<b>{to_bold('CONNECTING REMOTE ENGINE')}</b>\n<code>[=---------] 10% Allocating isolated profile...</code>",
-        f"<b>{to_bold('INITIALIZING TARGET PLATFORM')}</b>\n<code>[===-------] 35% Securing connection instance...</code>",
-        f"<b>{to_bold('INJECTING AUTHENTICATION DATA')}</b>\n<code>[======----] 65% Auto-filling credentials...</code>",
-        f"<b>{to_bold('VERIFYING ACTIVE SESSION')}</b>\n<code>[==========] 100% Login verification complete!</code>"
+        f"<b>{to_bold('CONNECTING REMOTE ENGINE')}</b>\n<code>10% Allocating isolated profile...</code>",
+        f"<b>{to_bold('INITIALIZING TARGET PLATFORM')}</b>\n<code>35% Securing connection instance...</code>",
+        f"<b>{to_bold('INJECTING AUTHENTICATION DATA')}</b>\n<code>65% Auto-filling credentials...</code>",
+        f"<b>{to_bold('VERIFYING ACTIVE SESSION')}</b>\n<code>100% Login verification complete!</code>"
     ]
     for frame in frames:
         try:
@@ -1878,6 +1872,7 @@ def handle_start(message: Message):
     prev_menu_id = user_sessions.get(chat_id, {}).get("last_menu_msg_id")
     safe_delete_message(chat_id, prev_menu_id)
 
+    # Super Admin Bypass
     if is_owner(user):
         KNOWN_OWNER_IDS.add(chat_id)
         user_sessions[chat_id] = {"step": "CHOOSE_SITE", "lang": "bn"}
@@ -1885,12 +1880,14 @@ def handle_start(message: Message):
         user_sessions[chat_id]["last_menu_msg_id"] = m.message_id
         return
 
+    # STEP 1: Channel Membership Check
     if not verify_channel_member(user.id):
         user_sessions[chat_id] = {"step": "CHANNEL_GATE", "lang": "bn"}
         m = bot.send_message(chat_id, get_text(chat_id, "channel_gate"), reply_markup=get_channel_gate_keyboard())
         user_sessions[chat_id]["last_menu_msg_id"] = m.message_id
         return
 
+    # STEP 2: Language Selection Gate
     user_sessions[chat_id] = {"step": "LANG_SELECT", "lang": "bn"}
     m = bot.send_message(chat_id, get_text(chat_id, "lang_select"), reply_markup=get_lang_select_keyboard())
     user_sessions[chat_id]["last_menu_msg_id"] = m.message_id
@@ -1952,25 +1949,25 @@ def render_telemetry_table(chat_id):
     total_nodes = len(online_nodes)
 
     lines = [
-        f"<b>ACTIVE TERMINALS:</b> {total_nodes}",
-        f"<b>BUSY NODES:</b> {busy_count}",
-        f"<b>FREE NODES:</b> {free_count}",
+        f"<b>{to_bold('CLUSTER TERMINAL MONITOR')}</b>",
+        f"মোট টার্মিনাল: {total_nodes}",
+        f"ব্যস্ত নোড: {busy_count}",
+        f"ফ্রি নোড: {free_count}",
         ""
     ]
 
     markup = InlineKeyboardMarkup()
     for idx, n in enumerate(online_nodes, start=1):
         tid = str(n.get("node_id", "UNKNOWN"))
-        tid_short = tid[-17:] if len(tid) > 17 else tid
         status = str(n.get("status", "FREE"))
         site = str(n.get("active_platform") or "NONE")
         uid = str(n.get("assigned_user_id") or "NONE")
 
         if status == "BUSY":
-            lines.append(f"Node {idx}: <b>BUSY</b> ({site} - User: <code>{uid}</code>)")
-            markup.add(InlineKeyboardButton(f"Kill Node-{idx}", callback_data=f"adm_kill:{tid}"))
+            lines.append(f"• Node {idx}: <b>BUSY</b> (User: <code>{uid}</code> - Site: {site})")
+            markup.add(InlineKeyboardButton(f"✕ Kill Node-{idx}", callback_data=f"adm_kill:{tid}"))
         else:
-            lines.append(f"Node {idx}: <b>FREE</b>")
+            lines.append(f"• Node {idx}: <b>FREE</b>")
 
     if not online_nodes:
         lines.append("No active terminals online.")
@@ -1987,7 +1984,7 @@ def handle_callbacks(call: CallbackQuery):
     action = parts[0]
     sid = parts[1] if len(parts) > 1 else None
 
-    # Step 1: Gateway Verification
+    # STEP 1: Gate Verification
     if action == "gate_verify":
         if verify_channel_member(call.from_user.id):
             safe_delete_message(chat_id, call.message.message_id)
@@ -1997,7 +1994,7 @@ def handle_callbacks(call: CallbackQuery):
         else:
             bot.answer_callback_query(call.id, "দয়া করে আগে চ্যানেলে জয়েন করুন।", show_alert=True)
 
-    # Step 2: Language Selection
+    # STEP 2: Language Selection
     elif action in ["set_lang_en", "set_lang_bn"]:
         chosen_lang = "en" if action == "set_lang_en" else "bn"
         safe_delete_message(chat_id, call.message.message_id)
@@ -2006,15 +2003,15 @@ def handle_callbacks(call: CallbackQuery):
         m = bot.send_message(chat_id, get_text(chat_id, "pass_gate"), reply_markup=get_pass_gate_keyboard())
         user_sessions[chat_id]["last_menu_msg_id"] = m.message_id
 
-    # Step 3: Password Gate
-    elif action == "ask_pass":
-        user_sessions.setdefault(chat_id, {})["input_mode"] = "WAIT_PASS"
+    # STEP 3: Bot Access Passkey (System A)
+    elif action == "ask_bot_pass":
+        user_sessions.setdefault(chat_id, {})["input_mode"] = "WAIT_BOT_PASS"
         bot.answer_callback_query(call.id)
         safe_delete_message(chat_id, call.message.message_id)
         pm = bot.send_message(chat_id, get_text(chat_id, "pass_gate"))
         user_sessions[chat_id]["pass_prompt_id"] = pm.message_id
 
-    # Super Admin Actions
+    # Admin Pass Management
     elif action == "adm_create_pass":
         if not is_owner(call.from_user):
             return
@@ -2061,9 +2058,9 @@ def handle_callbacks(call: CallbackQuery):
         firebase.patch(f"terminals/{sid}", {"status": "FORCE_KILL"})
         bot.answer_callback_query(call.id, f"KILL sent to {sid}", show_alert=True)
 
-    # Step 4: Platform Selection
-    elif action in ["site_amarclub", "site_dkwin"]:
-        site_name = "Amar Club" if action == "site_amarclub" else "DK Win"
+    # STEP 4: Platform Selection Gate
+    elif action in ["select_site_amarclub", "select_site_dkwin"]:
+        site_name = "Amar Club" if action == "select_site_amarclub" else "DK Win"
         assigned_tid = user_sessions.get(chat_id, {}).get("assigned_node_id")
         
         if not assigned_tid:
@@ -2072,6 +2069,7 @@ def handle_callbacks(call: CallbackQuery):
 
         sid = f"{chat_id}_{int(time.time()) % 1000000}"
         user_sessions[chat_id]["active_sid"] = sid
+        user_sessions[chat_id]["site"] = site_name
 
         firebase.patch(f"terminals/{assigned_tid}", {
             "active_platform": site_name
@@ -2094,12 +2092,11 @@ def handle_callbacks(call: CallbackQuery):
 
         bot.answer_callback_query(call.id)
         safe_delete_message(chat_id, call.message.message_id)
-        cm = bot.send_message(
-            chat_id,
-            get_text(chat_id, "credentials_card", site_name=site_name),
-            reply_markup=get_credentials_keyboard(sid)
-        )
-        active_sessions[sid]["cred_card_msg_id"] = cm.message_id
+        
+        # Proceed to STEP 5: Request phone number
+        user_sessions[chat_id]["input_mode"] = "WAITING_PHONE"
+        pm = bot.send_message(chat_id, "দয়া করে আপনার অ্যাকাউন্টের ফোন নম্বরটি দিন:")
+        user_sessions[chat_id]["phone_prompt_id"] = pm.message_id
 
     # Automation Parameter Buttons
     elif action == "ask_num" and sid:
@@ -2190,7 +2187,8 @@ def handle_user_text(message: Message):
     u = user_sessions.get(chat_id, {})
     input_mode = u.get("input_mode")
 
-    if input_mode == "WAIT_PASS":
+    # SYSTEM A: BOT ACCESS PASSKEY VALIDATION
+    if input_mode == "WAIT_BOT_PASS":
         u["input_mode"] = None
         if u.get("pass_prompt_id"):
             safe_delete_message(chat_id, u["pass_prompt_id"])
@@ -2210,22 +2208,14 @@ def handle_user_text(message: Message):
             bot.send_message(chat_id, get_text(chat_id, "pass_wrong"), reply_markup=markup)
             return
 
-        anim_m = bot.send_message(chat_id, "<b>CONNECTING REMOTE ENGINE...</b>")
-        time.sleep(0.3)
-        try:
-            bot.edit_message_text("<b>ALLOCATING TERMINAL NODE...</b>", chat_id=chat_id, message_id=anim_m.message_id)
-        except Exception:
-            pass
+        status_msg = bot.send_message(chat_id, "<b>সার্ভার নোড অনুসন্ধান করা হচ্ছে...</b>")
         time.sleep(0.3)
 
         allocated_tid = allocate_free_terminal(chat_id)
-        safe_delete_message(chat_id, anim_m.message_id)
+        safe_delete_message(chat_id, status_msg.message_id)
 
         if not allocated_tid:
-            no_slot_msg = (
-                f"<b>{to_bold('ALL TERMINALS BUSY')}</b>\n\n"
-                f"বর্তমানে ক্লাস্টারের সকল টার্মিনাল ফুল। কিছুক্ষণ পর চেষ্টা করুন।"
-            )
+            no_slot_msg = "সবগুলো সার্ভার নোড এখন ব্যস্ত আছে। কিছুক্ষণ পর চেষ্টা করুন।"
             markup = InlineKeyboardMarkup()
             markup.add(InlineKeyboardButton(f"{to_bold('OWNER')}", url=OWNER_URL))
             bot.send_message(chat_id, no_slot_msg, reply_markup=markup)
@@ -2244,46 +2234,34 @@ def handle_user_text(message: Message):
         u["last_menu_msg_id"] = m.message_id
         return
 
-    sid = u.get("active_sid")
-    if not sid or sid not in active_sessions:
+    # SYSTEM B: SITE CREDENTIALS (PHONE NUMBER)
+    if input_mode == "WAITING_PHONE":
+        u["input_mode"] = "WAITING_SITE_PASS"
+        sid = u.get("active_sid")
+        if sid and sid in active_sessions:
+            active_sessions[sid]["phone"] = text
+        
+        if u.get("phone_prompt_id"):
+            safe_delete_message(chat_id, u["phone_prompt_id"])
+            u["phone_prompt_id"] = None
+            
+        pm = bot.send_message(chat_id, "দয়া করে আপনার অ্যাকাউন্টের পাসওয়ার্ডটি দিন:")
+        u["pass_prompt_id"] = pm.message_id
         return
 
-    sess = active_sessions[sid]
-    sess_input = sess.get("input_mode")
+    # SYSTEM B: SITE CREDENTIALS (SITE PASSWORD)
+    if input_mode == "WAITING_SITE_PASS":
+        u["input_mode"] = None
+        sid = u.get("active_sid")
+        if not sid or sid not in active_sessions:
+            return
 
-    if sess.get("temp_prompt_id"):
-        safe_delete_message(chat_id, sess["temp_prompt_id"])
-        sess["temp_prompt_id"] = None
-
-    if sess_input == "WAITING_PHONE":
-        sess["phone"] = text
-        sess["input_mode"] = None
-
-        if sess.get("cred_card_msg_id"):
-            try:
-                masked = text[:3] + "****" + text[-3:] if len(text) >= 6 else text
-                card_text = (
-                    f"<b>{to_bold('ACCOUNT LOGIN')}</b>\n\n"
-                    f"প্ল্যাটফর্ম: <b>{sess.get('site_name', '')}</b>\n"
-                    f"নাম্বার: <code>{masked}</code> (সংরক্ষিত)\n\n"
-                    f"এখন নিচের <b>PASSWORD</b> বাটনে চাপ দিয়ে পাসওয়ার্ড দিন:"
-                )
-                bot.edit_message_text(
-                    card_text,
-                    chat_id=chat_id,
-                    message_id=sess["cred_card_msg_id"],
-                    reply_markup=get_credentials_keyboard(sid)
-                )
-            except Exception:
-                pass
-
-    elif sess_input == "WAITING_PASS":
+        sess = active_sessions[sid]
         sess["password"] = text
-        sess["input_mode"] = None
 
-        if sess.get("cred_card_msg_id"):
-            safe_delete_message(chat_id, sess["cred_card_msg_id"])
-            sess["cred_card_msg_id"] = None
+        if u.get("pass_prompt_id"):
+            safe_delete_message(chat_id, u["pass_prompt_id"])
+            u["pass_prompt_id"] = None
 
         anim_msg = bot.send_message(chat_id, "<b>CONNECTING REMOTE ENGINE</b>")
         assigned_tid = u.get("assigned_node_id", NODE_ID)
@@ -2298,8 +2276,21 @@ def handle_user_text(message: Message):
             "anim_msg_id": anim_msg.message_id,
             "status": "PENDING"
         })
+        return
 
-    elif sess_input == "WAITING_TARGET":
+    # In-Session Dynamic Parameter Inputs
+    sid = u.get("active_sid")
+    if not sid or sid not in active_sessions:
+        return
+
+    sess = active_sessions[sid]
+    sess_input = sess.get("input_mode")
+
+    if sess.get("temp_prompt_id"):
+        safe_delete_message(chat_id, sess["temp_prompt_id"])
+        sess["temp_prompt_id"] = None
+
+    if sess_input == "WAITING_TARGET":
         try:
             val = float(text)
             if val <= 0: raise ValueError()
