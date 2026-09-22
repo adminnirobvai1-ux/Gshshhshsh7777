@@ -6,8 +6,6 @@ import threading
 import shutil
 import json
 import socket
-import uuid
-import signal
 
 # ==========================================
 # 1. Automatic Package Installer
@@ -25,12 +23,13 @@ install_and_import("pyTelegramBotAPI", "telebot")
 install_and_import("selenium")
 install_and_import("requests")
 
-import requests
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto
 from selenium import webdriver
 from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.firefox.service import Service as FirefoxService
+import requests
+import uuid
 
 # ==========================================
 # 2. Mathematical Bold Unicode & System Utils
@@ -1536,8 +1535,8 @@ def handle_callbacks(call):
         try:
             if os.path.exists(start_snap):
                 os.remove(start_snap)
-            except Exception:
-                pass
+        except Exception:
+            pass
 
         threading.Thread(target=monitor_trading_progress, args=(chat_id, sid), daemon=True).start()
 
@@ -1741,564 +1740,173 @@ def handle_user_text(message):
             sess["temp_prompt_id"] = p_msg.message_id
 
 
-# ==============================================================================
-# SECTION 15: FIREBASE REALTIME CLUSTER LINKING ENGINE (WRAPPER & LOOPS)
-# ==============================================================================
+# ==========================================
+# 13.5. FIREBASE DISTRIBUTED CLUSTER LOGIC
+# ==========================================
+FIREBASE_URL = "https://x7e77eey-default-rtdb.firebaseio.com"
+NODE_ID = uuid.uuid4().hex
+IS_MASTER = False
 
-FIREBASE_DATABASE_URL = "https://x7e77eey-default-rtdb.firebaseio.com"
-
-class FirebaseClusterClient:
-    def __init__(self, base_url: str):
-        self.base_url = base_url.rstrip("/")
-        self.session = requests.Session()
-        adapter = requests.adapters.HTTPAdapter(pool_connections=20, pool_maxsize=50, max_retries=3)
-        self.session.mount("https://", adapter)
-        self.session.mount("http://", adapter)
-
-    def _url(self, path: str) -> str:
-        clean_path = path.strip("/")
-        return f"{self.base_url}/{clean_path}.json"
-
-    def get(self, path: str):
-        try:
-            r = self.session.get(self._url(path), timeout=6)
-            if r.status_code == 200:
-                return r.json()
-        except Exception:
-            pass
+def fb_get(path):
+    try:
+        r = requests.get(f"{FIREBASE_URL}{path}.json", timeout=5)
+        return r.json()
+    except Exception:
         return None
 
-    def put(self, path: str, data):
+def fb_put(path, data):
+    try:
+        requests.put(f"{FIREBASE_URL}{path}.json", json=data, timeout=5)
+    except Exception:
+        pass
+
+def fb_patch(path, data):
+    try:
+        requests.patch(f"{FIREBASE_URL}{path}.json", json=data, timeout=5)
+    except Exception:
+        pass
+
+def fb_delete(path):
+    try:
+        requests.delete(f"{FIREBASE_URL}{path}.json", timeout=5)
+    except Exception:
+        pass
+
+def cluster_heartbeat_loop():
+    global IS_MASTER
+    while True:
         try:
-            r = self.session.put(self._url(path), json=data, timeout=6)
-            return r.status_code in [200, 201, 204]
-        except Exception:
-            return False
+            now = time.time()
+            # Master Election Check
+            master_data = fb_get("/cluster/active_master")
+            
+            if not master_data or (now - master_data.get("heartbeat", 0)) > 15:
+                # Claim Master
+                fb_put("/cluster/active_master", {"node_id": NODE_ID, "heartbeat": now})
+                if not IS_MASTER:
+                    print(f"[*] Node {NODE_ID} claimed MASTER status.")
+                IS_MASTER = True
+            elif master_data.get("node_id") == NODE_ID:
+                # Update Master Heartbeat
+                fb_patch("/cluster/active_master", {"heartbeat": now})
+                IS_MASTER = True
+            else:
+                if IS_MASTER:
+                    print(f"[*] Node {NODE_ID} demoted to WORKER.")
+                IS_MASTER = False
 
-    def patch(self, path: str, data):
-        try:
-            r = self.session.patch(self._url(path), json=data, timeout=6)
-            return r.status_code in [200, 201, 204]
-        except Exception:
-            return False
-
-    def delete(self, path: str):
-        try:
-            r = self.session.delete(self._url(path), timeout=6)
-            return r.status_code in [200, 204]
-        except Exception:
-            return False
-
-firebase = FirebaseClusterClient(FIREBASE_DATABASE_URL)
-
-CURRENT_PID = os.getpid()
-CURRENT_HEX = uuid.uuid4().hex[:6].upper()
-NODE_ID = f"NODE-{CURRENT_PID}-{CURRENT_HEX}"
-
-IS_MASTER = False
-POLLING_ACTIVE = False
-CLUSTER_RUNNING = True
-cluster_session_map = {}
-
-def register_node():
-    payload = {
-        "node_id": NODE_ID,
-        "pid": CURRENT_PID,
-        "hostname": socket.gethostname(),
-        "status": "FREE",
-        "assigned_user_id": None,
-        "active_platform": None,
-        "heartbeat": time.time(),
-        "expires_at": 0,
-        "task": None,
-        "role": "WORKER"
-    }
-    firebase.put(f"terminals/{NODE_ID}", payload)
-    print(f"[*] Node registered: {NODE_ID}")
-
-def update_heartbeat_loop():
-    while CLUSTER_RUNNING:
-        try:
-            firebase.patch(f"terminals/{NODE_ID}", {
-                "heartbeat": time.time(),
-                "role": "MASTER" if IS_MASTER else "WORKER"
+            # Update Node Registry
+            fb_patch(f"/terminals/{NODE_ID}", {
+                "heartbeat": now
             })
         except Exception:
             pass
+            
         time.sleep(5)
 
-def master_election_loop():
-    global IS_MASTER, POLLING_ACTIVE
-    while CLUSTER_RUNNING:
-        try:
-            now = time.time()
-            master_data = firebase.get("cluster/active_master")
-            can_claim = False
+# 1. Register initial state
+fb_put(f"/terminals/{NODE_ID}", {
+    "status": "FREE",
+    "heartbeat": time.time(),
+    "assigned_user_id": None,
+    "task": None
+})
 
-            if not master_data or not isinstance(master_data, dict):
-                can_claim = True
-            else:
-                active_id = master_data.get("master_id")
-                last_beat = master_data.get("heartbeat", 0)
-                if active_id == NODE_ID or (now - last_beat) > 15.0:
-                    can_claim = True
+threading.Thread(target=cluster_heartbeat_loop, daemon=True).start()
 
-            if can_claim:
-                claim_payload = {"master_id": NODE_ID, "heartbeat": now}
-                success = firebase.put("cluster/active_master", claim_payload)
-                if success:
-                    if not IS_MASTER:
-                        print(f"[*] Master lock acquired by {NODE_ID}")
-                    IS_MASTER = True
-                else:
-                    IS_MASTER = False
-            else:
-                if IS_MASTER:
-                    print(f"[*] Stepping down from Master on {NODE_ID}")
-                IS_MASTER = False
+# 2. Automatic Free Device Redirect (The Loop)
+original_process_login = process_login
 
-            if IS_MASTER and not POLLING_ACTIVE:
-                threading.Thread(target=start_master_polling, daemon=True).start()
-            elif not IS_MASTER and POLLING_ACTIVE:
-                try:
-                    bot.stop_polling()
-                except Exception:
-                    pass
-
-        except Exception as e:
-            print(f"[*] Master election exception: {e}")
-        time.sleep(4)
-
-def start_master_polling():
-    global POLLING_ACTIVE
-    if POLLING_ACTIVE:
-        return
-    POLLING_ACTIVE = True
-    print(f"[*] Telegram Infinity Polling running on {NODE_ID}...")
-    while IS_MASTER and CLUSTER_RUNNING:
-        try:
-            bot.infinity_polling(skip_pending=True, timeout=20, long_polling_timeout=20)
-        except Exception:
-            time.sleep(2)
-    POLLING_ACTIVE = False
-
-def find_and_claim_free_terminal(chat_id):
-    terminals = firebase.get("terminals") or {}
+def distributed_process_login(chat_id, sid, phone, password, anim_msg_id):
+    global IS_MASTER
+    
+    # Master dispatches to the first FREE node
+    terminals = fb_get("/terminals") or {}
+    target_node = None
     now = time.time()
-
-    for tid, tdata in terminals.items():
-        if isinstance(tdata, dict):
-            if tdata.get("assigned_user_id") == chat_id and tdata.get("status") == "BUSY":
-                if tdata.get("expires_at", 0) > now:
-                    return tid
-
-    for tid, tdata in terminals.items():
-        if isinstance(tdata, dict):
-            last_hb = tdata.get("heartbeat", 0)
-            if tdata.get("status") == "FREE" and (now - last_hb) <= 20.0:
-                expires_at = now + 86400
-                firebase.patch(f"terminals/{tid}", {
-                    "status": "BUSY",
-                    "assigned_user_id": chat_id,
-                    "expires_at": expires_at
-                })
-                return tid
-    return None
-
-# Wrap process_login for automatic cluster redirection
-_base_process_login = process_login
-
-def cluster_routed_process_login(chat_id, sid, phone, password, anim_msg_id):
-    sess = active_sessions.get(sid, {})
-    site_name = sess.get("site_name", "Amar Club")
-
-    target_node = find_and_claim_free_terminal(chat_id)
+    
+    for t_id, t_data in terminals.items():
+        if t_data.get("status") == "FREE" and (now - t_data.get("heartbeat", 0)) < 15:
+            target_node = t_id
+            break
+            
     if not target_node:
-        safe_delete_message(chat_id, anim_msg_id)
-        bot.send_message(chat_id, "<b>সবগুলো সার্ভার এখন ব্যস্ত আছে।</b> কিছুক্ষণ পর আবার চেষ্টা করুন।")
-        return
-
-    sess["assigned_node"] = target_node
-    cluster_session_map[sid] = target_node
-    firebase.put(f"session_map/{sid}", target_node)
-
+        target_node = NODE_ID  # Fallback to self
+        
+    print(f"[*] Master dispatching task to Node {target_node}")
+    fb_patch(f"/terminals/{target_node}", {"status": "BUSY"})
+    
+    task_payload = {
+        "chat_id": chat_id,
+        "sid": sid,
+        "phone": phone,
+        "password": password,
+        "anim_msg_id": anim_msg_id
+    }
+    
     if target_node == NODE_ID:
-        _base_process_login(chat_id, sid, phone, password, anim_msg_id)
+        original_process_login(**task_payload)
     else:
-        firebase.patch(f"terminals/{target_node}", {
-            "active_platform": site_name
-        })
-        task_payload = {
-            "action": "LOGIN",
-            "chat_id": chat_id,
-            "session_id": sid,
-            "phone": phone,
-            "password": password,
-            "site_name": site_name,
-            "anim_msg_id": anim_msg_id,
-            "status": "PENDING"
-        }
-        firebase.put(f"terminals/{target_node}/task", task_payload)
+        fb_put(f"/terminals/{target_node}/task", task_payload)
 
-process_login = cluster_routed_process_login
+process_login = distributed_process_login
 
-# Worker Task Listener Loop (Runs continuous DOM & Selenium actions on assigned worker node)
-def worker_task_listener_loop():
-    while CLUSTER_RUNNING:
+# 3. Worker task listener
+def worker_task_listener():
+    while True:
         try:
-            node_data = firebase.get(f"terminals/{NODE_ID}")
-            if node_data and isinstance(node_data, dict):
-                task = node_data.get("task")
-                if task and isinstance(task, dict) and task.get("status") == "PENDING":
-                    firebase.patch(f"terminals/{NODE_ID}/task", {"status": "PROCESSING"})
-                    action = task.get("action")
-                    chat_id = task.get("chat_id")
-                    sid = task.get("session_id")
-
-                    if action == "LOGIN":
-                        phone = task.get("phone")
-                        password = task.get("password")
-                        site_name = task.get("site_name", "Amar Club")
-                        anim_msg_id = task.get("anim_msg_id")
-
-                        active_sessions[sid] = {
-                            "chat_id": chat_id,
-                            "session_id": sid,
-                            "site_name": site_name,
-                            "phone": phone,
-                            "password": password,
-                            "target_profit": 0,
-                            "total_steps": 7,
-                            "is_trading": False,
-                            "created_at": time.time(),
-                            "anim_tick": 0,
-                            "lock": threading.RLock()
-                        }
-                        _base_process_login(chat_id, sid, phone, password, anim_msg_id)
-                        firebase.patch(f"terminals/{NODE_ID}/task", {"status": "COMPLETED"})
-
-                    elif action == "START_CFG":
-                        prepare_wingo_parameters(chat_id, sid)
-                        firebase.patch(f"terminals/{NODE_ID}/task", {"status": "COMPLETED"})
-
-                    elif action == "RUN_AUTO":
-                        sess = active_sessions.get(sid)
-                        if sess:
-                            sess["target_profit"] = task.get("target_profit", 500)
-                            sess["total_steps"] = task.get("total_steps", 7)
-                            sess["is_trading"] = True
-
-                            def _run_core(drv):
-                                drv.execute_script(WINGO_CORE_JS, sess["target_profit"], sess["total_steps"])
-                            safe_tab_execute(sid, _run_core)
-                            time.sleep(2.0)
-
-                            start_snap = os.path.join(PROFILES_BASE_DIR, f"run_{sid}.png")
-                            def _shot(drv):
-                                drv.save_screenshot(start_snap)
-                            safe_tab_execute(sid, _shot)
-
-                            cur_b = sess.get("current_balance", 0.0)
-                            target_total = cur_b + sess["target_profit"]
-                            sess["start_bal"] = cur_b
-
-                            dashboard_caption = get_text(
-                                chat_id, "running_dashboard",
-                                site_name=sess.get("site_name", "Amar Club"),
-                                start_bal=f"{cur_b:.2f}",
-                                target_bal=f"{target_total:.2f}",
-                                steps=sess["total_steps"]
-                            )
-
-                            display_or_replace_photo(
-                                chat_id, sid,
-                                start_snap,
-                                dashboard_caption,
-                                get_trading_control_keyboard(sid)
-                            )
-
-                            try:
-                                if os.path.exists(start_snap):
-                                    os.remove(start_snap)
-                            except Exception:
-                                pass
-
-                            threading.Thread(target=monitor_trading_progress, args=(chat_id, sid), daemon=True).start()
-                        firebase.patch(f"terminals/{NODE_ID}/task", {"status": "COMPLETED"})
-
-                    elif action == "SHOT":
-                        sess = active_sessions.get(sid)
-                        if sess:
-                            temp_shot = os.path.join(PROFILES_BASE_DIR, f"live_{sid}.png")
-                            def _shot(drv):
-                                drv.save_screenshot(temp_shot)
-                            safe_tab_execute(sid, _shot)
-
-                            if os.path.exists(temp_shot):
-                                cur_b = sess.get("cur_bal", sess.get("current_balance", 0.0))
-                                t_total = sess.get("start_bal", 0.0) + sess.get("target_profit", 0.0)
-                                caption = (
-                                    f"<b>{to_bold('24/7 AUTOMATION ENGINE ACTIVE')}</b>\n\n"
-                                    f"Platform: <b>{sess.get('site_name', '')}</b>\n"
-                                    f"Starting Balance: <code>৳ {sess.get('start_bal', 0.0):.2f}</code>\n"
-                                    f"Target Balance: <code>৳ {t_total:.2f}</code>\n"
-                                    f"Total Steps: <b>{sess.get('total_steps', 7)}</b>\n\n"
-                                    f"সময়: <code>{time.strftime('%H:%M:%S')}</code>\n"
-                                    f"<b>LIVE STATUS</b>: মার্টিনগেল ইঞ্জিন সফলভাবে সচল রয়েছে।"
-                                )
-                                display_or_replace_photo(chat_id, sid, temp_shot, caption, get_trading_control_keyboard(sid))
-                                try:
-                                    os.remove(temp_shot)
-                                except Exception:
-                                    pass
-                        firebase.patch(f"terminals/{NODE_ID}/task", {"status": "COMPLETED"})
-
-                    elif action == "BAL":
-                        def _bal(drv):
-                            return drv.execute_script(FETCH_BALANCE_JS)
-                        b_val = safe_tab_execute(sid, _bal)
-                        if b_val is not None:
-                            bot.send_message(chat_id, f"<b>Live Balance:</b> <code>৳ {b_val:.2f}</code>")
-                        firebase.patch(f"terminals/{NODE_ID}/task", {"status": "COMPLETED"})
-
-                    elif action == "STATS":
-                        def _stat(drv):
-                            return drv.execute_script("""
-                                if (window.__WINGO_ST) {
-                                    return {
-                                        w: window.__WINGO_ST.w || 0,
-                                        l: window.__WINGO_ST.l || 0,
-                                        step: (window.__WINGO_ST.stpIdx || 0) + 1,
-                                        maxStep: (window.__WINGO_ST.dynSeq || []).length,
-                                        curBal: window.__WINGO_ST.curBal || 0,
-                                        tgtAmt: window.__WINGO_ST.tgtAmt || 0
-                                    };
-                                }
-                                return null;
-                            """)
-                        data_rep = safe_tab_execute(sid, _stat)
-                        if data_rep:
-                            stat_txt = (
-                                f"<b>{to_bold('LIVE STATS REPORT')}</b>\n\n"
-                                f"ব্যালেন্স: <code>৳ {data_rep['curBal']:.2f}</code>\n"
-                                f"টার্গেট: <code>৳ {data_rep['tgtAmt']:.2f}</code>\n"
-                                f"মার্টিনগেল লেভেল: <b>Step {data_rep['step']}/{data_rep['maxStep']}</b>\n"
-                                f"উইন: <b>{data_rep['w']}</b> | লস: <b>{data_rep['l']}</b>"
-                            )
-                            bot.send_message(chat_id, stat_txt)
-                        firebase.patch(f"terminals/{NODE_ID}/task", {"status": "COMPLETED"})
-
-                    elif action == "STOP":
-                        sess = active_sessions.get(sid)
-                        if sess:
-                            def _stop(drv):
-                                drv.execute_script("let btn = document.querySelector('#sys-core-fin button'); if(btn) btn.click();")
-                            safe_tab_execute(sid, _stop)
-                            sess["is_trading"] = False
-                            bot.send_message(chat_id, f"<b>{to_bold('TRADING PAUSED')}</b>\nট্রেডিং অটোমেশন সাময়িকভাবে থামানো হয়েছে।")
-                        firebase.patch(f"terminals/{NODE_ID}/task", {"status": "COMPLETED"})
-
-                    elif action == "CANCEL":
-                        close_session_tab(sid)
-                        bot.send_message(chat_id, get_text(chat_id, "cancelled"))
-                        firebase.patch(f"terminals/{NODE_ID}/task", {"status": "COMPLETED"})
-                        firebase.patch(f"terminals/{NODE_ID}", {
-                            "status": "FREE",
-                            "assigned_user_id": None,
-                            "active_platform": None,
-                            "expires_at": 0
-                        })
-
-                    elif action == "SET_TARGET":
-                        sess = active_sessions.get(sid)
-                        if sess:
-                            val = task.get("val", 0)
-                            sess["target_profit"] = val
-                            wingo_snap = os.path.join(PROFILES_BASE_DIR, f"wingo_{sid}.png")
-                            def _shot(drv):
-                                drv.save_screenshot(wingo_snap)
-                            safe_tab_execute(sid, _shot)
-                            cur_bal = sess.get("current_balance", 0.0)
-                            config_caption = (
-                                f"<b>{to_bold('WINGO 30S MARKET ACTIVE')}</b>\n\n"
-                                f"Platform: <b>{sess.get('site_name', '')}</b>\n"
-                                f"Live Balance: <code>৳ {cur_bal:.2f}</code>\n"
-                                f"Selected Target: <code>৳ {val:.2f}</code>\n\n"
-                                f"প্যারামিটার সেট হয়েছে। ট্রেডিং চালু করতে <b>START</b> চাপুন:"
-                            )
-                            display_or_replace_photo(chat_id, sid, wingo_snap, config_caption, get_setup_param_keyboard(sid))
-                        firebase.patch(f"terminals/{NODE_ID}/task", {"status": "COMPLETED"})
-
-                    elif action == "SET_STEPS":
-                        sess = active_sessions.get(sid)
-                        if sess:
-                            steps_val = task.get("steps_val", 7)
-                            sess["total_steps"] = steps_val
-                            wingo_snap = os.path.join(PROFILES_BASE_DIR, f"wingo_{sid}.png")
-                            def _shot(drv):
-                                drv.save_screenshot(wingo_snap)
-                            safe_tab_execute(sid, _shot)
-                            cur_bal = sess.get("current_balance", 0.0)
-                            config_caption = (
-                                f"<b>{to_bold('WINGO 30S MARKET ACTIVE')}</b>\n\n"
-                                f"Platform: <b>{sess.get('site_name', '')}</b>\n"
-                                f"Live Balance: <code>৳ {cur_bal:.2f}</code>\n"
-                                f"Selected Steps: <b>{steps_val}</b>\n\n"
-                                f"প্যারামিটার সেট হয়েছে। ট্রেডিং চালু করতে <b>START</b> চাপুন:"
-                            )
-                            display_or_replace_photo(chat_id, sid, wingo_snap, config_caption, get_setup_param_keyboard(sid))
-                        firebase.patch(f"terminals/{NODE_ID}/task", {"status": "COMPLETED"})
-
+            if not IS_MASTER:
+                task = fb_get(f"/terminals/{NODE_ID}/task")
+                if task:
+                    print(f"[*] Worker {NODE_ID} received delegated task!")
+                    fb_delete(f"/terminals/{NODE_ID}/task")
+                    fb_patch(f"/terminals/{NODE_ID}", {"status": "BUSY"})
+                    threading.Thread(target=original_process_login, kwargs=task, daemon=True).start()
         except Exception:
             pass
-        time.sleep(1.0)
+        time.sleep(2)
 
-# Remote Task Forwarder for Callbacks
-@bot.callback_query_handler(func=lambda call: True)
-def cluster_remote_callback_forwarder(call):
-    chat_id = call.message.chat.id
-    data = call.data
-    parts = data.split(":")
-    action = parts[0]
-    sid = parts[1] if len(parts) > 1 else None
+threading.Thread(target=worker_task_listener, daemon=True).start()
 
-    if not sid:
-        return
+# 4. Session Watchdog & Auto-Free hooks
+original_close_session_tab = close_session_tab
 
-    target_node = cluster_session_map.get(sid) or firebase.get(f"session_map/{sid}")
-    if target_node and target_node != NODE_ID:
-        if action in ["start_cfg", "run_auto", "shot", "bal", "stats", "stop", "cancel"]:
-            bot.answer_callback_query(call.id)
-            task_data = {
-                "action": action.upper(),
-                "chat_id": chat_id,
-                "session_id": sid,
-                "status": "PENDING"
-            }
-            if action == "run_auto":
-                sess = active_sessions.get(sid, {})
-                task_data["target_profit"] = sess.get("target_profit", 500)
-                task_data["total_steps"] = sess.get("total_steps", 7)
-            firebase.put(f"terminals/{target_node}/task", task_data)
-            if action == "cancel":
-                safe_delete_message(chat_id, call.message.message_id)
+def distributed_close_session_tab(session_id):
+    original_close_session_tab(session_id)
+    fb_patch(f"/terminals/{NODE_ID}", {"status": "FREE"})
+    print(f"[*] Node {NODE_ID} marked as FREE after session close.")
 
-# Wrap user text handler for remote session parameter forwarding
-_base_handle_user_text = handle_user_text
+close_session_tab = distributed_close_session_tab
 
-def cluster_routed_handle_user_text(message):
-    chat_id = message.chat.id
-    u = user_sessions.get(chat_id, {})
-    sid = u.get("active_sid")
-    if sid:
-        target_node = cluster_session_map.get(sid) or firebase.get(f"session_map/{sid}")
-        if target_node and target_node != NODE_ID:
-            sess = active_sessions.get(sid, {})
-            sess_input = sess.get("input_mode")
-            text = message.text.strip()
-            if sess_input == "WAITING_TARGET":
-                safe_delete_message(chat_id, message.message_id)
-                if sess.get("temp_prompt_id"):
-                    safe_delete_message(chat_id, sess["temp_prompt_id"])
-                    sess["temp_prompt_id"] = None
-                try:
-                    val = float(text)
-                    if val <= 0: raise ValueError()
-                    sess["target_profit"] = val
-                    sess["input_mode"] = None
-                    firebase.put(f"terminals/{target_node}/task", {
-                        "action": "SET_TARGET",
-                        "chat_id": chat_id,
-                        "session_id": sid,
-                        "val": val,
-                        "status": "PENDING"
-                    })
-                    return
-                except ValueError:
-                    p_msg = bot.send_message(chat_id, "দয়া করে সঠিক সংখ্যা লিখুন (যেমন: 500):")
-                    sess["temp_prompt_id"] = p_msg.message_id
-                    return
-            elif sess_input == "WAITING_STEPS":
-                safe_delete_message(chat_id, message.message_id)
-                if sess.get("temp_prompt_id"):
-                    safe_delete_message(chat_id, sess["temp_prompt_id"])
-                    sess["temp_prompt_id"] = None
-                try:
-                    steps_val = int(text)
-                    if steps_val <= 0: raise ValueError()
-                    sess["total_steps"] = steps_val
-                    sess["input_mode"] = None
-                    firebase.put(f"terminals/{target_node}/task", {
-                        "action": "SET_STEPS",
-                        "chat_id": chat_id,
-                        "session_id": sid,
-                        "steps_val": steps_val,
-                        "status": "PENDING"
-                    })
-                    return
-                except ValueError:
-                    p_msg = bot.send_message(chat_id, "দয়া করে সঠিক পূর্ণসংখ্যা লিখুন (যেমন: 7):")
-                    sess["temp_prompt_id"] = p_msg.message_id
-                    return
-
-    _base_handle_user_text(message)
-
-# Rebind message handlers to router
-for h_dict in bot.message_handlers:
-    if h_dict.get('function') == handle_user_text:
-        h_dict['function'] = cluster_routed_handle_user_text
-
-# Continuous Session Watchdog (Auto-free terminals after 24 hours)
-def cluster_session_watchdog():
-    while CLUSTER_RUNNING:
+def distributed_watchdog_auto_free():
+    while True:
         try:
-            now = time.time()
-            terminals = firebase.get("terminals") or {}
-            for tid, tdata in terminals.items():
-                if isinstance(tdata, dict) and tdata.get("status") == "BUSY":
-                    exp = tdata.get("expires_at", 0)
-                    if exp > 0 and now >= exp:
-                        print(f"[*] Session expired for terminal: {tid}")
-                        if tid == NODE_ID:
-                            for sid in list(active_sessions.keys()):
-                                close_session_tab(sid)
-                        firebase.patch(f"terminals/{tid}", {
-                            "status": "FREE",
-                            "assigned_user_id": None,
-                            "active_platform": None,
-                            "expires_at": 0,
-                            "task": None
-                        })
-                        uid = tdata.get("assigned_user_id")
-                        if uid:
-                            try:
-                                bot.send_message(uid, f"<b>{to_bold('SESSION EXPIRED')}</b>\nআপনার ২৪ ঘণ্টার সেশন শেষ হয়েছে।")
-                            except Exception:
-                                pass
+            if len(active_sessions) == 0:
+                fb_patch(f"/terminals/{NODE_ID}", {"status": "FREE"})
         except Exception:
             pass
         time.sleep(30)
 
-def cluster_signal_handler(sig, frame):
-    global CLUSTER_RUNNING
-    print(f"\n[*] Shutting down node: {NODE_ID}...")
-    CLUSTER_RUNNING = False
-    try:
-        firebase.delete(f"terminals/{NODE_ID}")
-        master_data = firebase.get("cluster/active_master")
-        if master_data and master_data.get("master_id") == NODE_ID:
-            firebase.delete("cluster/active_master")
-    except Exception:
-        pass
-    for sid in list(active_sessions.keys()):
-        close_session_tab(sid)
-    sys.exit(0)
+threading.Thread(target=distributed_watchdog_auto_free, daemon=True).start()
 
-signal.signal(signal.SIGINT, cluster_signal_handler)
-signal.signal(signal.SIGTERM, cluster_signal_handler)
+# Intercept infinity_polling to respect Master/Worker rules
+original_infinity_polling = bot.infinity_polling
+
+def distributed_infinity_polling(*args, **kwargs):
+    print(f"[*] Node {NODE_ID} Booting... Waiting 3 seconds for Master election.")
+    time.sleep(3)
+    if IS_MASTER:
+        print(f"[*] Launching Telegram Polling on MASTER Node...")
+        original_infinity_polling(*args, **kwargs)
+    else:
+        print(f"[*] Launching WORKER Node. Telegram Polling skipped to prevent 409 errors.")
+        while True:
+            time.sleep(3600)
+
+bot.infinity_polling = distributed_infinity_polling
 
 # ==========================================
-# 16. Distributed Cluster Main Bootstrapper
+# 14. Main Execution
 # ==========================================
 if __name__ == "__main__":
     print(f"[*] {to_bold('WINGO VIP BOT MULTI-INSTANCE READY')}...")
@@ -2306,13 +1914,4 @@ if __name__ == "__main__":
         bot.remove_webhook()
     except Exception:
         pass
-
-    register_node()
-
-    threading.Thread(target=update_heartbeat_loop, daemon=True).start()
-    threading.Thread(target=master_election_loop, daemon=True).start()
-    threading.Thread(target=worker_task_listener_loop, daemon=True).start()
-    threading.Thread(target=cluster_session_watchdog, daemon=True).start()
-
-    while CLUSTER_RUNNING:
-        time.sleep(1)
+    bot.infinity_polling(skip_pending=True)
