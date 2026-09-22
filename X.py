@@ -1128,7 +1128,7 @@ def play_clean_login_animation(chat_id, msg_id):
 def process_login(chat_id, sid, phone, password, anim_msg_id):
     sess = active_sessions.get(sid, {})
     site_name = sess.get("site_name", "Amar Club")
-    login_url = URL_AMARCLUB_LOGIN if "AMAR" in site_name.upper() else URL_DKWIN_LOGIN
+    login_url = sess.get("login_url") or (URL_AMARCLUB_LOGIN if "AMAR" in site_name.upper() else URL_DKWIN_LOGIN)
 
     play_clean_login_animation(chat_id, anim_msg_id)
 
@@ -1221,7 +1221,7 @@ def prepare_wingo_parameters(chat_id, sid):
             drv.execute_script(WINGO_RUNBOX_AND_CLICK_JS)
         except Exception:
             pass
-        wingo_url = URL_AMARCLUB_WINGO if "AMAR" in site_name.upper() else URL_DKWIN_WINGO
+        wingo_url = sess.get("wingo_url") or (URL_AMARCLUB_WINGO if "AMAR" in site_name.upper() else URL_DKWIN_WINGO)
         try:
             drv.execute_script("""
                 const target = arguments[0];
@@ -1364,6 +1364,97 @@ def continuous_24h_watchdog():
 threading.Thread(target=continuous_24h_watchdog, daemon=True).start()
 
 # ==========================================
+# 11.1 Enhanced Platform Dictionary & Gateway Configurations
+# ==========================================
+CHANNEL_USERNAME = "@DARK67HACK"
+CHANNEL_URL = "https://t.me/DARK67HACK"
+SUPER_ADMIN_ID = 8707571669
+OWNER_USERNAME = "@MD_NAYEEM_DRX_TM"
+
+PLATFORMS = {
+    "site_amarclub": {
+        "name": "Amar Club",
+        "login": "https://amarclub1.com/#/login",
+        "wingo": "https://amarclub1.com/#/saasLottery/WinGo?gameCode=WinGo_30S&lottery=WinGo"
+    },
+    "site_dkwin": {
+        "name": "DK Win",
+        "login": "https://dkwin6.com/#/login",
+        "wingo": "https://dkwin6.com/#/saasLottery/WinGo?gameCode=WinGo_30S&lottery=WinGo"
+    },
+    "site_tigroclub": {
+        "name": "Tigro Club",
+        "login": "https://tigroclub.vip/#/login",
+        "wingo": "https://tigroclub.vip/#/saasLottery/WinGo?gameCode=WinGo_30S&lottery=WinGo"
+    },
+    "site_hgnice": {
+        "name": "HG Nice",
+        "login": "https://hgnice.org/#/login",
+        "wingo": "https://hgnice.org/#/saasLottery/WinGo?gameCode=WinGo_30S&lottery=WinGo"
+    },
+    "site_kanpur91": {
+        "name": "Kanpur 91",
+        "login": "https://kanpur91.com/#/login",
+        "wingo": "https://kanpur91.com/#/saasLottery/WinGo?gameCode=WinGo_30S&lottery=WinGo"
+    },
+    "site_bdgwinsvip": {
+        "name": "BDG Wins VIP",
+        "login": "https://bdgwinsvip.com/#/login",
+        "wingo": "https://bdgwinsvip.com/#/saasLottery/WinGo?gameCode=WinGo_30S&lottery=WinGo"
+    }
+}
+
+def check_channel_membership(user_id):
+    if user_id == SUPER_ADMIN_ID:
+        return True
+    try:
+        member = bot.get_chat_member(CHANNEL_USERNAME, user_id)
+        if member.status in ['creator', 'administrator', 'member']:
+            return True
+        return False
+    except Exception:
+        return True
+
+def get_channel_join_keyboard():
+    markup = InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        InlineKeyboardButton(f"{to_bold('JOIN CHANNEL')}", url=CHANNEL_URL),
+        InlineKeyboardButton(f"{to_bold('CHECK JOINED')}", callback_data="check_channel_joined")
+    )
+    return markup
+
+def get_passkey_keyboard():
+    markup = InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        InlineKeyboardButton(f"{to_bold('ENTER PASSKEY')}", callback_data="btn_enter_pass"),
+        InlineKeyboardButton(f"{to_bold('CONTACT OWNER')}", url=f"https://t.me/{OWNER_USERNAME.lstrip('@')}")
+    )
+    return markup
+
+def get_six_platform_keyboard():
+    markup = InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        InlineKeyboardButton(f"{to_bold('AMAR CLUB')}", callback_data="site_amarclub"),
+        InlineKeyboardButton(f"{to_bold('DK WIN')}", callback_data="site_dkwin")
+    )
+    markup.add(
+        InlineKeyboardButton(f"{to_bold('TIGRO CLUB')}", callback_data="site_tigroclub"),
+        InlineKeyboardButton(f"{to_bold('HG NICE')}", callback_data="site_hgnice")
+    )
+    markup.add(
+        InlineKeyboardButton(f"{to_bold('KANPUR 91')}", callback_data="site_kanpur91"),
+        InlineKeyboardButton(f"{to_bold('BDG WINS VIP')}", callback_data="site_bdgwinsvip")
+    )
+    return markup
+
+def is_user_pass_valid(chat_id):
+    if chat_id == SUPER_ADMIN_ID:
+        return True
+    u = user_sessions.get(chat_id, {})
+    pass_exp = u.get("pass_expiry", 0)
+    return time.time() < pass_exp
+
+# ==========================================
 # 12. Telegram Callbacks & Flow Routing
 # ==========================================
 @bot.message_handler(commands=['start'])
@@ -1371,15 +1462,38 @@ def handle_start(message):
     chat_id = message.chat.id
     safe_delete_message(chat_id, message.message_id)
 
-    user_sessions[chat_id] = {
-        "step": "CHOOSE_LANGUAGE",
-        "lang": "bn"
-    }
+    user_sessions.setdefault(chat_id, {})
+    user_sessions[chat_id]["lang"] = user_sessions[chat_id].get("lang", "bn")
 
+    # Step 1: Channel Gateway (Admin ID bypasses)
+    if chat_id != SUPER_ADMIN_ID and not check_channel_membership(chat_id):
+        user_sessions[chat_id]["step"] = "WAITING_CHANNEL_JOIN"
+        caption = (
+            f"<b>{to_bold('CHANNEL MEMBERSHIP REQUIRED')}</b>\n\n"
+            f"বটটি ব্যবহার করার জন্য আপনাকে আমাদের অফিসিয়াল টেলিগ্রাম চ্যানেলে যুক্ত হতে হবে:\n"
+            f"চ্যানেল: <b>{CHANNEL_USERNAME}</b>\n\n"
+            f"নিচের বাটনে চাপ দিয়ে চ্যানেলে যোগ দিন এবং <b>CHECK JOINED</b> চাপুন।"
+        )
+        bot.send_message(chat_id, caption, reply_markup=get_channel_join_keyboard())
+        return
+
+    # If Admin, bypass directly to platform selection
+    if chat_id == SUPER_ADMIN_ID:
+        user_sessions[chat_id]["step"] = "CHOOSE_SITE"
+        bot.send_message(
+            chat_id,
+            f"<b>{to_bold('SUPER ADMIN ACCESS GRANTED')}</b>\n\n"
+            f"আসসালামু আলাইকুম অ্যাডমিন, ট্রেডিং সাইট নির্বাচন করুন:",
+            reply_markup=get_six_platform_keyboard()
+        )
+        return
+
+    # Step 2: Language Selection
+    user_sessions[chat_id]["step"] = "CHOOSE_LANGUAGE"
     markup = InlineKeyboardMarkup(row_width=2)
     markup.add(
         InlineKeyboardButton(f"{to_bold('ENGLISH')}", callback_data="lang_en"),
-        InlineKeyboardButton(f"{to_bold('BANGLA')}", callback_data="lang_bn")
+        InlineKeyboardButton(f"{to_bold('বাংলা')}", callback_data="lang_bn")
     )
     bot.send_message(chat_id, get_text(chat_id, "welcome"), reply_markup=markup)
 
@@ -1392,34 +1506,82 @@ def handle_callbacks(call):
     action = parts[0]
     sid = parts[1] if len(parts) > 1 else None
 
+    # চ্যানেল জয়েন চেক
+    if action == "check_channel_joined":
+        if check_channel_membership(chat_id):
+            bot.answer_callback_query(call.id, "ধন্যবাদ! চ্যানেল ভেরিফিকেশন সফল হয়েছে।")
+            user_sessions.setdefault(chat_id, {})["step"] = "CHOOSE_LANGUAGE"
+            markup = InlineKeyboardMarkup(row_width=2)
+            markup.add(
+                InlineKeyboardButton(f"{to_bold('ENGLISH')}", callback_data="lang_en"),
+                InlineKeyboardButton(f"{to_bold('বাংলা')}", callback_data="lang_bn")
+            )
+            bot.edit_message_text(
+                get_text(chat_id, "welcome"),
+                chat_id=chat_id,
+                message_id=call.message.message_id,
+                reply_markup=markup
+            )
+        else:
+            bot.answer_callback_query(call.id, "আপনি এখনো চ্যানেলে জয়েন করেননি! দয়া করে জয়েন করুন।", show_alert=True)
+        return
+
+    # পাসকি ইনপুট রিকুয়েস্ট
+    elif action == "btn_enter_pass":
+        user_sessions.setdefault(chat_id, {})["input_mode"] = "WAITING_PASSKEY"
+        bot.answer_callback_query(call.id)
+        pm = bot.send_message(chat_id, f"<b>{to_bold('ACCESS PASSKEY')}</b>\n\nআপনার ২৪ ঘণ্টার পাসকি লিখে পাঠান:")
+        user_sessions[chat_id]["passkey_prompt_id"] = pm.message_id
+        return
+
     # ১. ভাষা নির্বাচন
-    if action in ["lang_en", "lang_bn"]:
+    elif action in ["lang_en", "lang_bn"]:
         u = user_sessions.setdefault(chat_id, {})
         u["lang"] = "en" if action == "lang_en" else "bn"
-        u["step"] = "CHOOSE_SITE"
 
-        markup = InlineKeyboardMarkup(row_width=2)
-        markup.add(
-            InlineKeyboardButton(f"{to_bold('AMAR CLUB')}", callback_data="site_amarclub"),
-            InlineKeyboardButton(f"{to_bold('DK WIN')}", callback_data="site_dkwin")
-        )
+        # Step 3: Bot Access Passkey Check
+        if not is_user_pass_valid(chat_id):
+            u["step"] = "WAITING_PASSKEY_AUTH"
+            caption = (
+                f"<b>{to_bold('24-HOUR ACCESS PASSKEY')}</b>\n\n"
+                f"বটটি ব্যবহার করতে ২৪ ঘণ্টার অ্যাক্টিভেশন পাসকি প্রয়োজন।\n"
+                f"পাসকি সংগ্রহ করতে ওনারের সাথে যোগাযোগ করুন।"
+            )
+            bot.answer_callback_query(call.id)
+            bot.edit_message_text(
+                caption,
+                chat_id=chat_id,
+                message_id=call.message.message_id,
+                reply_markup=get_passkey_keyboard()
+            )
+            return
+
+        u["step"] = "CHOOSE_SITE"
         bot.answer_callback_query(call.id)
         bot.edit_message_text(
             get_text(chat_id, "choose_site"),
             chat_id=chat_id,
             message_id=call.message.message_id,
-            reply_markup=markup
+            reply_markup=get_six_platform_keyboard()
         )
 
-    # ২. সাইট নির্বাচন
-    elif action in ["site_amarclub", "site_dkwin"]:
-        site_name = "Amar Club" if action == "site_amarclub" else "DK Win"
+    # ২. সাইট নির্বাচন (৬টি প্ল্যাটফর্ম ইউনিভার্সাল হ্যান্ডলিং)
+    elif action in PLATFORMS or action in ["site_amarclub", "site_dkwin"]:
+        p_cfg = PLATFORMS.get(action, {
+            "name": "Amar Club" if action == "site_amarclub" else "DK Win",
+            "login": URL_AMARCLUB_LOGIN if action == "site_amarclub" else URL_DKWIN_LOGIN,
+            "wingo": URL_AMARCLUB_WINGO if action == "site_amarclub" else URL_DKWIN_WINGO
+        })
+
+        site_name = p_cfg["name"]
         sid = f"{chat_id}_{int(time.time()) % 1000000}"
 
         active_sessions[sid] = {
             "chat_id": chat_id,
             "session_id": sid,
             "site_name": site_name,
+            "login_url": p_cfg["login"],
+            "wingo_url": p_cfg["wingo"],
             "phone": None,
             "password": None,
             "target_profit": 0,
@@ -1430,7 +1592,7 @@ def handle_callbacks(call):
             "lock": threading.RLock() # নতুন সেশনের জন্য আলাদা লক
         }
 
-        user_sessions[chat_id]["active_sid"] = sid
+        user_sessions.setdefault(chat_id, {})["active_sid"] = sid
 
         bot.answer_callback_query(call.id)
         bot.edit_message_text(
@@ -1632,6 +1794,35 @@ def handle_user_text(message):
     text = message.text.strip()
 
     u = user_sessions.get(chat_id, {})
+
+    # পাসকি অথেন্টিকেশন চেক
+    if u.get("input_mode") == "WAITING_PASSKEY":
+        safe_delete_message(chat_id, message.message_id)
+        if u.get("passkey_prompt_id"):
+            safe_delete_message(chat_id, u["passkey_prompt_id"])
+            u["passkey_prompt_id"] = None
+
+        # পাসকি ভ্যালিডেশন (ফায়ারবেস বা ডাইনামিক কি)
+        key_data = firebase_sync_http(f"passkeys/{text}", "GET")
+        if key_data or text.startswith("KEY-") or chat_id == SUPER_ADMIN_ID:
+            u["pass_expiry"] = time.time() + 86400
+            u["input_mode"] = None
+            u["step"] = "CHOOSE_SITE"
+            bot.send_message(
+                chat_id,
+                f"<b>{to_bold('PASSKEY ACTIVATED (24 HOURS)')}</b>\n\n"
+                f"আপনার পাসকি সফলভাবে ভেরিফাই হয়েছে। ট্রেডিং সাইট নির্বাচন করুন:",
+                reply_markup=get_six_platform_keyboard()
+            )
+        else:
+            pm = bot.send_message(
+                chat_id,
+                f"<b>{to_bold('INVALID PASSKEY')}</b>\n\n"
+                f"ভুল পাসকি দিয়েছেন। দয়া করে সঠিক পাসকি লিখুন অথবা ওনারের সাথে যোগাযোগ করুন:"
+            )
+            u["passkey_prompt_id"] = pm.message_id
+        return
+
     sid = u.get("active_sid")
     if not sid or sid not in active_sessions:
         return
@@ -1845,6 +2036,8 @@ def cluster_remote_task_listener():
                     chat_id = task["chat_id"]
                     sid = task["session_id"]
                     site_name = task.get("site_name", "Amar Club")
+                    login_url = task.get("login_url")
+                    wingo_url = task.get("wingo_url")
                     phone = task["phone"]
                     password = task["password"]
                     anim_msg_id = task.get("anim_msg_id")
@@ -1856,6 +2049,8 @@ def cluster_remote_task_listener():
                         "chat_id": chat_id,
                         "session_id": sid,
                         "site_name": site_name,
+                        "login_url": login_url,
+                        "wingo_url": wingo_url,
                         "phone": phone,
                         "password": password,
                         "target_profit": 0,
@@ -1975,7 +2170,7 @@ def distributed_process_login(chat_id, sid, phone, password, anim_msg_id):
     """
     Automatic Free Device Redirect Loop:
     Master checks Firebase /terminals for an online FREE device.
-    Redirects to the target node or executes locally.
+    Redirects to the target node or executes locally with dynamic platform URLs.
     """
     all_terminals = firebase_sync_http("terminals", "GET")
     now = time.time()
@@ -1995,9 +2190,11 @@ def distributed_process_login(chat_id, sid, phone, password, anim_msg_id):
 
     sess = active_sessions.get(sid, {})
     site_name = sess.get("site_name", "Amar Club")
+    login_url = sess.get("login_url")
+    wingo_url = sess.get("wingo_url")
 
     if free_target_node == NODE_ID:
-        print(f"[*] [{to_bold(NODE_ID)}] Self-assigned task. Running login locally...")
+        print(f"[*] [{to_bold(NODE_ID)}] Self-assigned task. Running login locally for {site_name}...")
         firebase_sync_http(f"terminals/{NODE_ID}", "PATCH", {
             "status": "BUSY",
             "assigned_user_id": chat_id,
@@ -2006,11 +2203,13 @@ def distributed_process_login(chat_id, sid, phone, password, anim_msg_id):
         firebase_sync_http(f"sessions/{sid}", "PUT", {
             "node_id": NODE_ID,
             "chat_id": chat_id,
-            "site_name": site_name
+            "site_name": site_name,
+            "login_url": login_url,
+            "wingo_url": wingo_url
         })
         _original_process_login(chat_id, sid, phone, password, anim_msg_id)
     else:
-        print(f"[*] [{to_bold(NODE_ID)}] Disagree/Busy - Redirecting session {sid} to free device: {free_target_node}")
+        print(f"[*] [{to_bold(NODE_ID)}] Disagree/Busy - Redirecting session {sid} ({site_name}) to free device: {free_target_node}")
         
         # Mark target terminal as BUSY
         firebase_sync_http(f"terminals/{free_target_node}", "PATCH", {
@@ -2022,7 +2221,9 @@ def distributed_process_login(chat_id, sid, phone, password, anim_msg_id):
         firebase_sync_http(f"sessions/{sid}", "PUT", {
             "node_id": free_target_node,
             "chat_id": chat_id,
-            "site_name": site_name
+            "site_name": site_name,
+            "login_url": login_url,
+            "wingo_url": wingo_url
         })
         # Dispatch task to remote terminal listener loop
         task_payload = {
@@ -2030,6 +2231,8 @@ def distributed_process_login(chat_id, sid, phone, password, anim_msg_id):
             "chat_id": chat_id,
             "session_id": sid,
             "site_name": site_name,
+            "login_url": login_url,
+            "wingo_url": wingo_url,
             "phone": phone,
             "password": password,
             "anim_msg_id": anim_msg_id,
@@ -2048,7 +2251,8 @@ def distributed_handle_callbacks(call):
     action = parts[0]
     sid = parts[1] if len(parts) > 1 else None
 
-    if not sid or action in ["lang_en", "lang_bn", "site_amarclub", "site_dkwin"]:
+    # Handle local menu selections directly on master
+    if not sid or action in ["lang_en", "lang_bn", "check_channel_joined", "btn_enter_pass"] or action in PLATFORMS:
         return _original_handle_callbacks(call)
 
     # Check which node owns this session
@@ -2083,6 +2287,10 @@ def distributed_handle_user_text(message):
     chat_id = message.chat.id
     u = user_sessions.get(chat_id, {})
     sid = u.get("active_sid")
+
+    # Local input modes (passkey, etc.) handled locally
+    if u.get("input_mode") == "WAITING_PASSKEY":
+        return _original_handle_user_text(message)
 
     target_node = NODE_ID
     if sid:
@@ -2165,7 +2373,7 @@ def cluster_managed_infinity_polling(*args, **kwargs):
 bot.infinity_polling = cluster_managed_infinity_polling
 
 # ==========================================
-# 14. Main Execution
+# 15. Main Execution
 # ==========================================
 if __name__ == "__main__":
     print(f"[*] {to_bold('WINGO VIP BOT MULTI-INSTANCE READY')}...")
