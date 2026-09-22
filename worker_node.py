@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-================================================================================
-DISTRIBUTED CLIENT-SIDE WORKER RUNTIME & EXECUTION ENGINE
+AUTONOMOUS DISTRIBUTED WORKER ENGINE & REAL-TIME TELEGRAM STREAMER
 File Name   : worker.py
-Architecture: Autonomous Node Execution Daemon (Selenium Firefox + Firebase RTDB)
-Standard    : Pure ASCII Formatting, Robust Fault Tolerance, Zero Code Omission
-================================================================================
+Architecture: Dedicated Node Daemon (Chromium / Firefox Headless + Telegram Bot API + Firebase RTDB)
+Standard    : Zero Code Omission, Full JavaScript Payload Preservation, Real-Time Photo Controls
 """
 
 # ==============================================================================
-# SECTION 1: AUTOMATIC DEPENDENCY RESOLUTION & SYSTEM IMPORTS
+# SECTION 1: AUTOMATIC PACKAGE INSTALLER & SYSTEM IMPORTS
 # ==============================================================================
 import os
 import sys
@@ -25,30 +23,33 @@ import signal
 import platform
 import logging
 
-def ensure_runtime_packages():
-    required_packages = {
-        "requests": "requests",
-        "selenium": "selenium",
-        "psutil": "psutil"
-    }
-    for mod_name, pkg_name in required_packages.items():
-        try:
-            __import__(mod_name)
-        except ImportError:
-            sys.stdout.write(f"[*] Missing runtime module: {pkg_name}. Installing via pip...\n")
-            sys.stdout.flush()
-            try:
-                subprocess.check_call([sys.executable, "-m", "pip", "install", pkg_name])
-            except subprocess.CalledProcessError as exc:
-                sys.stderr.write(f"[!] Package installation failed for {pkg_name}: {exc}\n")
-                sys.exit(1)
+def install_and_import(package_name, import_name=None):
+    if import_name is None:
+        import_name = package_name
+    try:
+        __import__(import_name)
+    except ImportError:
+        sys.stdout.write(f"[*] Installing package: {package_name}...\n")
+        sys.stdout.flush()
+        subprocess.check_call([sys.executable, "-m", "pip", "install", package_name])
 
-ensure_runtime_packages()
+install_and_import("pyTelegramBotAPI", "telebot")
+install_and_import("selenium")
+install_and_import("requests")
+install_and_import("psutil")
 
 import requests
 import psutil
+import telebot
+from telebot.types import (
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+    InputMediaPhoto
+)
 from selenium import webdriver
-from selenium.webdriver.firefox.options import Options
+from selenium.webdriver.chrome.options import Options as ChromeOptions
+from selenium.webdriver.chrome.service import Service as ChromeService
+from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.firefox.service import Service as FirefoxService
 from selenium.common.exceptions import (
     WebDriverException,
@@ -59,36 +60,34 @@ from selenium.common.exceptions import (
 )
 
 # ==============================================================================
-# SECTION 2: GLOBAL CONFIGURATION & SYSTEM CONSTANTS
+# SECTION 2: CONFIGURATION, NODE IDENTITY & GLOBAL STATE
 # ==============================================================================
-FIREBASE_DATABASE_URL = "https://x7e77eey-default-rtdb.firebaseio.com"
-FIREBASE_PROJECT_ID = "x7e77eey"
-FIREBASE_STORAGE_BUCKET = "x7e77eey.firebasestorage.app"
-FIREBASE_APP_ID = "1:1083361150222:web:60a5a8371dada67b57c35f"
+BOT_TOKEN = "8808949150:AAGehY-s2kZKblgZtYqwtsCiDRypLx8O8hU"
+bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 
-def resolve_node_identifier() -> str:
-    env_node_id = os.environ.get("NODE_ID")
-    if env_node_id and env_node_id.strip():
-        return env_node_id.strip().upper()
+FIREBASE_DATABASE_URL = "https://x7e77eey-default-rtdb.firebaseio.com"
+
+def resolve_node_id() -> str:
+    env_id = os.environ.get("NODE_ID")
+    if env_id and env_id.strip():
+        return env_id.strip().upper()
     try:
         mac_addr = uuid.getnode()
-        mac_hex = f"{mac_addr:012X}"
-        return f"W-NODE-{mac_hex[-6:]}"
+        return f"W-NODE-{mac_addr:012X}"[-9:]
     except Exception:
-        fallback_uuid = str(uuid.uuid4())[:8].upper()
-        return f"W-NODE-{fallback_uuid}"
+        return f"W-NODE-{str(uuid.uuid4())[:6].upper()}"
 
-NODE_ID = resolve_node_identifier()
+NODE_ID = resolve_node_id()
 PROFILES_BASE_DIR = os.path.expanduser(f"~/.worker_profiles_{NODE_ID}")
 os.makedirs(PROFILES_BASE_DIR, exist_ok=True)
 
-HEARTBEAT_INTERVAL_SEC = 6.0
-WATCHDOG_CHECK_INTERVAL_SEC = 2.0
-NETWORK_RETRY_DELAY_SEC = 5.0
+SPINNER_FRAMES = ["◴", "◷", "◶", "◵"]
 
-# ==============================================================================
-# SECTION 3: PURE ASCII BOX FORMATTING & LOGGING ENGINE
-# ==============================================================================
+# Thread-safe execution lock and active driver context
+global_driver_lock = threading.RLock()
+active_driver_instance = None
+current_session_info = {}
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -96,22 +95,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(NODE_ID)
 
-def print_ascii_card(title: str, lines: list, min_width: int = 60):
-    content_width = max([len(title)] + [len(str(line)) for line in lines] + [min_width])
-    horizontal_border = "─" * (content_width + 2)
-    top_border = f"┌{horizontal_border}┐"
-    divider_border = f"├{horizontal_border}┤"
-    bottom_border = f"└{horizontal_border}┘"
-
-    output = [top_border]
-    output.append(f"│ {title.center(content_width)} │")
-    output.append(divider_border)
-    for line in lines:
-        output.append(f"│ {str(line).ljust(content_width)} │")
-    output.append(bottom_border)
-    sys.stdout.write("\n" + "\n".join(output) + "\n")
-    sys.stdout.flush()
-
+# ==============================================================================
+# SECTION 3: MATHEMATICAL BOLD UNICODE & UTILITY FUNCTIONS
+# ==============================================================================
 def to_bold(text: str) -> str:
     res = []
     for c in str(text):
@@ -125,6 +111,23 @@ def to_bold(text: str) -> str:
         else:
             res.append(c)
     return "".join(res)
+
+def safe_delete_message(chat_id, message_id):
+    if not message_id:
+        return
+    try:
+        bot.delete_message(chat_id=chat_id, message_id=message_id)
+    except Exception:
+        pass
+
+def kill_zombie_browser_processes():
+    for proc in psutil.process_iter(['name', 'cmdline']):
+        try:
+            name = proc.info['name'].lower() if proc.info['name'] else ""
+            if any(b in name for b in ["chromedriver", "chromium", "chrome", "firefox", "geckodriver"]):
+                proc.kill()
+        except Exception:
+            pass
 
 # ==============================================================================
 # SECTION 4: UNTRUNCATED IN-BROWSER JAVASCRIPT AUTOMATION PAYLOADS
@@ -860,507 +863,483 @@ const autoTotalSteps = arguments[1];
 """
 
 # ==============================================================================
-# SECTION 5: SYSTEM & PROCESS CLEANUP ENGINE
+# SECTION 5: SMART TELEGRAM IMAGE REPLACEMENT ENGINE
 # ==============================================================================
-class ProcessCleanupManager:
-    @staticmethod
-    def kill_zombie_processes(session_id: str = None):
-        """Terminates stray Firefox and Geckodriver instances to release memory."""
-        current_pid = os.getpid()
-        target_binaries = ["geckodriver", "firefox", "firefox-bin", "firefox.exe", "geckodriver.exe"]
-        killed_count = 0
+def display_or_replace_photo(chat_id, session_id, image_path, caption_text, reply_markup=None):
+    last_photo_msg_id = current_session_info.get("live_photo_message_id")
+    replaced = False
 
-        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+    if last_photo_msg_id and os.path.exists(image_path):
+        try:
+            with open(image_path, "rb") as ph:
+                media = InputMediaPhoto(ph, caption=caption_text, parse_mode="HTML")
+                bot.edit_message_media(
+                    media=media,
+                    chat_id=chat_id,
+                    message_id=last_photo_msg_id,
+                    reply_markup=reply_markup
+                )
+            replaced = True
+        except Exception:
+            replaced = False
+
+    if not replaced and os.path.exists(image_path):
+        try:
+            with open(image_path, "rb") as ph:
+                msg = bot.send_photo(
+                    chat_id, ph,
+                    caption=caption_text,
+                    reply_markup=reply_markup,
+                    parse_mode="HTML"
+                )
+                current_session_info["live_photo_message_id"] = msg.message_id
+        except Exception as e:
+            sys.stderr.write(f"[*] Photo replacement error: {e}\n")
+
+def get_trading_control_keyboard(sid):
+    current_session_info["anim_tick"] = current_session_info.get("anim_tick", 0) + 1
+    spinner = SPINNER_FRAMES[current_session_info["anim_tick"] % len(SPINNER_FRAMES)]
+
+    markup = InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        InlineKeyboardButton(f"{to_bold('SHOT')}", callback_data=f"shot:{sid}"),
+        InlineKeyboardButton(f"{to_bold('BAL')}", callback_data=f"bal:{sid}")
+    )
+    markup.add(
+        InlineKeyboardButton(f"{to_bold('STATS')}", callback_data=f"stats:{sid}"),
+        InlineKeyboardButton(f"{to_bold(f'STOP {spinner}')}", callback_data=f"stop:{sid}")
+    )
+    return markup
+
+# ==============================================================================
+# SECTION 6: DUAL CHROMIUM & FIREFOX BROWSER LOADER
+# ==============================================================================
+def spawn_isolated_driver(session_id: str, target_url: str):
+    profile_dir = os.path.join(PROFILES_BASE_DIR, f"profile_{session_id}")
+    os.makedirs(profile_dir, exist_ok=True)
+
+    # 1. Attempt Chromium/Chrome Execution First (Optimized for Railway/Ubuntu)
+    try:
+        c_options = ChromeOptions()
+        c_options.add_argument("--headless")
+        c_options.add_argument("--no-sandbox")
+        c_options.add_argument("--disable-dev-shm-usage")
+        c_options.add_argument("--disable-gpu")
+        c_options.add_argument(f"--user-data-dir={profile_dir}")
+        c_options.add_argument("--window-size=390,844")
+
+        chrome_binaries = ["/usr/bin/chromium-browser", "/usr/bin/chromium", "/usr/bin/google-chrome"]
+        for c_bin in chrome_binaries:
+            if os.path.exists(c_bin):
+                c_options.binary_location = c_bin
+                break
+
+        driver_paths = ["/usr/bin/chromedriver", "/usr/lib/chromium-browser/chromedriver", "/usr/local/bin/chromedriver"]
+        selected_driver = None
+        for d_path in driver_paths:
+            if os.path.exists(d_path):
+                selected_driver = d_path
+                break
+
+        c_service = ChromeService(executable_path=selected_driver) if selected_driver else ChromeService()
+        drv = webdriver.Chrome(service=c_service, options=c_options)
+        drv.set_page_load_timeout(35.0)
+        drv.get(target_url)
+        return drv
+    except Exception as e_chrome:
+        logger.warning(f"Chromium spawn failed: {e_chrome}. Falling back to Firefox...")
+
+    # 2. Fallback to Firefox
+    f_options = FirefoxOptions()
+    f_options.add_argument("--headless")
+    f_options.add_argument("-profile")
+    f_options.add_argument(profile_dir)
+    f_options.set_preference("browser.cache.disk.enable", False)
+    f_options.set_preference("browser.cache.memory.enable", True)
+    f_options.set_preference("network.http.use-cache", False)
+
+    f_service = FirefoxService(log_output=os.devnull)
+    drv = webdriver.Firefox(service=f_service, options=f_options)
+    drv.set_window_size(390, 844)
+    drv.set_page_load_timeout(35.0)
+    drv.get(target_url)
+    return drv
+
+# ==============================================================================
+# SECTION 7: IN-SESSION TELEGRAM LIVE CALLBACK DISPATCHER
+# ==============================================================================
+@bot.callback_query_handler(func=lambda call: call.data.startswith(("shot:", "bal:", "stats:", "stop:")))
+def handle_live_trading_callbacks(call):
+    global active_driver_instance, current_session_info
+    action, sid = call.data.split(":", 1)
+    chat_id = call.message.chat.id
+
+    if not active_driver_instance or current_session_info.get("session_id") != sid:
+        bot.answer_callback_query(call.id, "সেশনটি এই টার্মিনালে সক্রিয় নেই!", show_alert=True)
+        return
+
+    with global_driver_lock:
+        if action == "shot":
+            bot.answer_callback_query(call.id, "ফুটেজ সংগ্রহ করা হচ্ছে...")
+            shot_path = os.path.join(PROFILES_BASE_DIR, f"live_{sid}.png")
             try:
-                p_info = proc.info
-                p_name = p_info['name'].lower() if p_info['name'] else ""
-                p_cmd = " ".join(p_info['cmdline']).lower() if p_info['cmdline'] else ""
+                active_driver_instance.save_screenshot(shot_path)
+                cur_b = current_session_info.get("cur_bal", current_session_info.get("start_bal", 0.0))
+                t_total = current_session_info.get("start_bal", 0.0) + current_session_info.get("target_profit", 0.0)
+                caption = (
+                    f"<b>{to_bold('24/7 AUTOMATION ENGINE ACTIVE')}</b>\n\n"
+                    f"• প্ল্যাটফর্ম: <b>{current_session_info.get('site_name', '')}</b>\n"
+                    f"• শুরুর ব্যালেন্স: <code>৳ {current_session_info.get('start_bal', 0.0):.2f}</code>\n"
+                    f"• টার্গেট ব্যালেন্স: <code>৳ {t_total:.2f}</code>\n"
+                    f"• মার্টিনগেল স্টেপস: <b>{current_session_info.get('total_steps', 7)}</b>\n\n"
+                    f"সময়: <code>{time.strftime('%H:%M:%S')}</code>\n"
+                    f"স্ট্যাটাস: মার্টিনগেল ইঞ্জিন সফলভাবে ট্রেড পরিচালনা করছে।"
+                )
+                display_or_replace_photo(chat_id, sid, shot_path, caption, get_trading_control_keyboard(sid))
+                if os.path.exists(shot_path): os.remove(shot_path)
+            except Exception as e:
+                bot.send_message(chat_id, f"ফুটেজ ক্যাপচার এরর: {e}")
 
-                if proc.pid == current_pid:
-                    continue
+        elif action == "bal":
+            try:
+                b = active_driver_instance.execute_script("return window.__WINGO_ST ? window.__WINGO_ST.curBal : 0;")
+                bot.answer_callback_query(call.id, f"লাইভ ব্যালেন্স: ৳ {float(b):.2f}", show_alert=True)
+            except Exception:
+                bot.answer_callback_query(call.id, "ব্যালেন্স লোড হচ্ছে...", show_alert=True)
 
-                is_match = any(b in p_name for b in target_binaries)
-                if not is_match and session_id and session_id.lower() in p_cmd:
-                    is_match = True
+        elif action == "stats":
+            try:
+                data = active_driver_instance.execute_script("""
+                    if(window.__WINGO_ST) {
+                        return {
+                            w: window.__WINGO_ST.w || 0,
+                            l: window.__WINGO_ST.l || 0,
+                            step: (window.__WINGO_ST.stpIdx || 0) + 1,
+                            maxStep: (window.__WINGO_ST.dynSeq || []).length,
+                            curBal: window.__WINGO_ST.curBal || 0,
+                            tgtAmt: window.__WINGO_ST.tgtAmt || 0
+                        };
+                    }
+                    return null;
+                """)
+                if data:
+                    stat_msg = (
+                        f"<b>{to_bold('LIVE STATS REPORT')}</b>\n\n"
+                        f"• ব্যালেন্স: <code>৳ {data['curBal']:.2f}</code>\n"
+                        f"• টার্গেট: <code>৳ {data['tgtAmt']:.2f}</code>\n"
+                        f"• মার্টিনগেল লেভেল: <b>Step {data['step']}/{data['maxStep']}</b>\n"
+                        f"• উইন: <b>{data['w']}</b> | লস: <b>{data['l']}</b>"
+                    )
+                    bot.send_message(chat_id, stat_msg)
+                else:
+                    bot.answer_callback_query(call.id, "ইঞ্জিন ডাটা সিঙ্ক হচ্ছে...", show_alert=True)
+            except Exception:
+                bot.answer_callback_query(call.id, "ডাটা রিড এরর", show_alert=True)
 
-                if is_match:
-                    proc.kill()
-                    killed_count += 1
-            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+        elif action == "stop":
+            try:
+                active_driver_instance.execute_script("let b = document.querySelector('#sys-core-fin button'); if(b) b.click();")
+                current_session_info["is_trading"] = False
+                bot.answer_callback_query(call.id, "ট্রেডিং সাময়িক স্থগিত করা হয়েছে", show_alert=True)
+                bot.send_message(chat_id, f"<b>{to_bold('TRADING PAUSED')}</b>\nট্রেডিং অটোমেশন সাময়িকভাবে থামানো হয়েছে।")
+            except Exception:
                 pass
 
-        if killed_count > 0:
-            logger.info(f"Cleaned up {killed_count} orphan browser/driver process(es).")
-
-    @staticmethod
-    def purge_profile_directory(session_id: str):
-        if not session_id:
-            return
-        profile_path = os.path.join(PROFILES_BASE_DIR, f"profile_{session_id}")
-        if os.path.exists(profile_path):
-            try:
-                shutil.rmtree(profile_path, ignore_errors=True)
-                logger.info(f"Purged isolated profile directory: {profile_path}")
-            except Exception as e:
-                logger.warning(f"Error purging profile {profile_path}: {e}")
+# Background thread for handling Telegram inline callback interactions instantly
+threading.Thread(target=lambda: bot.infinity_polling(skip_pending=True), daemon=True).start()
 
 # ==============================================================================
-# SECTION 6: RESILIENT FIREBASE REALTIME DATABASE CLIENT
+# SECTION 8: WORKER TASK EXECUTION PIPELINE
 # ==============================================================================
-class FirebaseNodeClient:
-    def __init__(self, base_url: str, node_id: str):
-        self.base_url = base_url.rstrip("/")
-        self.node_id = node_id
-        self.session = requests.Session()
-        self.lock = threading.Lock()
+def execute_session_pipeline(task_payload: dict) -> bool:
+    global active_driver_instance, current_session_info
 
-    def _url(self, endpoint: str) -> str:
-        return f"{self.base_url}/{endpoint.strip('/')}.json"
+    session_id = task_payload.get("session_id")
+    chat_id = task_payload.get("chat_id")
+    site_name = task_payload.get("site_name", "Amar Club")
+    target_url = task_payload.get("target_url")
+    wingo_url = task_payload.get("wingo_url")
+    phone = task_payload.get("phone")
+    password = task_payload.get("password")
+    target_profit = float(task_payload.get("target_profit", 0))
+    total_steps = int(task_payload.get("total_steps", 7))
+    scripts = task_payload.get("scripts", {})
 
-    def register_or_sync_node(self) -> bool:
-        """Initializes or reconciles node state in the cluster registry."""
-        node_endpoint = f"nodes/{self.node_id}"
-        payload = {
-            "status": "FREE",
-            "active_user_id": None,
-            "assigned_at": None,
-            "expires_at": None,
-            "last_heartbeat": int(time.time()),
-            "task_payload": None,
-            "system_info": {
-                "platform": platform.platform(),
-                "python_version": platform.python_version(),
-                "hostname": socket.gethostname(),
-                "pid": os.getpid()
-            }
-        }
+    current_session_info = {
+        "session_id": session_id,
+        "chat_id": chat_id,
+        "site_name": site_name,
+        "target_profit": target_profit,
+        "total_steps": total_steps,
+        "is_trading": True,
+        "live_photo_message_id": None
+    }
+
+    bot.send_message(chat_id, f"<b>{to_bold('TERMINAL CONNECTED')}</b>\nনোড <code>{NODE_ID}</code> ব্রাউজার চালু করছে এবং লগইন পেজে প্রবেশ করছে...")
+
+    with global_driver_lock:
         try:
-            resp = self.session.patch(self._url(node_endpoint), json=payload, timeout=10.0)
-            return resp.status_code == 200
+            active_driver_instance = spawn_isolated_driver(session_id, target_url)
         except Exception as e:
-            logger.error(f"Cluster registration error: {e}")
-            return False
-
-    def emit_heartbeat(self) -> bool:
-        try:
-            data = {"last_heartbeat": int(time.time())}
-            resp = self.session.patch(self._url(f"nodes/{self.node_id}"), json=data, timeout=8.0)
-            return resp.status_code == 200
-        except Exception:
-            return False
-
-    def get_node_state(self) -> dict:
-        try:
-            resp = self.session.get(self._url(f"nodes/{self.node_id}"), timeout=10.0)
-            if resp.status_code == 200 and resp.text != "null":
-                return resp.json() or {}
-        except Exception as e:
-            logger.debug(f"Failed to fetch state: {e}")
-        return {}
-
-    def update_node_state(self, updates: dict) -> bool:
-        with self.lock:
-            try:
-                resp = self.session.patch(self._url(f"nodes/{self.node_id}"), json=updates, timeout=10.0)
-                return resp.status_code == 200
-            except Exception as e:
-                logger.error(f"Failed to update node state: {e}")
-                return False
-
-    def set_status_free(self) -> bool:
-        updates = {
-            "status": "FREE",
-            "active_user_id": None,
-            "assigned_at": None,
-            "expires_at": None,
-            "task_payload": None
-        }
-        return self.update_node_state(updates)
-
-    def log_node_event(self, message: str):
-        timestamp = int(time.time())
-        try:
-            self.session.post(self._url(f"nodes/{self.node_id}/audit_logs"), json={
-                "timestamp": timestamp,
-                "message": message
-            }, timeout=6.0)
-        except Exception:
-            pass
-
-# ==============================================================================
-# SECTION 7: DEDICATED SELENIUM DRIVER RUNTIME
-# ==============================================================================
-class IsolatedDriverSession:
-    def __init__(self, session_id: str, headless: bool = True):
-        self.session_id = session_id
-        self.headless = headless
-        self.profile_dir = os.path.join(PROFILES_BASE_DIR, f"profile_{session_id}")
-        os.makedirs(self.profile_dir, exist_ok=True)
-        self.driver = None
-        self.lock = threading.RLock()
-
-    def spawn(self, target_url: str):
-        with self.lock:
-            options = Options()
-            if self.headless:
-                options.add_argument("--headless")
-            options.add_argument("-profile")
-            options.add_argument(self.profile_dir)
-
-            # High-performance in-memory caching and clean headless options
-            options.set_preference("browser.cache.disk.enable", False)
-            options.set_preference("browser.cache.memory.enable", True)
-            options.set_preference("network.http.use-cache", False)
-            options.set_preference("dom.ipc.plugins.enabled", False)
-            options.set_preference("media.volume_scale", "0.0")
-
-            service = FirefoxService(log_output=os.devnull)
-            self.driver = webdriver.Firefox(service=service, options=options)
-            self.driver.set_window_size(390, 844)  # iPhone 12 standard viewport
-            self.driver.set_page_load_timeout(35.0)
-            self.driver.set_script_timeout(30.0)
-            self.driver.get(target_url)
-            return self.driver
-
-    def execute_script_safe(self, script: str, *args):
-        with self.lock:
-            if not self.driver:
-                return None
-            try:
-                return self.driver.execute_script(script, *args)
-            except (WebDriverException, JavascriptException) as e:
-                logger.debug(f"JS execution notice: {e.msg if hasattr(e, 'msg') else e}")
-                return None
-            except Exception as e:
-                logger.debug(f"General script exception: {e}")
-                return None
-
-    def teardown(self):
-        with self.lock:
-            if self.driver:
-                try:
-                    self.driver.quit()
-                except Exception:
-                    pass
-                finally:
-                    self.driver = None
-            ProcessCleanupManager.kill_zombie_processes(self.session_id)
-            ProcessCleanupManager.purge_profile_directory(self.session_id)
-
-# ==============================================================================
-# SECTION 8: AUTOMATION EXECUTION & SESSION WORKER
-# ==============================================================================
-class AutomationSessionWorker:
-    def __init__(self, client: FirebaseNodeClient, session_id: str, task_payload: dict, expires_at: int):
-        self.client = client
-        self.session_id = session_id
-        self.task_payload = task_payload
-        self.expires_at = expires_at
-        self.interrupted = threading.Event()
-        self.driver_session = None
-
-    def trigger_interrupt(self, reason: str = "Admin Force-Kill"):
-        logger.warning(f"Session {self.session_id} interrupt flagged: {reason}")
-        self.interrupted.set()
-        if self.driver_session:
-            self.driver_session.teardown()
-
-    def run_session(self) -> bool:
-        target_url = self.task_payload.get("target_url")
-        wingo_url = self.task_payload.get("wingo_url")
-        phone = self.task_payload.get("phone")
-        password = self.task_payload.get("password")
-        target_profit = float(self.task_payload.get("target_profit", 0))
-        total_steps = int(self.task_payload.get("total_steps", 7))
-
-        if not target_url or not phone or not password:
-            logger.error(f"Invalid task payload parameters for session {self.session_id}.")
-            return False
-
-        logger.info(f"Initializing browser tab for session: {self.session_id}")
-        self.driver_session = IsolatedDriverSession(self.session_id, headless=True)
-
-        try:
-            self.driver_session.spawn(target_url)
-        except Exception as e:
-            logger.error(f"Failed to spawn Firefox instance: {e}")
-            self.driver_session.teardown()
-            return False
-
-        if self.interrupted.is_set():
+            bot.send_message(chat_id, f"ব্রাউজার চালু করতে ব্যর্থ হয়েছে: {e}")
             return False
 
         # Phase 1: Authentication Form Injection
-        logger.info("Injecting credentials via DOM automation...")
-        fill_confirmed = False
+        fill_ok = False
         for _ in range(60):
-            if self.interrupted.is_set():
-                return False
-            res = self.driver_session.execute_script_safe(AUTO_FILL_AND_CLICK_JS, phone, password)
-            if res == "SUCCESS":
-                fill_confirmed = True
-                time.sleep(2.0)
-                break
+            try:
+                res = active_driver_instance.execute_script(scripts.get("AUTO_FILL_AND_CLICK_JS", AUTO_FILL_AND_CLICK_JS), phone, password)
+                if res == "SUCCESS":
+                    fill_ok = True
+                    time.sleep(2.0)
+                    break
+            except Exception:
+                pass
             time.sleep(0.5)
 
-        if not fill_confirmed:
-            logger.error("Login form elements could not be detected or submitted.")
-            self.driver_session.teardown()
+        if not fill_ok:
+            bot.send_message(chat_id, "লগইন ফর্ম পাওয়া যায়নি বা ইনপুট ফেইল হয়েছে।")
+            active_driver_instance.quit()
+            active_driver_instance = None
             return False
 
         # Phase 2: Login Status Verification
-        logger.info("Verifying session authentication state...")
         authenticated = False
-        for _ in range(45):
-            if self.interrupted.is_set():
-                return False
-            stat = self.driver_session.execute_script_safe(CHECK_LOGIN_STATUS_JS)
-            if isinstance(stat, dict):
-                if stat.get("status") == "SUCCESS":
+        for _ in range(40):
+            try:
+                stat = active_driver_instance.execute_script(scripts.get("CHECK_LOGIN_STATUS_JS", CHECK_LOGIN_STATUS_JS))
+                if isinstance(stat, dict) and stat.get("status") == "SUCCESS":
                     authenticated = True
                     break
-                elif stat.get("status") == "CONFIRM_CLICKED":
-                    time.sleep(1.5)
-                    continue
-                elif stat.get("status") == "ERROR":
-                    logger.error(f"Remote authentication rejected: {stat.get('message')}")
-                    self.driver_session.teardown()
-                    return False
+                if active_driver_instance.execute_script("return !!(localStorage.getItem('token') || sessionStorage.getItem('token'));"):
+                    authenticated = True
+                    break
+            except Exception:
+                pass
             time.sleep(0.5)
 
-        token_ok = self.driver_session.execute_script_safe(
-            "return !!(localStorage.getItem('token') || sessionStorage.getItem('token'));"
-        )
-        if token_ok:
-            authenticated = True
-
         if not authenticated:
-            logger.error("Authentication timed out or failed.")
-            self.driver_session.teardown()
+            bot.send_message(chat_id, "লগইন ব্যর্থ বা টাইমআউট হয়েছে। ফোন নম্বর ও পাসওয়ার্ড যাচাই করুন।")
+            active_driver_instance.quit()
+            active_driver_instance = None
             return False
 
-        logger.info("Login verified. Transitioning to target WinGo market...")
         time.sleep(1.5)
 
-        # Phase 3: Route to Target WinGo Engine Page
-        self.driver_session.execute_script_safe(WINGO_RUNBOX_AND_CLICK_JS)
-        if wingo_url:
-            self.driver_session.execute_script_safe(
-                """
-                const dest = arguments[0];
-                if (!window.location.href.includes('WinGo')) {
-                    window.location.href = dest;
-                }
-                """, wingo_url
-            )
+        # Phase 3: Login Snapshot to Telegram
+        login_snap = os.path.join(PROFILES_BASE_DIR, f"login_{session_id}.png")
+        active_driver_instance.save_screenshot(login_snap)
+        masked_phone = phone[:3] + "****" + phone[-3:] if len(phone) >= 6 else phone
+        login_caption = (
+            f"<b>{to_bold('LOGIN SUCCESSFUL')}</b>\n\n"
+            f"• প্ল্যাটফর্ম: <b>{site_name}</b>\n"
+            f"• অ্যাকাউন্ট: <code>{masked_phone}</code>\n\n"
+            f"উইনগো মার্কেটে রিডাইরেক্ট করা হচ্ছে..."
+        )
+        display_or_replace_photo(chat_id, session_id, login_snap, login_caption)
+        if os.path.exists(login_snap): os.remove(login_snap)
 
-        wingo_ready = False
-        for _ in range(30):
-            if self.interrupted.is_set():
-                return False
-            if self.driver_session.execute_script_safe(CHECK_WINGO_READY_JS):
-                wingo_ready = True
-                break
-            time.sleep(0.8)
+        # Phase 4: Route to WinGo 30S
+        try:
+            active_driver_instance.execute_script(scripts.get("WINGO_RUNBOX_AND_CLICK_JS", WINGO_RUNBOX_AND_CLICK_JS))
+            active_driver_instance.execute_script("if(!window.location.href.includes('WinGo')) window.location.href = arguments[0];", wingo_url)
+        except Exception:
+            pass
 
-        if not wingo_ready:
-            logger.warning("WinGo readiness check was indeterminate. Attempting core injection...")
+        time.sleep(3.0)
 
-        # Extract Initial Balance
-        initial_balance = 0.0
+        # Phase 5: Fetch Live Balance
+        current_balance = 0.0
         for _ in range(15):
-            bal = self.driver_session.execute_script_safe(FETCH_BALANCE_JS)
-            if bal and float(bal) > 0:
-                initial_balance = float(bal)
-                break
-            time.sleep(0.4)
-
-        logger.info(f"Verified wallet balance: {initial_balance:.2f}")
-
-        # Phase 4: Core Engine Script Injection
-        logger.info(f"Injecting WinGo Martingale engine. Target: {target_profit} | Steps: {total_steps}")
-        core_resp = self.driver_session.execute_script_safe(WINGO_CORE_JS, target_profit, total_steps)
-        logger.info(f"Core script execution status: {core_resp}")
-
-        # Phase 5: Continuous In-Session Monitoring Loop
-        logger.info("Engine fully operational. Continuous background monitoring active.")
-        while not self.interrupted.is_set():
-            if self.expires_at and time.time() >= self.expires_at:
-                logger.info(f"24-Hour session limit reached for session {self.session_id}.")
-                break
-
-            telemetry = self.driver_session.execute_script_safe("""
-                if (window.__WINGO_ST) {
-                    return {
-                        isRun: window.__WINGO_ST.isRun,
-                        curBal: window.__WINGO_ST.curBal || 0,
-                        tgtAmt: window.__WINGO_ST.tgtAmt || 0,
-                        startBal: window.__WINGO_ST.startBal || 0,
-                        w: window.__WINGO_ST.w || 0,
-                        l: window.__WINGO_ST.l || 0,
-                        cur_w_streak: window.__WINGO_ST.cur_w_streak || 0,
-                        cur_l_streak: window.__WINGO_ST.cur_l_streak || 0
-                    };
-                }
-                return null;
-            """)
-
-            if telemetry and isinstance(telemetry, dict):
-                current_bal = telemetry.get("curBal", 0)
-                target_amt = telemetry.get("tgtAmt", 0)
-                if current_bal >= target_amt and target_amt > 0 and current_bal > 0:
-                    logger.info(f"Profit target attained: {current_bal} >= {target_amt}. Session successful.")
+            try:
+                bal = active_driver_instance.execute_script(scripts.get("FETCH_BALANCE_JS", FETCH_BALANCE_JS))
+                if bal and float(bal) > 0:
+                    current_balance = float(bal)
                     break
+            except Exception:
+                pass
+            time.sleep(0.5)
 
-            time.sleep(WATCHDOG_CHECK_INTERVAL_SEC)
+        current_session_info["start_bal"] = current_balance
 
-        self.driver_session.teardown()
-        return True
+        # Phase 6: Inject Core Martingale Automation Engine
+        try:
+            active_driver_instance.execute_script(scripts.get("WINGO_CORE_JS", WINGO_CORE_JS), target_profit, total_steps)
+        except Exception as e:
+            bot.send_message(chat_id, f"ট্রেডিং ইঞ্জিন ইনজেকশন এরর: {e}")
+            active_driver_instance.quit()
+            active_driver_instance = None
+            return False
+
+        time.sleep(2.0)
+
+        # Phase 7: Send Live Dashboard Photo with Interactive Controls
+        run_snap = os.path.join(PROFILES_BASE_DIR, f"run_{session_id}.png")
+        active_driver_instance.save_screenshot(run_snap)
+        target_total = current_balance + target_profit
+        dashboard_caption = (
+            f"<b>{to_bold('24/7 AUTOMATION ENGINE ACTIVE')}</b>\n\n"
+            f"• প্ল্যাটফর্ম: <b>{site_name}</b>\n"
+            f"• শুরুর ব্যালেন্স: <code>৳ {current_balance:.2f}</code>\n"
+            f"• টার্গেট ব্যালেন্স: <code>৳ {target_total:.2f}</code>\n"
+            f"• মার্টিনগেল স্টেপস: <b>{total_steps}</b>\n\n"
+            f"মার্টিনগেল ইঞ্জিন সফলভাবে স্বয়ংক্রিয় ট্রেডিং পরিচালনা করছে।"
+        )
+        display_or_replace_photo(chat_id, session_id, run_snap, dashboard_caption, get_trading_control_keyboard(session_id))
+        if os.path.exists(run_snap): os.remove(run_snap)
+
+    # Phase 8: Continuous Background Telemetry Loop
+    while current_session_info.get("is_trading"):
+        with global_driver_lock:
+            if not active_driver_instance:
+                break
+            try:
+                st = active_driver_instance.execute_script("""
+                    if(window.__WINGO_ST) {
+                        return {
+                            curBal: window.__WINGO_ST.curBal || 0,
+                            tgtAmt: window.__WINGO_ST.tgtAmt || 0,
+                            w: window.__WINGO_ST.w || 0,
+                            l: window.__WINGO_ST.l || 0
+                        };
+                    }
+                    return null;
+                """)
+                if st:
+                    current_session_info["cur_bal"] = st.get("curBal", 0)
+                    tgt = st.get("tgtAmt", 0)
+                    if current_session_info["cur_bal"] >= tgt and tgt > 0 and current_session_info["cur_bal"] > 0:
+                        # Target achieved!
+                        win_snap = os.path.join(PROFILES_BASE_DIR, f"win_{session_id}.png")
+                        active_driver_instance.save_screenshot(win_snap)
+                        profit = current_session_info["cur_bal"] - current_balance
+                        win_msg = (
+                            f"<b>{to_bold('TARGET ACHIEVED SUCCESSFULLY')}</b>\n\n"
+                            f"কাঙ্ক্ষিত টার্গেট সম্পূর্ণ সফলভাবে পূরণ হয়েছে!\n\n"
+                            f"• শুরুর ব্যালেন্স: <code>৳ {current_balance:.2f}</code>\n"
+                            f"• শেষ ব্যালেন্স: <code>৳ {current_session_info['cur_bal']:.2f}</code>\n"
+                            f"• অর্জিত প্রফিট: <code>+৳ {profit:.2f}</code>\n"
+                            f"• মোট উইন: <b>{st.get('w', 0)}</b> | লস: <b>{st.get('l', 0)}</b>"
+                        )
+                        display_or_replace_photo(chat_id, session_id, win_snap, win_msg, None)
+                        if os.path.exists(win_snap): os.remove(win_snap)
+                        break
+            except Exception:
+                pass
+
+        time.sleep(3.0)
+
+    with global_driver_lock:
+        if active_driver_instance:
+            try:
+                active_driver_instance.quit()
+            except Exception:
+                pass
+            active_driver_instance = None
+    kill_zombie_browser_processes()
+    return True
 
 # ==============================================================================
-# SECTION 9: BACKGROUND HEARTBEAT & REMOTE EVENT WATCHDOG
-# ==============================================================================
-class ClusterRuntimeWatchdog:
-    def __init__(self, client: FirebaseNodeClient):
-        self.client = client
-        self.running = True
-        self.current_worker = None
-        self.lock = threading.Lock()
-
-    def set_active_worker(self, worker: AutomationSessionWorker):
-        with self.lock:
-            self.current_worker = worker
-
-    def clear_active_worker(self):
-        with self.lock:
-            self.current_worker = None
-
-    def start_heartbeat_loop(self):
-        def _loop():
-            backoff = 1.0
-            while self.running:
-                ok = self.client.emit_heartbeat()
-                if ok:
-                    backoff = 1.0
-                else:
-                    backoff = min(backoff * 1.5, 30.0)
-                    time.sleep(backoff)
-                time.sleep(HEARTBEAT_INTERVAL_SEC)
-        t = threading.Thread(target=_loop, name="HeartbeatThread", daemon=True)
-        t.start()
-
-    def start_kill_switch_listener(self):
-        def _loop():
-            while self.running:
-                try:
-                    node_data = self.client.get_node_state()
-                    status = node_data.get("status", "").upper()
-
-                    if status == "FORCE_KILL":
-                        logger.warning("Administrative FORCE_KILL signal received!")
-                        with self.lock:
-                            if self.current_worker:
-                                self.current_worker.trigger_interrupt("Admin Force-Kill")
-                        self.client.log_node_event("Session terminated by Administrator.")
-                        self.client.set_status_free()
-                except Exception as e:
-                    logger.debug(f"Kill switch poll exception: {e}")
-                time.sleep(2.0)
-        t = threading.Thread(target=_loop, name="KillSwitchThread", daemon=True)
-        t.start()
-
-# ==============================================================================
-# SECTION 10: MAIN WORKER ORCHESTRATION ENGINE
+# SECTION 9: MAIN WORKER DAEMON & FIREBASE SYNCHRONIZER
 # ==============================================================================
 def main():
-    terminal_banner = [
-        f"Node Identifier    : {NODE_ID}",
-        f"Firebase Database  : {FIREBASE_PROJECT_ID}",
-        f"Engine Runtime     : FIREFOX HEADLESS MULTI-TAB",
-        f"Process PID        : {os.getpid()}",
-        f"Storage Directory  : {PROFILES_BASE_DIR}",
-        "Cluster Listener   : ACTIVE & POLLING FOR TASKS"
-    ]
-    print_ascii_card(to_bold("WORKER EXECUTION ENGINE ONLINE"), terminal_banner)
+    sys.stdout.write("==================================================\n")
+    sys.stdout.write(f"[*] AUTONOMOUS WORKER RUNTIME STARTED: {NODE_ID}\n")
+    sys.stdout.write(f"[*] FIREBASE CLUSTER TARGET: {FIREBASE_DATABASE_URL}\n")
+    sys.stdout.write("==================================================\n")
+    sys.stdout.flush()
 
-    ProcessCleanupManager.kill_zombie_processes()
-    firebase_client = FirebaseNodeClient(FIREBASE_DATABASE_URL, NODE_ID)
+    kill_zombie_browser_processes()
 
-    # Initial cluster handshake
-    connected = False
-    for attempt in range(1, 11):
-        if firebase_client.register_or_sync_node():
-            connected = True
-            logger.info("Connected and registered with centralized cluster.")
-            break
-        logger.warning(f"Connecting to cluster... (Attempt {attempt}/10)")
-        time.sleep(NETWORK_RETRY_DELAY_SEC)
+    # Heartbeat daemon
+    def _heartbeat():
+        while True:
+            try:
+                requests.patch(
+                    f"{FIREBASE_DATABASE_URL}/nodes/{NODE_ID}.json",
+                    json={"last_heartbeat": int(time.time())},
+                    timeout=5.0
+                )
+            except Exception:
+                pass
+            time.sleep(6.0)
 
-    if not connected:
-        logger.critical("Could not establish connection to Firebase RTDB. Terminating worker.")
-        sys.exit(1)
+    threading.Thread(target=_heartbeat, daemon=True).start()
 
-    watchdog = ClusterRuntimeWatchdog(firebase_client)
-    watchdog.start_heartbeat_loop()
-    watchdog.start_kill_switch_listener()
+    # Initial registration with central cluster
+    try:
+        requests.patch(
+            f"{FIREBASE_DATABASE_URL}/nodes/{NODE_ID}.json",
+            json={"status": "FREE", "active_user_id": None, "task_payload": None},
+            timeout=10.0
+        )
+    except Exception as e:
+        logger.error(f"Initial register failed: {e}")
 
     def sig_handler(signum, frame):
-        logger.info("Termination signal received. Releasing node and exiting...")
-        watchdog.running = False
-        if watchdog.current_worker:
-            watchdog.current_worker.trigger_interrupt("Process Exit")
-        firebase_client.update_node_state({"status": "OFFLINE", "active_user_id": None})
-        ProcessCleanupManager.kill_zombie_processes()
+        logger.info("Termination signal received. Cleaning node...")
+        global active_driver_instance
+        with global_driver_lock:
+            if active_driver_instance:
+                try: active_driver_instance.quit()
+                except Exception: pass
+        kill_zombie_browser_processes()
+        try:
+            requests.patch(
+                f"{FIREBASE_DATABASE_URL}/nodes/{NODE_ID}.json",
+                json={"status": "OFFLINE", "active_user_id": None},
+                timeout=5.0
+            )
+        except Exception:
+            pass
         sys.exit(0)
 
     signal.signal(signal.SIGINT, sig_handler)
     signal.signal(signal.SIGTERM, sig_handler)
 
-    # Main Task Polling Loop
+    # Core Polling Loop
     while True:
         try:
-            node_state = firebase_client.get_node_state()
-            current_status = node_state.get("status", "FREE").upper()
+            r = requests.get(f"{FIREBASE_DATABASE_URL}/nodes/{NODE_ID}.json", timeout=10.0)
+            if r.status_code == 200 and r.text != "null":
+                node_data = r.json() or {}
+                status = node_data.get("status", "FREE").upper()
 
-            if current_status == "BUSY":
-                task_payload = node_state.get("task_payload")
-                active_user = node_state.get("active_user_id")
-                expires_at = node_state.get("expires_at")
+                if status == "BUSY":
+                    payload = node_data.get("task_payload")
+                    if payload and isinstance(payload, dict):
+                        logger.info(f"Task payload received for session: {payload.get('session_id')}")
+                        try:
+                            execute_session_pipeline(payload)
+                        except Exception as e:
+                            logger.error(f"Pipeline error: {e}")
+                        finally:
+                            # Reset back to free
+                            requests.patch(
+                                f"{FIREBASE_DATABASE_URL}/nodes/{NODE_ID}.json",
+                                json={"status": "FREE", "active_user_id": None, "task_payload": None},
+                                timeout=10.0
+                            )
+                            logger.info(f"Task completed. Node {NODE_ID} reset to FREE.")
 
-                if task_payload and isinstance(task_payload, dict):
-                    session_id = task_payload.get("session_id", f"SESSION_{int(time.time())}")
-                    task_lines = [
-                        f"Session ID     : {session_id}",
-                        f"Target URL     : {task_payload.get('target_url')}",
-                        f"Active User    : {active_user}",
-                        f"Expiration     : {expires_at if expires_at else 'NONE'}"
-                    ]
-                    print_ascii_card(to_bold("DISPATCHING ACTIVE TASK"), task_lines)
-
-                    worker = AutomationSessionWorker(
-                        client=firebase_client,
-                        session_id=session_id,
-                        task_payload=task_payload,
-                        expires_at=expires_at
+                elif status == "FORCE_KILL":
+                    logger.warning("Administrative FORCE_KILL signal received!")
+                    with global_driver_lock:
+                        if active_driver_instance:
+                            try: active_driver_instance.quit()
+                            except Exception: pass
+                            active_driver_instance = None
+                    kill_zombie_browser_processes()
+                    requests.patch(
+                        f"{FIREBASE_DATABASE_URL}/nodes/{NODE_ID}.json",
+                        json={"status": "FREE", "active_user_id": None, "task_payload": None},
+                        timeout=10.0
                     )
-                    watchdog.set_active_worker(worker)
-
-                    try:
-                        worker.run_session()
-                    except Exception as exc:
-                        logger.error(f"Unhandled session exception: {exc}")
-                    finally:
-                        watchdog.clear_active_worker()
-                        firebase_client.set_status_free()
-                        logger.info("Session cycle completed. Node state reset to FREE.")
-
-            elif current_status == "FORCE_KILL":
-                firebase_client.set_status_free()
 
         except Exception as e:
-            logger.error(f"Core orchestration loop error: {e}")
+            logger.error(f"Worker polling error: {e}")
 
-        time.sleep(2.5)
+        time.sleep(2.0)
 
 if __name__ == "__main__":
     main()
