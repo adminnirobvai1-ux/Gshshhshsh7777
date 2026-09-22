@@ -2,13 +2,13 @@
 # -*- coding: utf-8 -*-
 """
 MASTER CONTROLLER & DISTRIBUTED CLUSTER ORCHESTRATOR
-File Name: master_bot.py
+File Name   : master_bot.py
 Architecture: Hybrid Central Master (Telegram + SQLite + Firebase RTDB Cluster)
-Visual Standard: Pure ASCII Box Formatting & Bold Unicode (Strictly Zero Emojis)
+Design      : Clean HTML Typography, Owner Direct Bypass, Dynamic Secret Key Access
 """
 
 # ==============================================================================
-# SECTION 1: AUTOMATIC DEPENDENCY INSTALLATION & CORE IMPORTS
+# SECTION 1: SYSTEM LIBRARIES & AUTOMATIC PACKAGE RESOLUTION
 # ==============================================================================
 import os
 import sys
@@ -31,7 +31,7 @@ def ensure_dependencies():
         try:
             __import__(mod_name)
         except ImportError:
-            sys.stdout.write(f"[*] Package missing: {pkg_name}. Installing...\n")
+            sys.stdout.write(f"[*] Missing package: {pkg_name}. Installing...\n")
             sys.stdout.flush()
             subprocess.check_call([sys.executable, "-m", "pip", "install", pkg_name])
 
@@ -47,7 +47,7 @@ from telebot.types import (
 import requests
 
 # ==============================================================================
-# SECTION 2: SYSTEM CONFIGURATION & GLOBAL CONSTANTS
+# SECTION 2: GLOBAL CONFIGURATION & MASTER CONSTANTS
 # ==============================================================================
 BOT_TOKEN = "8808949150:AAGehY-s2kZKblgZtYqwtsCiDRypLx8O8hU"
 OWNER_ID = 8707571669
@@ -74,15 +74,9 @@ URL_AMARCLUB_WINGO = "https://amarclub1.com/#/saasLottery/WinGo?gameCode=WinGo_3
 URL_DKWIN_WINGO = "https://dkwin6.com/#/saasLottery/WinGo?gameCode=WinGo_30S&lottery=WinGo"
 
 # ==============================================================================
-# SECTION 3: MATHEMATICAL BOLD TYPOGRAPHY & TEXT UTILITIES
+# SECTION 3: MATHEMATICAL BOLD UNICODE CONVERTER
 # ==============================================================================
 def to_bold(text: str) -> str:
-    """
-    Transforms alphanumeric characters into Mathematical Bold Unicode.
-    Uppercase: U+1D400 (base A=65 + 119743)
-    Lowercase: U+1D41A (base a=97 + 119737)
-    Digits:    U+1D7CE (base 0=48 + 120764)
-    """
     res = []
     for c in str(text):
         n = ord(c)
@@ -105,7 +99,7 @@ def safe_delete_message(bot_instance, chat_id, message_id):
         pass
 
 # ==============================================================================
-# SECTION 4: UNTRUNCATED IN-BROWSER JAVASCRIPT AUTOMATION PAYLOADS
+# SECTION 4: UNTRUNCATED IN-BROWSER JAVASCRIPT PAYLOADS
 # ==============================================================================
 AUTO_FILL_AND_CLICK_JS = """
 const phone = arguments[0];
@@ -837,9 +831,9 @@ const autoTotalSteps = arguments[1];
 })();
 """
 
-# ==============================================
-# SECTION 5: THREAD-SAFE LOCAL SQLITE CONTROLLER
-# ==============================================
+# ==============================================================================
+# SECTION 5: THREAD-SAFE LOCAL DATABASE ENGINE (WITH MASTER PASS SUPPORT)
+# ==============================================================================
 class MasterDatabaseManager:
     def __init__(self, db_path: str = LOCAL_DB_NAME):
         self.db_path = db_path
@@ -895,23 +889,24 @@ class MasterDatabaseManager:
                 )
             """)
             cur.execute("INSERT OR IGNORE INTO system_config (config_key, config_val) VALUES ('GLOBAL_MODE', 'FREE_MODE')")
+            cur.execute("INSERT OR IGNORE INTO system_config (config_key, config_val) VALUES ('ACCESS_PASSWORD', 'DARK67')")
             conn.commit()
             conn.close()
 
-    def get_global_mode(self) -> str:
+    def get_config(self, key: str, default: str = "") -> str:
         with self.lock:
             conn = self.get_connection()
             cur = conn.cursor()
-            cur.execute("SELECT config_val FROM system_config WHERE config_key = 'GLOBAL_MODE'")
+            cur.execute("SELECT config_val FROM system_config WHERE config_key = ?", (key,))
             row = cur.fetchone()
             conn.close()
-            return row["config_val"] if row else "FREE_MODE"
+            return row["config_val"] if row else default
 
-    def set_global_mode(self, mode: str):
+    def set_config(self, key: str, value: str):
         with self.lock:
             conn = self.get_connection()
             cur = conn.cursor()
-            cur.execute("UPDATE system_config SET config_val = ? WHERE config_key = 'GLOBAL_MODE'", (mode,))
+            cur.execute("INSERT OR REPLACE INTO system_config (config_key, config_val) VALUES (?, ?)", (key, value))
             conn.commit()
             conn.close()
 
@@ -944,6 +939,16 @@ class MasterDatabaseManager:
             if row and row["referred_by"]:
                 ref_parent = row["referred_by"]
                 cur.execute("UPDATE users SET total_referrals = total_referrals + 1 WHERE chat_id = ?", (ref_parent,))
+            conn.commit()
+            conn.close()
+
+    def unlock_user_vip_bypass(self, chat_id: int):
+        with self.lock:
+            conn = self.get_connection()
+            cur = conn.cursor()
+            # Unlocks permanently or sets high expiry
+            far_future = int(time.time()) + (86400 * 365 * 5)
+            cur.execute("UPDATE users SET access_mode = 'VIP_BYPASS', paid_until = ? WHERE chat_id = ?", (far_future, chat_id))
             conn.commit()
             conn.close()
 
@@ -1029,7 +1034,7 @@ class MasterDatabaseManager:
 db = MasterDatabaseManager()
 
 # ==============================================================================
-# SECTION 6: DISTRIBUTED FIREBASE REALTIME CLUSTER ENGINE
+# SECTION 6: FIREBASE CLUSTER ORCHESTRATOR
 # ==============================================================================
 class FirebaseClusterManager:
     def __init__(self, base_url: str):
@@ -1110,7 +1115,7 @@ class FirebaseClusterManager:
 firebase_cluster = FirebaseClusterManager(FIREBASE_DATABASE_URL)
 
 # ==============================================================================
-# SECTION 7: INTERFACE BUILDERS & ASCII TEMPLATES (STRICTLY ZERO EMOJIS)
+# SECTION 7: INTERFACE BUILDERS (CLEAN TEXT & INLINE KEYBOARDS)
 # ==============================================================================
 def get_main_persistent_keyboard() -> ReplyKeyboardMarkup:
     markup = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=False)
@@ -1123,8 +1128,8 @@ def get_main_persistent_keyboard() -> ReplyKeyboardMarkup:
 
 def get_channel_gateway_keyboard() -> InlineKeyboardMarkup:
     markup = InlineKeyboardMarkup()
-    markup.add(InlineKeyboardButton(f"{to_bold('CHANNEL')}", url=CHANNEL_URL))
-    markup.add(InlineKeyboardButton(f"{to_bold('VERIFY')}", callback_data="action_verify_channel"))
+    markup.add(InlineKeyboardButton(f"{to_bold('JOIN OFFICIAL CHANNEL')}", url=CHANNEL_URL))
+    markup.add(InlineKeyboardButton(f"{to_bold('VERIFY MEMBERSHIP')}", callback_data="action_verify_channel"))
     return markup
 
 def get_platform_selection_keyboard(node_id: str) -> InlineKeyboardMarkup:
@@ -1133,7 +1138,7 @@ def get_platform_selection_keyboard(node_id: str) -> InlineKeyboardMarkup:
         InlineKeyboardButton(f"{to_bold('AMAR CLUB')}", callback_data=f"cfg_site:AMAR:{node_id}"),
         InlineKeyboardButton(f"{to_bold('DK WIN')}", callback_data=f"cfg_site:DKWIN:{node_id}")
     )
-    markup.add(InlineKeyboardButton(f"{to_bold('ABORT')}", callback_data=f"cfg_abort:{node_id}"))
+    markup.add(InlineKeyboardButton(f"{to_bold('CANCEL')}", callback_data=f"cfg_abort:{node_id}"))
     return markup
 
 def get_credentials_input_keyboard(node_id: str, has_phone: bool) -> InlineKeyboardMarkup:
@@ -1145,7 +1150,7 @@ def get_credentials_input_keyboard(node_id: str, has_phone: bool) -> InlineKeybo
         )
     else:
         markup.add(InlineKeyboardButton(f"{to_bold('PASSWORD')}", callback_data=f"in_pwd:{node_id}"))
-    markup.add(InlineKeyboardButton(f"{to_bold('ABORT')}", callback_data=f"cfg_abort:{node_id}"))
+    markup.add(InlineKeyboardButton(f"{to_bold('CANCEL')}", callback_data=f"cfg_abort:{node_id}"))
     return markup
 
 def get_parameters_setup_keyboard(node_id: str, target: float, steps: int) -> InlineKeyboardMarkup:
@@ -1158,7 +1163,7 @@ def get_parameters_setup_keyboard(node_id: str, target: float, steps: int) -> In
     )
     markup.add(
         InlineKeyboardButton(f"{to_bold('DISPATCH ENGINE')}", callback_data=f"in_go:{node_id}"),
-        InlineKeyboardButton(f"{to_bold('ABORT')}", callback_data=f"cfg_abort:{node_id}")
+        InlineKeyboardButton(f"{to_bold('CANCEL')}", callback_data=f"cfg_abort:{node_id}")
     )
     return markup
 
@@ -1178,27 +1183,8 @@ def get_admin_approval_keyboard(trx_id: str) -> InlineKeyboardMarkup:
     )
     return markup
 
-def format_ascii_box(title: str, lines: list) -> str:
-    content_width = max(len(title), 40)
-    for l in lines:
-        if len(l) > content_width:
-            content_width = len(l)
-    content_width += 2
-
-    top = f"┌{'─' * content_width}┐"
-    divider = f"├{'─' * content_width}┤"
-    bottom = f"└{'─' * content_width}┘"
-
-    out = [top]
-    out.append(f"│ {title.center(content_width - 2)} │")
-    out.append(divider)
-    for l in lines:
-        out.append(f"│ {l.ljust(content_width - 2)} │")
-    out.append(bottom)
-    return "\n".join(out)
-
 # ==============================================================================
-# SECTION 8: BOT INITIALIZATION & STATE MANAGEMENT
+# SECTION 8: BOT INITIALIZATION & USER INPUT CONTEXT
 # ==============================================================================
 bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 user_input_states = {}
@@ -1213,7 +1199,7 @@ def is_user_channel_member(chat_id: int) -> bool:
     return False
 
 # ==============================================================================
-# SECTION 9: WATCHDOG THREADS (LIFETIME WATCHDOG & HEARTBEAT SCANNER)
+# SECTION 9: LIFETIME WATCHDOG DAEMON
 # ==============================================================================
 def subscription_and_session_watchdog():
     while True:
@@ -1223,17 +1209,15 @@ def subscription_and_session_watchdog():
                 sid = sess["session_id"]
                 nid = sess["node_id"]
                 cid = sess["chat_id"]
-                sys.stdout.write(f"[*] Expiration trigger for session: {sid} | Node: {nid}\n")
                 firebase_cluster.force_kill_node(nid)
                 db.terminate_session(sid)
-                msg_lines = [
-                    "Your allocated 24-hour automation session",
-                    "has reached its lifetime expiration.",
-                    "Terminal has been cleanly freed."
-                ]
-                card = format_ascii_box(to_bold("SESSION EXPIRED"), msg_lines)
+                exp_msg = (
+                    f"<b>{to_bold('SESSION EXPIRED')}</b>\n\n"
+                    f"আপনার ২৪ ঘণ্টার অটোমেশন সেশনের মেয়াদ শেষ হয়েছে।\n"
+                    f"টার্মিনাল {nid} সফলভাবে মুক্ত করা হয়েছে।"
+                )
                 try:
-                    bot.send_message(cid, f"<pre>{card}</pre>")
+                    bot.send_message(cid, exp_msg)
                 except Exception:
                     pass
 
@@ -1245,13 +1229,13 @@ def subscription_and_session_watchdog():
                 if st == "BUSY" and exp and now >= exp:
                     firebase_cluster.force_kill_node(nid)
         except Exception as e:
-            sys.stderr.write(f"[!] Session watchdog exception: {e}\n")
+            sys.stderr.write(f"[!] Watchdog error: {e}\n")
         time.sleep(60)
 
 threading.Thread(target=subscription_and_session_watchdog, daemon=True).start()
 
 # ==============================================================================
-# SECTION 10: ROUTING & COMMAND HANDLERS
+# SECTION 10: CORE COMMAND HANDLERS
 # ==============================================================================
 @bot.message_handler(commands=['start'])
 def handle_start_command(message):
@@ -1269,44 +1253,56 @@ def handle_start_command(message):
 
     db.register_user_if_absent(chat_id, username, referred_by)
 
-    if not is_user_channel_member(chat_id):
-        lines = [
-            "You must join our official channel to",
-            "activate automation tools.",
-            f"Channel: {CHANNEL_URL}"
-        ]
-        card = format_ascii_box(to_bold("ACCESS VERIFICATION"), lines)
-        bot.send_message(
-            chat_id,
-            f"<pre>{card}</pre>",
-            reply_markup=get_channel_gateway_keyboard()
-        )
-        return
+    # Owner bypasses channel check completely
+    if chat_id != OWNER_ID:
+        if not is_user_channel_member(chat_id):
+            gateway_msg = (
+                f"<b>{to_bold('ACCESS VERIFICATION')}</b>\n\n"
+                f"স্বাগতম আপনাকে অটোমেশন প্ল্যাটফর্মে।\n\n"
+                f"টুলসটি সক্রিয় করার জন্য আপনাকে অবশ্যই আমাদের অফিশিয়াল চ্যানেলে জয়েন থাকতে হবে। "
+                f"নিচের বাটনে ক্লিক করে চ্যানেলে জয়েন করুন এবং ভেরিফাই বাটনে চাপ দিন।"
+            )
+            bot.send_message(chat_id, gateway_msg, reply_markup=get_channel_gateway_keyboard())
+            return
 
     db.mark_channel_joined(chat_id)
-    welcome_lines = [
-        "Distributed Automation Terminal Controller",
-        "Select an operation below to proceed."
-    ]
-    card = format_ascii_box(to_bold("CLUSTER CORE ACTIVE"), welcome_lines)
-    bot.send_message(
-        chat_id,
-        f"<pre>{card}</pre>",
-        reply_markup=get_main_persistent_keyboard()
+    welcome_msg = (
+        f"<b>{to_bold('WINGO 30S CLUSTER CONTROLLER')}</b>\n\n"
+        f"আসসালামু আলাইকুম! ডিস্ট্রিবিউটেড অটোমেশন সিস্টেমে আপনাকে স্বাগতম।\n"
+        f"ট্রেডিং শুরু করতে নিচের <b>TASK</b> বাটন নির্বাচন করুন।"
     )
+    bot.send_message(chat_id, welcome_msg, reply_markup=get_main_persistent_keyboard())
+
+@bot.message_handler(commands=['pass', 'setpass'])
+def handle_set_password_command(message):
+    chat_id = message.chat.id
+    safe_delete_message(bot, chat_id, message.message_id)
+    if chat_id != OWNER_ID:
+        return
+
+    parts = message.text.strip().split(maxsplit=1)
+    if len(parts) < 2:
+        cur_pass = db.get_config("ACCESS_PASSWORD", "DARK67")
+        bot.send_message(chat_id, f"বর্তমান সিক্রেট পাসওয়ার্ড: <code>{cur_pass}</code>\nপরিবর্তন করতে লিখুন: <code>/pass &lt;পাসওয়ার্ড&gt;</code>")
+        return
+
+    new_pass = parts[1].strip()
+    db.set_config("ACCESS_PASSWORD", new_pass)
+    bot.send_message(chat_id, f"<b>পাসওয়ার্ড সফলভাবে আপডেট হয়েছে!</b>\nনতুন পাসওয়ার্ড: <code>{new_pass}</code>\nএখন এই পাসওয়ার্ড দিয়ে যে কেউ সরাসরি আনলক করতে পারবে।")
 
 @bot.message_handler(commands=['mode'])
 def handle_mode_command(message):
     chat_id = message.chat.id
     safe_delete_message(bot, chat_id, message.message_id)
-    cur_mode = db.get_global_mode()
-    lines = [
-        f"OPERATIONAL MODE : {cur_mode}",
-        "Security Engine  : STRICT",
-        "Nodes Sync       : ONLINE"
-    ]
-    card = format_ascii_box(to_bold("SYSTEM CONFIGURATION"), lines)
-    bot.send_message(chat_id, f"<pre>{card}</pre>")
+    cur_mode = db.get_config("GLOBAL_MODE", "FREE_MODE")
+    cur_pass = db.get_config("ACCESS_PASSWORD", "DARK67")
+    mode_msg = (
+        f"<b>{to_bold('SYSTEM CONFIGURATION')}</b>\n\n"
+        f"• বর্তমান মোড: <b>{cur_mode}</b>\n"
+        f"• সিক্রেট পাসওয়ার্ড: <code>{cur_pass}</code>\n"
+        f"• সিকিউরিটি ইঞ্জিন: <b>STRICT CLUSTER</b>"
+    )
+    bot.send_message(chat_id, mode_msg)
 
 @bot.message_handler(commands=['paid'])
 def handle_set_paid_mode(message):
@@ -1314,13 +1310,8 @@ def handle_set_paid_mode(message):
     safe_delete_message(bot, chat_id, message.message_id)
     if chat_id != OWNER_ID:
         return
-    db.set_global_mode("PAID_MODE")
-    lines = [
-        "GLOBAL MODE SWITCHED TO: PAID_MODE",
-        "Requirement: 24H Sub or 10 Referrals"
-    ]
-    card = format_ascii_box(to_bold("MODE ALTERATION"), lines)
-    bot.send_message(chat_id, f"<pre>{card}</pre>")
+    db.set_config("GLOBAL_MODE", "PAID_MODE")
+    bot.send_message(chat_id, f"<b>{to_bold('MODE UPDATED')}</b>\nগ্লোবাল মোড পরিবর্তন করে <b>PAID_MODE</b> করা হয়েছে।")
 
 @bot.message_handler(commands=['free'])
 def handle_set_free_mode(message):
@@ -1328,13 +1319,8 @@ def handle_set_free_mode(message):
     safe_delete_message(bot, chat_id, message.message_id)
     if chat_id != OWNER_ID:
         return
-    db.set_global_mode("FREE_MODE")
-    lines = [
-        "GLOBAL MODE SWITCHED TO: FREE_MODE",
-        "Requirement: 5 Referrals"
-    ]
-    card = format_ascii_box(to_bold("MODE ALTERATION"), lines)
-    bot.send_message(chat_id, f"<pre>{card}</pre>")
+    db.set_config("GLOBAL_MODE", "FREE_MODE")
+    bot.send_message(chat_id, f"<b>{to_bold('MODE UPDATED')}</b>\nগ্লোবাল মোড পরিবর্তন করে <b>FREE_MODE</b> করা হয়েছে।")
 
 @bot.message_handler(commands=['admin'])
 def handle_admin_telemetry(message):
@@ -1349,16 +1335,20 @@ def handle_admin_telemetry(message):
     busy_c = sum(1 for n in nodes.values() if n.get("status").upper() == "BUSY")
     off_c = tot - (free_c + busy_c)
 
-    mode = db.get_global_mode()
-    lines = [
-        f"GLOBAL STATUS    : {mode}",
-        f"TOTAL TERMINALS  : {tot}",
-        f"FREE NODES       : {free_c}",
-        f"BUSY NODES       : {busy_c}",
-        f"OFFLINE NODES    : {off_c}"
-    ]
-    card = format_ascii_box(to_bold("TELEMETRY CONTROL REPORT"), lines)
-    bot.send_message(chat_id, f"<pre>{card}</pre>")
+    mode = db.get_config("GLOBAL_MODE", "FREE_MODE")
+    cur_pass = db.get_config("ACCESS_PASSWORD", "DARK67")
+
+    telemetry_msg = (
+        f"<b>{to_bold('ADMIN CLUSTER TELEMETRY')}</b>\n\n"
+        f"• বর্তমান মোড: <b>{mode}</b>\n"
+        f"• সিক্রেট আনলক পাসওয়ার্ড: <code>{cur_pass}</code>\n"
+        f"• মোট ক্লাস্টার নোড: <b>{tot}</b>\n"
+        f"• ফ্রি নোড (ফাঁকা): <b>{free_c}</b>\n"
+        f"• ব্যস্ত নোড (চলমান): <b>{busy_c}</b>\n"
+        f"• অফলাইন ডিভাইস: <b>{off_c}</b>\n\n"
+        f"নোড ফোর্স কিল করতে লিখুন: <code>/kick &lt;node_id&gt;</code>"
+    )
+    bot.send_message(chat_id, telemetry_msg)
 
 @bot.message_handler(commands=['kick'])
 def handle_remote_kick(message):
@@ -1369,20 +1359,15 @@ def handle_remote_kick(message):
 
     parts = message.text.strip().split()
     if len(parts) < 2:
-        bot.send_message(chat_id, "Usage: /kick <node_id>")
+        bot.send_message(chat_id, "সঠিক নিয়ম: /kick <node_id>")
         return
 
     target_node = parts[1]
     ok = firebase_cluster.force_kill_node(target_node)
-    lines = [
-        f"TARGET NODE      : {target_node}",
-        f"FORCE KILL STATE : {'DISPATCHED' if ok else 'FAILED'}"
-    ]
-    card = format_ascii_box(to_bold("TERMINAL OVERRIDE"), lines)
-    bot.send_message(chat_id, f"<pre>{card}</pre>")
+    bot.send_message(chat_id, f"নোড <b>{target_node}</b>-এ কিল সিগন্যাল পাঠানো হয়েছে: {'সফল' if ok else 'ব্যর্থ'}")
 
 # ==============================================================================
-# SECTION 11: TEXT & PERSISTENT BUTTONS DISPATCHER
+# SECTION 11: TEXT, PERSISTENT BUTTONS & SECRET PASSWORD LISTENER
 # ==============================================================================
 @bot.message_handler(func=lambda msg: True)
 def handle_all_text_inputs(message):
@@ -1390,86 +1375,101 @@ def handle_all_text_inputs(message):
     text = message.text.strip()
     safe_delete_message(bot, chat_id, message.message_id)
 
-    if not is_user_channel_member(chat_id):
-        lines = [
-            "You must join our official channel to",
-            "activate automation tools.",
-            f"Channel: {CHANNEL_URL}"
-        ]
-        card = format_ascii_box(to_bold("ACCESS VERIFICATION"), lines)
-        bot.send_message(chat_id, f"<pre>{card}</pre>", reply_markup=get_channel_gateway_keyboard())
+    # 1. Check Secret Master Access Password
+    active_password = db.get_config("ACCESS_PASSWORD", "DARK67")
+    if text == active_password or text == f"/pass {active_password}":
+        db.unlock_user_vip_bypass(chat_id)
+        unlock_msg = (
+            f"<b>{to_bold('VIP ACCESS UNLOCKED')}</b>\n\n"
+            f"অভিনন্দন! আপনার সিক্রেট পাসওয়ার্ড সফলভাবে গৃহীত হয়েছে।\n"
+            f"আপনার অ্যাকাউন্টের জন্য সব রেফারেল ও সাবস্ক্রিপশন শর্ত মওকুফ করা হয়েছে।\n"
+            f"এখন সরাসরি <b>TASK</b> বাটনে ক্লিক করে ট্রেডিং শুরু করতে পারবেন।"
+        )
+        bot.send_message(chat_id, unlock_msg, reply_markup=get_main_persistent_keyboard())
         return
+
+    # Channel Membership Verification (Owner bypasses)
+    if chat_id != OWNER_ID:
+        if not is_user_channel_member(chat_id):
+            gateway_msg = (
+                f"<b>{to_bold('ACCESS VERIFICATION')}</b>\n\n"
+                f"আমাদের অটোমেশন টুলস ব্যবহার করতে আপনাকে প্রথমে অফিশিয়াল চ্যানেলে জয়েন হতে হবে।\n"
+                f"দয়া করে নিচে জয়েন হয়ে ভেরিফাই বাটনে চাপ দিন।"
+            )
+            bot.send_message(chat_id, gateway_msg, reply_markup=get_channel_gateway_keyboard())
+            return
 
     db.mark_channel_joined(chat_id)
 
-    # 1. Persistent Button: NEW TASK
+    # 2. Persistent Button: NEW TASK (Cluster Overview)
     if text == to_bold("NEW TASK") or text.upper() == "NEW TASK":
         nodes = firebase_cluster.fetch_all_nodes()
         total_nodes = len(nodes)
         free_nodes = sum(1 for n in nodes.values() if n.get("status", "FREE").upper() == "FREE")
         busy_nodes = sum(1 for n in nodes.values() if n.get("status").upper() == "BUSY")
 
-        inv_lines = [
-            f"TOTAL DEVICES     : {total_nodes}",
-            f"FREE TERMINALS    : {free_nodes}",
-            f"OCCUPIED NODES    : {busy_nodes}",
-            "━" * 38,
-            f"{'Terminal ID'.ljust(15)} │ {'Status'.ljust(8)} │ {'Mode'}"
-        ]
+        inv_text = (
+            f"<b>{to_bold('CLUSTER TERMINAL INVENTORY')}</b>\n\n"
+            f"• মোট ডিভাইস: <b>{total_nodes}</b>\n"
+            f"• ফ্রি টার্মিনাল: <b>{free_nodes}</b>\n"
+            f"• রানিং নোড: <b>{busy_nodes}</b>\n\n"
+            f"<b>সক্রিয় নোড তালিকা:</b>\n"
+        )
         for nid, ndata in list(nodes.items())[:15]:
-            nst = ndata.get("status", "FREE").upper().ljust(8)
-            nmod = "24H_LOCK" if "BUSY" in nst else "READY"
-            inv_lines.append(f"{nid.ljust(15)} │ {nst} │ {nmod}")
+            nst = ndata.get("status", "FREE").upper()
+            inv_text += f"• <code>{nid}</code> — স্ট্যাটাস: <b>{nst}</b>\n"
 
-        card = format_ascii_box(to_bold("CLUSTER TERMINAL INVENTORY"), inv_lines)
-        bot.send_message(chat_id, f"<pre>{card}</pre>")
+        bot.send_message(chat_id, inv_text)
         return
 
-    # 2. Persistent Button: REFERRAL
+    # 3. Persistent Button: REFERRAL
     if text == to_bold("REFERRAL") or text.upper() == "REFERRAL":
         u = db.get_user(chat_id)
         if not u:
             return
         bot_uname = bot.get_me().username
         inv_link = f"https://t.me/{bot_uname}?start={chat_id}"
-        mode = db.get_global_mode()
+        mode = db.get_config("GLOBAL_MODE", "FREE_MODE")
         quota = FREE_MODE_REFERRAL_QUOTA if mode == "FREE_MODE" else PAID_MODE_REFERRAL_QUOTA
 
-        lines = [
-            f"Your ID           : {chat_id}",
-            f"Total Completed   : {u['total_referrals']}",
-            f"Quota Required    : {quota}",
-            f"Invite Link       : {inv_link}"
-        ]
-        card = format_ascii_box(to_bold("REFERRAL DASHBOARD"), lines)
-        bot.send_message(chat_id, f"<pre>{card}</pre>")
+        ref_text = (
+            f"<b>{to_bold('REFERRAL DASHBOARD')}</b>\n\n"
+            f"• আপনার আইডি: <code>{chat_id}</code>\n"
+            f"• মোট সফল রেফারেল: <b>{u['total_referrals']}</b> টি\n"
+            f"• প্রয়োজনীয় টার্গেট: <b>{quota}</b> টি\n\n"
+            f"আপনার ইনভাইট লিংক:\n<code>{inv_link}</code>"
+        )
+        bot.send_message(chat_id, ref_text)
         return
 
-    # 3. Persistent Button: TASK
+    # 4. Persistent Button: TASK (Core Execution Gate)
     if text == to_bold("TASK") or text.upper() == "TASK":
         u = db.get_user(chat_id)
         if not u:
             return
 
-        mode = db.get_global_mode()
+        mode = db.get_config("GLOBAL_MODE", "FREE_MODE")
         has_access = False
 
-        if mode == "FREE_MODE":
+        # OWNER ALWAYS HAS 100% UNLIMITED ACCESS WITHOUT MONEY OR REFERRALS
+        if chat_id == OWNER_ID:
+            has_access = True
+        elif u.get("access_mode") == "VIP_BYPASS":
+            has_access = True
+        elif mode == "FREE_MODE":
             if u["total_referrals"] >= FREE_MODE_REFERRAL_QUOTA:
                 has_access = True
             else:
                 bot_uname = bot.get_me().username
                 inv_link = f"https://t.me/{bot_uname}?start={chat_id}"
-                lines = [
-                    f"Status            : {u['total_referrals']}/{FREE_MODE_REFERRAL_QUOTA} Referrals",
-                    "Requirement       : 5 Valid Referrals",
-                    f"Invite Link       : {inv_link}"
-                ]
-                card = format_ascii_box(to_bold("QUOTA DEFICIT"), lines)
-                bot.send_message(chat_id, "দয়া করে আপনার রেফারটি কমপ্লিট করুন")
-                bot.send_message(chat_id, f"<pre>{card}</pre>")
+                deficit_msg = (
+                    f"<b>দয়া করে আপনার রেফারটি কমপ্লিট করুন</b>\n\n"
+                    f"• বর্তমান রেফারেল: <b>{u['total_referrals']}/{FREE_MODE_REFERRAL_QUOTA}</b> টি\n"
+                    f"• আপনার ইনভাইট লিংক:\n<code>{inv_link}</code>\n\n"
+                    f"<i>(নোট: আপনার কাছে সিক্রেট পাসওয়ার্ড থাকলে তা চ্যাটে লিখে পাঠান)</i>"
+                )
+                bot.send_message(chat_id, deficit_msg)
                 return
-
         elif mode == "PAID_MODE":
             now = int(time.time())
             if u["paid_until"] > now or u["total_referrals"] >= PAID_MODE_REFERRAL_QUOTA:
@@ -1477,39 +1477,37 @@ def handle_all_text_inputs(message):
             else:
                 bot_uname = bot.get_me().username
                 inv_link = f"https://t.me/{bot_uname}?start={chat_id}"
-                lines = [
-                    f"24H Premium Rate  : ৳ {SUBSCRIPTION_PRICE_BDT:.2f} BDT",
-                    f"bKash Personal    : {BKASH_NUMBER}",
-                    f"Nagad Personal    : {NAGAD_NUMBER}",
-                    "━" * 38,
-                    f"Free Alternative  : {PAID_MODE_REFERRAL_QUOTA} Referrals",
-                    f"Current Referrals : {u['total_referrals']}/{PAID_MODE_REFERRAL_QUOTA}",
-                    f"Invite Link       : {inv_link}"
-                ]
-                card = format_ascii_box(to_bold("SUBSCRIPTION REQUIRED"), lines)
-                bot.send_message(chat_id, f"<pre>{card}</pre>", reply_markup=get_payment_submission_keyboard())
+                sub_msg = (
+                    f"<b>{to_bold('PREMIUM SUBSCRIPTION REQUIRED')}</b>\n\n"
+                    f"বর্তমানে পেইড মোড সক্রিয় রয়েছে। ট্রেডিং অটোমেশন চালু করতে ২৪ ঘণ্টার জন্য সাবস্ক্রিপশন নিন অথবা রেফার করুন।\n\n"
+                    f"• ২৪ ঘণ্টার ফি: <b>৳ {SUBSCRIPTION_PRICE_BDT:.2f} BDT</b>\n"
+                    f"• বিকাশ পার্সোনাল: <code>{BKASH_NUMBER}</code>\n"
+                    f"• নগদ পার্সোনাল: <code>{NAGAD_NUMBER}</code>\n\n"
+                    f"ফ্রি বিকল্প: <b>{PAID_MODE_REFERRAL_QUOTA}</b> টি সফল রেফার\n"
+                    f"আপনার রেফার: <b>{u['total_referrals']}/{PAID_MODE_REFERRAL_QUOTA}</b>\n"
+                    f"ইনভাইট লিংক: <code>{inv_link}</code>\n\n"
+                    f"টাকা পাঠানোর পর নিচের বাটনে চাপ দিয়ে TrxID জমা দিন অথবা সিক্রেট পাসওয়ার্ড লিখুন।"
+                )
+                bot.send_message(chat_id, sub_msg, reply_markup=get_payment_submission_keyboard())
                 return
 
         if has_access:
             active = db.get_active_session_by_user(chat_id)
             if active:
-                lines = [
-                    f"Session ID        : {active['session_id']}",
-                    f"Terminal Node     : {active['node_id']}",
-                    f"Expires At        : {datetime.fromtimestamp(active['end_time'], tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}"
-                ]
-                card = format_ascii_box(to_bold("ACTIVE SESSION IN PROGRESS"), lines)
-                bot.send_message(chat_id, f"<pre>{card}</pre>")
+                exp_time_str = datetime.fromtimestamp(active['end_time'], tz=timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
+                active_msg = (
+                    f"<b>{to_bold('ACTIVE SESSION IN PROGRESS')}</b>\n\n"
+                    f"আপনার একটি ট্রেডিং সেশন ইতিমধ্যে চালু রয়েছে।\n"
+                    f"• সেশন আইডি: <code>{active['session_id']}</code>\n"
+                    f"• টার্মিনাল নোড: <b>{active['node_id']}</b>\n"
+                    f"• মেয়াদ শেষ হবে: <code>{exp_time_str}</code>"
+                )
+                bot.send_message(chat_id, active_msg)
                 return
 
             node_id, ndata = firebase_cluster.acquire_free_node(chat_id)
             if not node_id:
-                lines = [
-                    "All worker terminals are occupied.",
-                    "Please wait for an open device or check [ NEW TASK ]."
-                ]
-                card = format_ascii_box(to_bold("QUEUE EXHAUSTED"), lines)
-                bot.send_message(chat_id, f"<pre>{card}</pre>")
+                bot.send_message(chat_id, "দুঃখিত, এই মুহূর্তে সব কয়টি টার্মিনাল ব্যস্ত রয়েছে। অনুগ্রহ করে কিছুক্ষণ পর আবার চেষ্টা করুন।")
                 return
 
             sid = f"SESS_{chat_id}_{int(time.time()) % 100000}"
@@ -1526,16 +1524,15 @@ def handle_all_text_inputs(message):
                 "mode_input": None
             }
 
-            lines = [
-                f"Terminal Node     : {node_id}",
-                f"Session ID        : {sid}",
-                "Select trading portal:"
-            ]
-            card = format_ascii_box(to_bold("TERMINAL ALLOCATED"), lines)
-            bot.send_message(chat_id, f"<pre>{card}</pre>", reply_markup=get_platform_selection_keyboard(node_id))
+            alloc_msg = (
+                f"<b>{to_bold('TERMINAL ALLOCATED')}</b>\n\n"
+                f"টার্মিনাল নোড: <b>{node_id}</b> সফলভাবে সংরক্ষিত হয়েছে।\n"
+                f"অনুগ্রহ করে নিচে আপনার ট্রেডিং প্ল্যাটফর্ম নির্বাচন করুন:"
+            )
+            bot.send_message(chat_id, alloc_msg, reply_markup=get_platform_selection_keyboard(node_id))
             return
 
-    # Handle Input Modes for Active Flow
+    # 5. Handle Interactive Form Inputs
     state = user_input_states.get(chat_id)
     if state and state.get("mode_input"):
         mode_in = state["mode_input"]
@@ -1544,25 +1541,25 @@ def handle_all_text_inputs(message):
         if mode_in == "WAIT_PHONE":
             state["phone"] = text
             state["mode_input"] = None
-            lines = [
-                f"Terminal Node     : {node_id}",
-                f"Account Number    : {text[:3]}****{text[-3:] if len(text)>=6 else text}",
-                "Provide password below:"
-            ]
-            card = format_ascii_box(to_bold("CREDENTIAL REGISTERED"), lines)
-            bot.send_message(chat_id, f"<pre>{card}</pre>", reply_markup=get_credentials_input_keyboard(node_id, True))
+            masked_phone = text[:3] + "****" + text[-3:] if len(text) >= 6 else text
+            card_msg = (
+                f"<b>{to_bold('ACCOUNT LOGIN')}</b>\n\n"
+                f"• প্ল্যাটফর্ম: <b>{state.get('site')}</b>\n"
+                f"• নাম্বার: <code>{masked_phone}</code> (সংরক্ষিত)\n\n"
+                f"এখন নিচের <b>PASSWORD</b> বাটনে চাপ দিয়ে পাসওয়ার্ড প্রদান করুন:"
+            )
+            bot.send_message(chat_id, card_msg, reply_markup=get_credentials_input_keyboard(node_id, True))
             return
 
         elif mode_in == "WAIT_PASSWORD":
             state["password"] = text
             state["mode_input"] = None
-            lines = [
-                f"Terminal Node     : {node_id}",
-                "Credentials Set   : COMPLETE",
-                "Configure trade parameters:"
-            ]
-            card = format_ascii_box(to_bold("SECURITY VALIDATED"), lines)
-            bot.send_message(chat_id, f"<pre>{card}</pre>", reply_markup=get_parameters_setup_keyboard(node_id, state["target"], state["steps"]))
+            param_msg = (
+                f"<b>{to_bold('PARAMETERS SETUP')}</b>\n\n"
+                f"লগইন ক্রেডেনশিয়াল সংরক্ষিত হয়েছে।\n"
+                f"এখন নিচে <b>TARGET</b> ও <b>STEPS</b> বাটনে চাপ দিয়ে ট্রেডিং টার্গেট নির্ধারণ করুন এবং <b>DISPATCH ENGINE</b> চাপুন:"
+            )
+            bot.send_message(chat_id, param_msg, reply_markup=get_parameters_setup_keyboard(node_id, state["target"], state["steps"]))
             return
 
         elif mode_in == "WAIT_TARGET":
@@ -1571,15 +1568,15 @@ def handle_all_text_inputs(message):
                 if val <= 0: raise ValueError()
                 state["target"] = val
                 state["mode_input"] = None
-                lines = [
-                    f"Terminal Node     : {node_id}",
-                    f"Target Profit     : ৳ {val:.2f}",
-                    f"Martingale Steps  : {state['steps']}"
-                ]
-                card = format_ascii_box(to_bold("PARAMETERS UPDATED"), lines)
-                bot.send_message(chat_id, f"<pre>{card}</pre>", reply_markup=get_parameters_setup_keyboard(node_id, state["target"], state["steps"]))
+                p_msg = (
+                    f"<b>{to_bold('PARAMETERS SETUP')}</b>\n\n"
+                    f"• টার্গেট প্রফিট: <code>৳ {val:.2f}</code>\n"
+                    f"• ব্যাকআপ স্টেপস: <b>{state['steps']}</b>\n\n"
+                    f"ট্রেডিং চালু করতে <b>DISPATCH ENGINE</b> চাপুন:"
+                )
+                bot.send_message(chat_id, p_msg, reply_markup=get_parameters_setup_keyboard(node_id, state["target"], state["steps"]))
             except ValueError:
-                bot.send_message(chat_id, "Enter valid positive number for Target Profit:")
+                bot.send_message(chat_id, "দয়া করে সঠিক সংখ্যা লিখুন (যেমন: 500):")
             return
 
         elif mode_in == "WAIT_STEPS":
@@ -1588,15 +1585,15 @@ def handle_all_text_inputs(message):
                 if val <= 0: raise ValueError()
                 state["steps"] = val
                 state["mode_input"] = None
-                lines = [
-                    f"Terminal Node     : {node_id}",
-                    f"Target Profit     : ৳ {state['target']:.2f}",
-                    f"Martingale Steps  : {val}"
-                ]
-                card = format_ascii_box(to_bold("PARAMETERS UPDATED"), lines)
-                bot.send_message(chat_id, f"<pre>{card}</pre>", reply_markup=get_parameters_setup_keyboard(node_id, state["target"], state["steps"]))
+                p_msg = (
+                    f"<b>{to_bold('PARAMETERS SETUP')}</b>\n\n"
+                    f"• টার্গেট প্রফিট: <code>৳ {state['target']:.2f}</code>\n"
+                    f"• ব্যাকআপ স্টেপস: <b>{val}</b>\n\n"
+                    f"ট্রেডিং চালু করতে <b>DISPATCH ENGINE</b> চাপুন:"
+                )
+                bot.send_message(chat_id, p_msg, reply_markup=get_parameters_setup_keyboard(node_id, state["target"], state["steps"]))
             except ValueError:
-                bot.send_message(chat_id, "Enter valid positive integer for Steps:")
+                bot.send_message(chat_id, "দয়া করে সঠিক পূর্ণসংখ্যা লিখুন (যেমন: 7):")
             return
 
         elif mode_in.startswith("WAIT_TRX:"):
@@ -1605,27 +1602,20 @@ def handle_all_text_inputs(message):
             state["mode_input"] = None
             db.add_payment_record(trx_id, chat_id, method, SUBSCRIPTION_PRICE_BDT)
 
-            lines = [
-                f"Transaction ID    : {trx_id}",
-                f"Payment Method    : {method}",
-                f"Amount            : ৳ {SUBSCRIPTION_PRICE_BDT:.2f}",
-                "Status            : PENDING VERIFICATION"
-            ]
-            card = format_ascii_box(to_bold("PAYMENT SUBMITTED"), lines)
-            bot.send_message(chat_id, f"<pre>{card}</pre>")
+            bot.send_message(chat_id, f"আপনার <b>{method}</b> TrxID: <code>{trx_id}</code> যাচাইয়ের জন্য জমা হয়েছে। অ্যাডমিন অ্যাপ্রুভ করলে ২৪ ঘণ্টার এক্সেস সক্রিয় হবে।")
 
-            admin_lines = [
-                f"User Chat ID      : {chat_id}",
-                f"Method            : {method}",
-                f"Amount            : ৳ {SUBSCRIPTION_PRICE_BDT:.2f}",
-                f"TrxID             : {trx_id}"
-            ]
-            admin_card = format_ascii_box(to_bold("INCOMING PAYMENT AUDIT"), admin_lines)
-            bot.send_message(OWNER_ID, f"<pre>{admin_card}</pre>", reply_markup=get_admin_approval_keyboard(trx_id))
+            admin_alert = (
+                f"<b>{to_bold('INCOMING PAYMENT AUDIT')}</b>\n\n"
+                f"• ইউজার আইডি: <code>{chat_id}</code>\n"
+                f"• মেথড: <b>{method}</b>\n"
+                f"• পরিমাণ: <b>৳ {SUBSCRIPTION_PRICE_BDT:.2f}</b>\n"
+                f"• TrxID: <code>{trx_id}</code>"
+            )
+            bot.send_message(OWNER_ID, admin_alert, reply_markup=get_admin_approval_keyboard(trx_id))
             return
 
 # ==============================================================================
-# SECTION 12: CALLBACK QUERIES ROUTING ENGINE
+# SECTION 12: INLINE CALLBACK ENGINE
 # ==============================================================================
 @bot.callback_query_handler(func=lambda call: True)
 def handle_all_callback_queries(call):
@@ -1635,16 +1625,16 @@ def handle_all_callback_queries(call):
     if data == "action_verify_channel":
         if is_user_channel_member(chat_id):
             db.mark_channel_joined(chat_id)
-            bot.answer_callback_query(call.id, "Verification complete!")
+            bot.answer_callback_query(call.id, "ভেরিফিকেশন সফল হয়েছে!")
             safe_delete_message(bot, chat_id, call.message.message_id)
-            welcome_lines = [
-                "Distributed Automation Terminal Controller",
-                "Select an operation below to proceed."
-            ]
-            card = format_ascii_box(to_bold("CLUSTER CORE ACTIVE"), welcome_lines)
-            bot.send_message(chat_id, f"<pre>{card}</pre>", reply_markup=get_main_persistent_keyboard())
+            welcome_msg = (
+                f"<b>{to_bold('WINGO 30S CLUSTER CONTROLLER')}</b>\n\n"
+                f"ধন্যবাদ! চ্যানেল ভেরিফিকেশন সম্পন্ন হয়েছে।\n"
+                f"ট্রেডিং শুরু করতে নিচের <b>TASK</b> বাটন নির্বাচন করুন।"
+            )
+            bot.send_message(chat_id, welcome_msg, reply_markup=get_main_persistent_keyboard())
         else:
-            bot.answer_callback_query(call.id, "You have not joined the channel yet.", show_alert=True)
+            bot.answer_callback_query(call.id, "আপনি এখনো চ্যানেলে জয়েন হননি!", show_alert=True)
         return
 
     # Site Selection
@@ -1656,68 +1646,68 @@ def handle_all_callback_queries(call):
         state["site"] = site
         state["node_id"] = node_id
         bot.answer_callback_query(call.id)
-        lines = [
-            f"Terminal Node     : {node_id}",
-            f"Target Platform   : {site}",
-            "Provide authentication credentials:"
-        ]
-        card = format_ascii_box(to_bold("CREDENTIAL GATEWAY"), lines)
-        bot.edit_message_text(f"<pre>{card}</pre>", chat_id=chat_id, message_id=call.message.message_id, reply_markup=get_credentials_input_keyboard(node_id, False))
+        cred_msg = (
+            f"<b>{to_bold('ACCOUNT LOGIN')}</b>\n\n"
+            f"প্ল্যাটফর্ম: <b>{site}</b> (টার্মিনাল: {node_id})\n\n"
+            f"দয়া করে নিচের <b>NUMBER</b> বাটনে চাপ দিয়ে আপনার একাউন্ট নম্বর প্রদান করুন:"
+        )
+        bot.edit_message_text(cred_msg, chat_id=chat_id, message_id=call.message.message_id, reply_markup=get_credentials_input_keyboard(node_id, False))
         return
 
-    # Abort Allocation
+    # Abort
     if data.startswith("cfg_abort:"):
         node_id = data.split(":")[1]
         firebase_cluster.release_node(node_id)
         state = user_input_states.pop(chat_id, None)
         if state and state.get("session_id"):
             db.terminate_session(state["session_id"])
-        bot.answer_callback_query(call.id, "Allocation aborted.")
+        bot.answer_callback_query(call.id, "বাতিল করা হয়েছে")
         safe_delete_message(bot, chat_id, call.message.message_id)
+        bot.send_message(chat_id, "টার্মিনাল সেশন বাতিল করা হয়েছে। নতুন সেশন শুরু করতে /start লিখুন।")
         return
 
-    # Credential Inputs
+    # Input Triggers
     if data.startswith("in_num:"):
         node_id = data.split(":")[1]
         user_input_states.setdefault(chat_id, {})["mode_input"] = "WAIT_PHONE"
         bot.answer_callback_query(call.id)
-        bot.send_message(chat_id, "Enter your account phone number:")
+        bot.send_message(chat_id, "আপনার প্ল্যাটফর্ম একাউন্টের ফোন নাম্বারটি লিখে পাঠান:")
         return
 
     if data.startswith("in_pwd:"):
         node_id = data.split(":")[1]
         state = user_input_states.get(chat_id, {})
         if not state.get("phone"):
-            bot.answer_callback_query(call.id, "Provide account number first!", show_alert=True)
+            bot.answer_callback_query(call.id, "আগে ফোন নাম্বার দিন!", show_alert=True)
             return
         state["mode_input"] = "WAIT_PASSWORD"
         bot.answer_callback_query(call.id)
-        bot.send_message(chat_id, "Enter your account password:")
+        bot.send_message(chat_id, "আপনার প্ল্যাটফর্ম একাউন্টের পাসওয়ার্ডটি লিখে পাঠান:")
         return
 
     if data.startswith("in_tgt:"):
         node_id = data.split(":")[1]
         user_input_states.setdefault(chat_id, {})["mode_input"] = "WAIT_TARGET"
         bot.answer_callback_query(call.id)
-        bot.send_message(chat_id, "Enter Target Profit Amount (e.g. 500):")
+        bot.send_message(chat_id, "আপনি কত টাকা প্রফিট করতে চান? পরিমাণটি লিখুন (যেমন: 500):")
         return
 
     if data.startswith("in_stp:"):
         node_id = data.split(":")[1]
         user_input_states.setdefault(chat_id, {})["mode_input"] = "WAIT_STEPS"
         bot.answer_callback_query(call.id)
-        bot.send_message(chat_id, "Enter Martingale Steps (e.g. 7):")
+        bot.send_message(chat_id, "মার্টিনগেল ব্যাকআপ স্টেপ সংখ্যা লিখুন (যেমন: 7 বা 10):")
         return
 
-    # Dispatch to Remote Node
+    # Dispatch to Worker
     if data.startswith("in_go:"):
         node_id = data.split(":")[1]
         state = user_input_states.get(chat_id)
         if not state or not state.get("phone") or not state.get("password"):
-            bot.answer_callback_query(call.id, "Phone and Password are required!", show_alert=True)
+            bot.answer_callback_query(call.id, "নাম্বার এবং পাসওয়ার্ড আবশ্যক!", show_alert=True)
             return
         if not state.get("target") or state["target"] <= 0:
-            bot.answer_callback_query(call.id, "Valid Target Profit is required!", show_alert=True)
+            bot.answer_callback_query(call.id, "টার্গেট প্রফিট নির্ধারণ করুন!", show_alert=True)
             return
 
         target_url = URL_AMARCLUB_LOGIN if state["site"] == "AMAR" else URL_DKWIN_LOGIN
@@ -1745,33 +1735,26 @@ def handle_all_callback_queries(call):
         bot.answer_callback_query(call.id)
         safe_delete_message(bot, chat_id, call.message.message_id)
 
-        lines = [
-            f"Terminal Node     : {node_id}",
-            f"Target Portal     : {state['site']}",
-            f"Target Profit     : ৳ {state['target']:.2f}",
-            f"Martingale Steps  : {state['steps']}",
-            f"Cluster Dispatch  : {'SUCCESS' if ok else 'FAILED'}",
-            "Terminal active in 24/7 background mode."
-        ]
-        card = format_ascii_box(to_bold("TASK DISPATCHED TO WORKER"), lines)
-        bot.send_message(chat_id, f"<pre>{card}</pre>")
+        dispatch_msg = (
+            f"<b>{to_bold('TASK DISPATCHED TO WORKER')}</b>\n\n"
+            f"• টার্মিনাল নোড: <b>{node_id}</b>\n"
+            f"• প্ল্যাটফর্ম: <b>{state['site']}</b>\n"
+            f"• টার্গেট প্রফিট: <code>৳ {state['target']:.2f}</code>\n"
+            f"• ব্যাকআপ স্টেপস: <b>{state['steps']}</b>\n"
+            f"• ইঞ্জিন স্ট্যাটাস: <b>{'সফলভাবে সক্রিয়' if ok else 'ব্যর্থ'}</b>\n\n"
+            f"ওয়ার্কার ব্যাকগ্রাউন্ডে কাজ শুরু করেছে। কাঙ্ক্ষিত টার্গেট পূরণ হলে নোটিফিকেশন পাবেন।"
+        )
+        bot.send_message(chat_id, dispatch_msg)
         user_input_states.pop(chat_id, None)
         return
 
-    # Payment Submission Selection
+    # Payment Methods
     if data.startswith("pay_submit:"):
         method = data.split(":")[1]
         user_input_states.setdefault(chat_id, {})["mode_input"] = f"WAIT_TRX:{method}"
         bot.answer_callback_query(call.id)
         acc_num = BKASH_NUMBER if method == "BKASH" else NAGAD_NUMBER
-        lines = [
-            f"Method            : {method}",
-            f"Personal Number   : {acc_num}",
-            f"Amount Required   : ৳ {SUBSCRIPTION_PRICE_BDT:.2f}",
-            "Send money and reply with your TrxID below:"
-        ]
-        card = format_ascii_box(to_bold("TRANSACTION INSTRUCTIONS"), lines)
-        bot.send_message(chat_id, f"<pre>{card}</pre>")
+        bot.send_message(chat_id, f"দয়া করে <code>{acc_num}</code> নম্বরে <b>৳ {SUBSCRIPTION_PRICE_BDT:.2f}</b> পাঠিয়ে ট্রানজ্যাকশন আইডি (TrxID) লিখে পাঠান:")
         return
 
     # Admin Audit Actions
@@ -1779,30 +1762,26 @@ def handle_all_callback_queries(call):
         if chat_id != OWNER_ID: return
         trx_id = data.split(":")[1]
         db.update_payment_status(trx_id, "APPROVED")
-        bot.answer_callback_query(call.id, "Approved!")
-        bot.edit_message_text(f"Transaction {trx_id} has been APPROVED for 24H.", chat_id=chat_id, message_id=call.message.message_id)
+        bot.answer_callback_query(call.id, "অ্যাপ্রুভ করা হয়েছে!")
+        bot.edit_message_text(f"ট্রানজ্যাকশন <code>{trx_id}</code> সফলভাবে অ্যাপ্রুভ হয়েছে এবং ২৪ ঘণ্টার এক্সেস দেওয়া হয়েছে।", chat_id=chat_id, message_id=call.message.message_id)
         return
 
     if data.startswith("adm_rej:"):
         if chat_id != OWNER_ID: return
         trx_id = data.split(":")[1]
         db.update_payment_status(trx_id, "REJECTED")
-        bot.answer_callback_query(call.id, "Rejected!")
-        bot.edit_message_text(f"Transaction {trx_id} has been REJECTED.", chat_id=chat_id, message_id=call.message.message_id)
+        bot.answer_callback_query(call.id, "রিজেক্ট করা হয়েছে!")
+        bot.edit_message_text(f"ট্রানজ্যাকশন <code>{trx_id}</code> বাতিল করা হয়েছে।", chat_id=chat_id, message_id=call.message.message_id)
         return
 
 # ==============================================================================
-# SECTION 13: PRODUCTION BOOT SEQUENCE
+# SECTION 13: PRODUCTION EXECUTION ENTRYPOINT
 # ==============================================================================
 def main():
-    boot_lines = [
-        "Distributed Master Cluster Orchestrator",
-        "SQLite Thread-Safe Storage Engine : INITIALIZED",
-        "Firebase Cluster Synchronizer    : CONNECTED",
-        "Lifetime Watchdog Daemon         : RUNNING",
-        "Bot Polling State                : DISPATCHING"
-    ]
-    sys.stdout.write(format_ascii_box(to_bold("SYSTEM BOOT ENGINE"), boot_lines) + "\n")
+    sys.stdout.write("==================================================\n")
+    sys.stdout.write(f"[*] MASTER CONTROLLER DISPATCHED FOR {OWNER_ID}\n")
+    sys.stdout.write("[*] CLEAN TEXT & DYNAMIC PASSWORD MODE: ACTIVE\n")
+    sys.stdout.write("==================================================\n")
     sys.stdout.flush()
 
     try:
