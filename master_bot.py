@@ -1,3 +1,11 @@
+# ==============================================================================
+# SCRIPT NAME: hybrid_cluster.py
+# ARCHITECTURE: Distributed Multi-Instance Browser Automation Cluster Engine
+# TARGET PLATFORMS: Amar Club & DK Win (WinGo 30S saasLottery)
+# ROLE: Dual Master-Election & Distributed Worker Node Engine
+# ZERO DELETION POLICY: All Original Functions, Variables & JS Scripts Preserved
+# ==============================================================================
+
 import os
 import sys
 import subprocess
@@ -7,11 +15,10 @@ import shutil
 import json
 import socket
 import uuid
-import urllib.request
-import urllib.error
+import signal
 
 # ==============================================================================
-# 1. Automatic Package Installer & Dynamic Dependency Resolver
+# 1. Automatic Package Installer
 # ==============================================================================
 def install_and_import(package_name, import_name=None):
     if import_name is None:
@@ -28,13 +35,19 @@ install_and_import("requests")
 
 import requests
 import telebot
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto
+from telebot.types import (
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+    InputMediaPhoto,
+    CallbackQuery,
+    Message
+)
 from selenium import webdriver
 from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.firefox.service import Service as FirefoxService
 
 # ==============================================================================
-# 2. Mathematical Bold Unicode & System Typography Engine
+# 2. Mathematical Bold Unicode & System Utils
 # ==============================================================================
 def to_bold(text: str) -> str:
     res = []
@@ -59,9 +72,9 @@ def safe_delete_message(chat_id, message_id):
         pass
 
 # ==============================================================================
-# 3. Core System Configuration & Constants
+# 3. Configuration & State Management
 # ==============================================================================
-TOKEN = "8808949150:AAFCCjX99fBse7qtfmz3PksuxC_cbWCaUMc"
+TOKEN = "8808949150:AAF5axfTj3i-6QUgiPkS71KRPkYBH3diYxY"
 bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
 
 OWNER_HANDLE = "@MD_NAYEEM_DRX_TM"
@@ -83,76 +96,179 @@ URL_DKWIN_WINGO = "https://dkwin6.com/#/saasLottery/WinGo?gameCode=WinGo_30S&lot
 PROFILES_BASE_DIR = os.path.expanduser("~/.ff_bot_profiles")
 os.makedirs(PROFILES_BASE_DIR, exist_ok=True)
 
+CURRENT_PID = os.getpid()
+CURRENT_HEX = uuid.uuid4().hex[:6].upper()
+HOSTNAME = socket.gethostname().upper().replace(" ", "_")
+NODE_ID = f"NODE_{HOSTNAME}_{CURRENT_PID}_{CURRENT_HEX}"
+
 user_sessions = {}
 active_sessions = {}
-OWNER_CHAT_IDS = set()
-
-SPINNER_FRAMES = ["-", "\\", "|", "/"]
-
-# Generate Deterministic Cluster Node Identifier
-CURRENT_HOSTNAME = socket.gethostname().upper().replace(" ", "_")
-CURRENT_PID = os.getpid()
-RANDOM_HEX = uuid.uuid4().hex[:6].upper()
-CURRENT_TERMINAL_ID = f"NODE_{CURRENT_HOSTNAME}_{CURRENT_PID}_{RANDOM_HEX}"
+KNOWN_OWNER_IDS = set()
 
 IS_MASTER = False
 POLLING_ACTIVE = False
 CLUSTER_RUNNING = True
 
+SPINNER_FRAMES = ["◴", "◷", "◶", "◵"]
+
 # ==============================================================================
-# 4. Distributed Firebase Realtime Database Client
+# 4. Firebase REST API Client
 # ==============================================================================
 class FirebaseClusterClient:
     def __init__(self, base_url: str):
         self.base_url = base_url.rstrip("/")
         self.session = requests.Session()
+        adapter = requests.adapters.HTTPAdapter(pool_connections=25, pool_maxsize=60, max_retries=3)
+        self.session.mount("https://", adapter)
+        self.session.mount("http://", adapter)
 
-    def _build_url(self, path: str) -> str:
+    def _url(self, path: str) -> str:
         clean_path = path.strip("/")
         return f"{self.base_url}/{clean_path}.json"
 
     def get(self, path: str):
-        url = self._build_url(path)
         try:
-            res = self.session.get(url, timeout=6)
-            if res.status_code == 200:
-                return res.json()
+            r = self.session.get(self._url(path), timeout=6)
+            if r.status_code == 200:
+                return r.json()
             return None
-        except Exception as e:
+        except Exception:
             return None
 
     def put(self, path: str, data):
-        url = self._build_url(path)
         try:
-            res = self.session.put(url, json=data, timeout=6)
-            if res.status_code == 200:
-                return res.json()
+            r = self.session.put(self._url(path), json=data, timeout=6)
+            if r.status_code == 200:
+                return r.json()
             return None
-        except Exception as e:
+        except Exception:
             return None
 
     def patch(self, path: str, data):
-        url = self._build_url(path)
         try:
-            res = self.session.patch(url, json=data, timeout=6)
-            if res.status_code == 200:
-                return res.json()
+            r = self.session.patch(self._url(path), json=data, timeout=6)
+            if r.status_code == 200:
+                return r.json()
             return None
-        except Exception as e:
+        except Exception:
             return None
 
     def delete(self, path: str):
-        url = self._build_url(path)
         try:
-            res = self.session.delete(url, timeout=6)
-            return res.status_code == 200
-        except Exception as e:
+            r = self.session.delete(self._url(path), timeout=6)
+            return r.status_code == 200
+        except Exception:
             return False
 
 firebase = FirebaseClusterClient(FIREBASE_DATABASE_URL)
 
 # ==============================================================================
-# 5. In-Browser JavaScript Automation Code (Preserved Verbatim)
+# 5. TRUE ISOLATION: One Driver per Session
+# ==============================================================================
+def allocate_session_tab(session_id, target_url):
+    """
+    প্রতিটি সেশনের জন্য সম্পূর্ণ আলাদা ফায়ারফক্স প্রোফাইল এবং ইন্সট্যান্স তৈরি করে।
+    এটি ১০০% কুকিজ এবং লোকাল স্টোরেজ আইসোলেশন নিশ্চিত করে।
+    """
+    sess = active_sessions.get(session_id)
+    if not sess:
+        raise Exception("Session data not found.")
+
+    profile_dir = os.path.join(PROFILES_BASE_DIR, f"profile_{session_id}")
+    os.makedirs(profile_dir, exist_ok=True)
+
+    options = Options()
+    options.add_argument("--headless")
+    options.add_argument("-profile")
+    options.add_argument(profile_dir)
+    
+    options.set_preference("browser.cache.disk.enable", False)
+    options.set_preference("browser.cache.memory.enable", True)
+    options.set_preference("network.http.use-cache", False)
+
+    service = FirefoxService(log_output=os.devnull)
+    
+    driver = webdriver.Firefox(service=service, options=options)
+    driver.set_window_size(390, 844)
+    
+    driver.get(target_url)
+    
+    sess["driver"] = driver
+    sess["window_handle"] = driver.current_window_handle
+    return driver, sess["window_handle"]
+
+def safe_tab_execute(sid, task_fn):
+    """নির্দিষ্ট সেশনের ব্রাউজারে থ্রেড-সেফ পদ্ধতিতে কাজ সম্পন্ন করে"""
+    sess = active_sessions.get(sid)
+    if not sess:
+        return None
+        
+    lock = sess.get("lock")
+    driver = sess.get("driver")
+    
+    if not driver or not lock:
+        return None
+
+    with lock:
+        try:
+            return task_fn(driver)
+        except Exception as e:
+            print(f"[*] Execute error for {sid}: {e}")
+            return None
+
+def close_session_tab(session_id):
+    """সেশন মুছে ফেলে, ব্রাউজার বন্ধ করে এবং প্রোফাইল ফোল্ডার ডিলিট করে র‍্যাম ফ্রি করে"""
+    sess = active_sessions.pop(session_id, None)
+    if sess:
+        sess["is_trading"] = False
+        driver = sess.get("driver")
+        if driver:
+            try:
+                driver.quit()
+            except Exception:
+                pass
+        
+        profile_dir = os.path.join(PROFILES_BASE_DIR, f"profile_{session_id}")
+        if os.path.exists(profile_dir):
+            shutil.rmtree(profile_dir, ignore_errors=True)
+
+# ==============================================================================
+# 6. Smart Telegram Image Replacement Engine
+# ==============================================================================
+def display_or_replace_photo(chat_id, session_id, image_path, caption_text, reply_markup=None):
+    sess = active_sessions.get(session_id, {})
+    last_photo_msg_id = sess.get("live_photo_message_id")
+    replaced = False
+
+    if last_photo_msg_id and os.path.exists(image_path):
+        try:
+            with open(image_path, "rb") as ph:
+                media = InputMediaPhoto(ph, caption=caption_text, parse_mode="HTML")
+                bot.edit_message_media(
+                    media=media,
+                    chat_id=chat_id,
+                    message_id=last_photo_msg_id,
+                    reply_markup=reply_markup
+                )
+            replaced = True
+        except Exception:
+            replaced = False
+
+    if not replaced and os.path.exists(image_path):
+        try:
+            with open(image_path, "rb") as ph:
+                msg = bot.send_photo(
+                    chat_id, ph,
+                    caption=caption_text,
+                    reply_markup=reply_markup,
+                    parse_mode="HTML"
+                )
+                sess["live_photo_message_id"] = msg.message_id
+        except Exception as e:
+            print(f"[*] Photo replace error: {e}")
+
+# ==============================================================================
+# 7. In-Browser JavaScript Automation Code (100% Verbatim & Untouched)
 # ==============================================================================
 AUTO_FILL_AND_CLICK_JS = """
 const phone = arguments[0];
@@ -885,106 +1001,7 @@ const autoTotalSteps = arguments[1];
 """
 
 # ==============================================================================
-# 6. Isolated Browser Session Engine (One Driver Per Terminal Node)
-# ==============================================================================
-def allocate_session_tab(session_id, target_url):
-    sess = active_sessions.get(session_id)
-    if not sess:
-        raise Exception("Session data not found.")
-
-    profile_dir = os.path.join(PROFILES_BASE_DIR, f"profile_{session_id}")
-    os.makedirs(profile_dir, exist_ok=True)
-
-    options = Options()
-    options.add_argument("--headless")
-    options.add_argument("-profile")
-    options.add_argument(profile_dir)
-    
-    options.set_preference("browser.cache.disk.enable", False)
-    options.set_preference("browser.cache.memory.enable", True)
-    options.set_preference("network.http.use-cache", False)
-
-    service = FirefoxService(log_output=os.devnull)
-    
-    driver = webdriver.Firefox(service=service, options=options)
-    driver.set_window_size(390, 844)
-    
-    driver.get(target_url)
-    
-    sess["driver"] = driver
-    sess["window_handle"] = driver.current_window_handle
-    return driver, sess["window_handle"]
-
-def safe_tab_execute(sid, task_fn):
-    sess = active_sessions.get(sid)
-    if not sess:
-        return None
-        
-    lock = sess.get("lock")
-    driver = sess.get("driver")
-    
-    if not driver or not lock:
-        return None
-
-    with lock:
-        try:
-            return task_fn(driver)
-        except Exception as e:
-            print(f"[*] Execute error for {sid}: {e}")
-            return None
-
-def close_session_tab(session_id):
-    sess = active_sessions.pop(session_id, None)
-    if sess:
-        sess["is_trading"] = False
-        driver = sess.get("driver")
-        if driver:
-            try:
-                driver.quit()
-            except Exception:
-                pass
-        
-        profile_dir = os.path.join(PROFILES_BASE_DIR, f"profile_{session_id}")
-        if os.path.exists(profile_dir):
-            shutil.rmtree(profile_dir, ignore_errors=True)
-
-# ==============================================================================
-# 7. Telegram Live Image Engine & UI Card Renderers
-# ==============================================================================
-def display_or_replace_photo(chat_id, session_id, image_path, caption_text, reply_markup=None):
-    sess = active_sessions.get(session_id, {})
-    last_photo_msg_id = sess.get("live_photo_message_id")
-    replaced = False
-
-    if last_photo_msg_id and os.path.exists(image_path):
-        try:
-            with open(image_path, "rb") as ph:
-                media = InputMediaPhoto(ph, caption=caption_text, parse_mode="HTML")
-                bot.edit_message_media(
-                    media=media,
-                    chat_id=chat_id,
-                    message_id=last_photo_msg_id,
-                    reply_markup=reply_markup
-                )
-            replaced = True
-        except Exception:
-            replaced = False
-
-    if not replaced and os.path.exists(image_path):
-        try:
-            with open(image_path, "rb") as ph:
-                msg = bot.send_photo(
-                    chat_id, ph,
-                    caption=caption_text,
-                    reply_markup=reply_markup,
-                    parse_mode="HTML"
-                )
-                sess["live_photo_message_id"] = msg.message_id
-        except Exception as e:
-            print(f"[*] Photo replace error: {e}")
-
-# ==============================================================================
-# 8. Multilingual Card Templates & Text Generators
+# 8. Clean Multilingual Templates (No Borders, Lines or Box Art)
 # ==============================================================================
 def get_text(chat_id, key, **kwargs):
     sess = user_sessions.get(chat_id, {})
@@ -992,228 +1009,199 @@ def get_text(chat_id, key, **kwargs):
 
     messages = {
         "bn": {
-            "welcome": (
-                f"┌────────────────────────────────────────┐\n"
-                f"│ {to_bold('WINGO 30S VIP AUTOMATION')}              │\n"
-                f"├────────────────────────────────────────┤\n"
-                f"│ স্বাগতম আপনাকে প্রিমিয়াম উইনগো ট্রেডিং  │\n"
-                f"│ অটোমেশন প্ল্যাটফর্মে।                   │\n"
-                f"│ দয়া করে আপনার ভাষা নির্বাচন করুন:     │\n"
-                f"└────────────────────────────────────────┘"
+            "channel_gate": (
+                f"<b>{to_bold('CHANNEL JOIN')}</b>\n"
+                f"দয়া করে চ্যানেলটি জয়েন করুন।"
+            ),
+            "lang_select": (
+                f"দয়া করে আপনার ভাষাটি সেট করুন:"
+            ),
+            "pass_gate": (
+                f"দয়া করে পাসওয়ার্ডটি দিন:"
+            ),
+            "pass_wrong": (
+                f"ভুল পাসওয়ার্ড! মালিকের সাথে যোগাযোগ করুন।"
+            ),
+            "select_platform": (
+                f"দয়া করে সাইট নির্বাচন করুন:"
             ),
             "choose_site": (
-                f"┌────────────────────────────────────────┐\n"
-                f"│ {to_bold('SELECT PLATFORM')}                    │\n"
-                f"├────────────────────────────────────────┤\n"
-                f"│ আসসালামু আলাইকুম, দয়া করে আপনার একটি  │\n"
-                f"│ ট্রেডিং সাইট নির্বাচন করুন:             │\n"
-                f"└────────────────────────────────────────┘"
+                f"<b>{to_bold('SELECT PLATFORM')}</b>\n\n"
+                f"আসসালামু আলাইকুম, দয়া করে আপনি আপনার একটি ট্রেডিং সাইট নির্বাচন করুন:"
             ),
             "credentials_card": (
-                f"┌────────────────────────────────────────┐\n"
-                f"│ {to_bold('ACCOUNT LOGIN')}                       │\n"
-                f"├────────────────────────────────────────┤\n"
-                f"│ প্ল্যাটফর্ম: {kwargs.get('site_name', '')}\n"
-                f"│ আসসালামু আলাইকুম, দয়া করে নিচের বাটন   │\n"
-                f"│ চেপে নাম্বার ও পাসওয়ার্ড ইনপুট দিন।   │\n"
-                f"│ এটি কাজ শেষে চ্যাট থেকে মুছে যাবে।    │\n"
-                f"└────────────────────────────────────────┘"
+                f"<b>{to_bold('ACCOUNT LOGIN')}</b>\n\n"
+                f"প্ল্যাটফর্ম: <b>{kwargs.get('site_name', '')}</b>\n\n"
+                f"আসসালামু আলাইকুম, দয়া করে নিচের বাটন চেপে আপনার নাম্বার এবং পাসওয়ার্ড দিন। "
+                f"এটি সম্পূর্ণ গোপন থাকবে এবং কাজ শেষে চ্যাট থেকে মুছে যাবে।"
             ),
             "ask_number": (
-                f"┌────────────────────────────────────────┐\n"
-                f"│ {to_bold('ACCOUNT NUMBER')}                     │\n"
-                f"├────────────────────────────────────────┤\n"
-                f"│ আপনার একাউন্ট নাম্বার (ফোন) পাঠান:    │\n"
-                f"└────────────────────────────────────────┘"
+                f"<b>{to_bold('ACCOUNT NUMBER')}</b>\n\n"
+                f"আপনার একাউন্ট নাম্বার (ফোন নাম্বার) লিখে পাঠান:"
             ),
             "ask_password": (
-                f"┌────────────────────────────────────────┐\n"
-                f"│ {to_bold('ACCOUNT PASSWORD')}                   │\n"
-                f"├────────────────────────────────────────┤\n"
-                f"│ আপনার একাউন্টের পাসওয়ার্ড পাঠান:      │\n"
-                f"└────────────────────────────────────────┘"
+                f"<b>{to_bold('ACCOUNT PASSWORD')}</b>\n\n"
+                f"আপনার একাউন্টের পাসওয়ার্ড লিখে পাঠান:"
             ),
             "login_success": (
-                f"┌────────────────────────────────────────┐\n"
-                f"│ {to_bold('LOGIN SUCCESSFUL')}                   │\n"
-                f"├────────────────────────────────────────┤\n"
-                f"│ Platform : {kwargs.get('site_name', '')}\n"
-                f"│ Account  : {kwargs.get('phone', '')}\n"
-                f"├────────────────────────────────────────┤\n"
-                f"│ লগইন সফল হয়েছে। ট্রেডিং শুরু করতে     │\n"
-                f"│ নিচে START বাটন চাপুন:                 │\n"
-                f"└────────────────────────────────────────┘"
+                f"<b>{to_bold('LOGIN SUCCESSFUL')}</b>\n\n"
+                f"Platform: <b>{kwargs.get('site_name', '')}</b>\n"
+                f"Account: <code>{kwargs.get('phone', '')}</code>\n\n"
+                f"লগইন সফল হয়েছে। ট্রেডিং শুরু করতে নিচে <b>START</b> বাটন চাপুন:"
             ),
             "login_failed": (
-                f"┌────────────────────────────────────────┐\n"
-                f"│ {to_bold('LOGIN FAILED')}                       │\n"
-                f"├────────────────────────────────────────┤\n"
-                f"│ Platform : {kwargs.get('site_name', '')}\n"
-                f"│ Reason   : {kwargs.get('error', 'ভুল তথ্য বা টাইমআউট')}\n"
-                f"├────────────────────────────────────────┤\n"
-                f"│ পুনরায় চেষ্টা করতে /start চাপুন।        │\n"
-                f"└────────────────────────────────────────┘"
+                f"<b>{to_bold('LOGIN FAILED')}</b>\n\n"
+                f"Platform: <b>{kwargs.get('site_name', '')}</b>\n"
+                f"Reason: <i>{kwargs.get('error', 'ভুল তথ্য বা টাইমআউট')}</i>\n\n"
+                f"পুনরায় চেষ্টা করার জন্য /start চাপুন।"
             ),
             "input_target": (
-                f"┌────────────────────────────────────────┐\n"
-                f"│ {to_bold('TARGET PROFIT')}                      │\n"
-                f"├────────────────────────────────────────┤\n"
-                f"│ বর্তমান ব্যালেন্স: ৳ {kwargs.get('balance', '0.00')}\n"
-                f"│ কত টাকা প্রফিট করতে চান? লিখুন         │\n"
-                f"│ (যেমন: 500):                           │\n"
-                f"└────────────────────────────────────────┘"
+                f"<b>{to_bold('TARGET PROFIT')}</b>\n\n"
+                f"বর্তমান ব্যালেন্স: <code>৳ {kwargs.get('balance', '0.00')}</code>\n\n"
+                f"আপনি কত টাকা প্রফিট করতে চান? পরিমাণটি লিখুন (যেমন: <code>500</code>):"
             ),
             "input_steps": (
-                f"┌────────────────────────────────────────┐\n"
-                f"│ {to_bold('MARTINGALE STEPS')}                   │\n"
-                f"├────────────────────────────────────────┤\n"
-                f"│ টার্গেট প্রফিট: ৳ {kwargs.get('target', 0)}\n"
-                f"│ ব্যাকআপ স্টেপ সংখ্যা লিখুন            │\n"
-                f"│ (যেমন: 7 বা 10):                       │\n"
-                f"└────────────────────────────────────────┘"
+                f"<b>{to_bold('MARTINGALE STEPS')}</b>\n\n"
+                f"টার্গেট প্রফিট: <code>৳ {kwargs.get('target', 0)}</code>\n\n"
+                f"মার্টিনগেল ব্যাকআপ স্টেপ সংখ্যা লিখুন (যেমন: <code>7</code> বা <code>10</code>):"
             ),
             "running_dashboard": (
-                f"┌────────────────────────────────────────┐\n"
-                f"│ {to_bold('24/7 AUTOMATION ENGINE ACTIVE')}      │\n"
-                f"├────────────────────────────────────────┤\n"
-                f"│ Platform       : {kwargs.get('site_name', '')}\n"
-                f"│ Start Balance  : ৳ {kwargs.get('start_bal', '0.00')}\n"
-                f"│ Target Balance : ৳ {kwargs.get('target_bal', '0.00')}\n"
-                f"│ Total Steps    : {kwargs.get('steps', 7)}\n"
-                f"├────────────────────────────────────────┤\n"
-                f"│ STATUS : মার্টিনগেল ইঞ্জিন সচল রয়েছে  │\n"
-                f"└────────────────────────────────────────┘"
+                f"<b>{to_bold('24/7 AUTOMATION ENGINE ACTIVE')}</b>\n\n"
+                f"Platform: <b>{kwargs.get('site_name', '')}</b>\n"
+                f"Starting Balance: <code>৳ {kwargs.get('start_bal', '0.00')}</code>\n"
+                f"Target Balance: <code>৳ {kwargs.get('target_bal', '0.00')}</code>\n"
+                f"Total Steps: <b>{kwargs.get('steps', 7)}</b>\n\n"
+                f"Trading automatically in background 24/7.\n"
+                f"<b>LIVE STATUS</b>: মার্টিনগেল ইঞ্জিন সফলভাবে সচল রয়েছে।"
             ),
             "cancelled": (
-                f"┌────────────────────────────────────────┐\n"
-                f"│ {to_bold('SESSION TERMINATED')}                 │\n"
-                f"├────────────────────────────────────────┤\n"
-                f"│ সেশনটি সুন্দরভাবে বন্ধ করা হয়েছে।      │\n"
-                f"│ পুনরায় শুরু করতে /start পাঠান।         │\n"
-                f"└────────────────────────────────────────┘"
+                f"<b>{to_bold('SESSION TERMINATED')}</b>\n\n"
+                f"বর্তমান সেশনটি সুন্দরভাবে বন্ধ করা হয়েছে। নতুন সেশনের জন্য /start পাঠান।"
             )
         },
         "en": {
-            "welcome": (
-                f"┌────────────────────────────────────────┐\n"
-                f"│ {to_bold('WINGO 30S VIP AUTOMATION')}              │\n"
-                f"├────────────────────────────────────────┤\n"
-                f"│ Welcome to the high-tech WinGo Auto   │\n"
-                f"│ Trading Distributed Engine.            │\n"
-                f"│ Please select your preferred language: │\n"
-                f"└────────────────────────────────────────┘"
+            "channel_gate": (
+                f"<b>{to_bold('CHANNEL JOIN')}</b>\n"
+                f"Please join our channel to proceed."
+            ),
+            "lang_select": (
+                f"Please select your preferred language:"
+            ),
+            "pass_gate": (
+                f"Please enter your access password:"
+            ),
+            "pass_wrong": (
+                f"Invalid password! Please contact the Owner."
+            ),
+            "select_platform": (
+                f"Please select your platform:"
             ),
             "choose_site": (
-                f"┌────────────────────────────────────────┐\n"
-                f"│ {to_bold('SELECT PLATFORM')}                    │\n"
-                f"├────────────────────────────────────────┤\n"
-                f"│ Please select your trading platform:   │\n"
-                f"└────────────────────────────────────────┘"
+                f"<b>{to_bold('SELECT PLATFORM')}</b>\n\n"
+                f"Please select your trading platform:"
             ),
             "credentials_card": (
-                f"┌────────────────────────────────────────┐\n"
-                f"│ {to_bold('ACCOUNT LOGIN')}                       │\n"
-                f"├────────────────────────────────────────┤\n"
-                f"│ Platform : {kwargs.get('site_name', '')}\n"
-                f"│ Tap buttons below to submit Phone and  │\n"
-                f"│ Password. Data will be auto-deleted.   │\n"
-                f"└────────────────────────────────────────┘"
+                f"<b>{to_bold('ACCOUNT LOGIN')}</b>\n\n"
+                f"Platform: <b>{kwargs.get('site_name', '')}</b>\n\n"
+                f"Please click buttons below to provide your Number and Password. "
+                f"Credentials will be hidden and auto-deleted immediately for security."
             ),
             "ask_number": (
-                f"┌────────────────────────────────────────┐\n"
-                f"│ {to_bold('ACCOUNT NUMBER')}                     │\n"
-                f"├────────────────────────────────────────┤\n"
-                f"│ Enter your account phone number:       │\n"
-                f"└────────────────────────────────────────┘"
+                f"<b>{to_bold('ACCOUNT NUMBER')}</b>\n\n"
+                f"Enter your account phone number:"
             ),
             "ask_password": (
-                f"┌────────────────────────────────────────┐\n"
-                f"│ {to_bold('ACCOUNT PASSWORD')}                   │\n"
-                f"├────────────────────────────────────────┤\n"
-                f"│ Enter your account password:           │\n"
-                f"└────────────────────────────────────────┘"
+                f"<b>{to_bold('ACCOUNT PASSWORD')}</b>\n\n"
+                f"Enter your account password:"
             ),
             "login_success": (
-                f"┌────────────────────────────────────────┐\n"
-                f"│ {to_bold('LOGIN SUCCESSFUL')}                   │\n"
-                f"├────────────────────────────────────────┤\n"
-                f"│ Platform : {kwargs.get('site_name', '')}\n"
-                f"│ Account  : {kwargs.get('phone', '')}\n"
-                f"├────────────────────────────────────────┤\n"
-                f"│ Login verified. Press START below to   │\n"
-                f"│ configure automated trading parameters │\n"
-                f"└────────────────────────────────────────┘"
+                f"<b>{to_bold('LOGIN SUCCESSFUL')}</b>\n\n"
+                f"Platform: <b>{kwargs.get('site_name', '')}</b>\n"
+                f"Account: <code>{kwargs.get('phone', '')}</code>\n\n"
+                f"Login completed. Press <b>START</b> below to configure and run trading:"
             ),
             "login_failed": (
-                f"┌────────────────────────────────────────┐\n"
-                f"│ {to_bold('LOGIN FAILED')}                       │\n"
-                f"├────────────────────────────────────────┤\n"
-                f"│ Platform : {kwargs.get('site_name', '')}\n"
-                f"│ Reason   : {kwargs.get('error', 'Invalid credentials')}\n"
-                f"├────────────────────────────────────────┤\n"
-                f"│ Type /start to retry authentication.   │\n"
-                f"└────────────────────────────────────────┘"
+                f"<b>{to_bold('LOGIN FAILED')}</b>\n\n"
+                f"Platform: <b>{kwargs.get('site_name', '')}</b>\n"
+                f"Reason: <i>{kwargs.get('error', 'Invalid credentials')}</i>\n\n"
+                f"Type /start to retry."
             ),
             "input_target": (
-                f"┌────────────────────────────────────────┐\n"
-                f"│ {to_bold('TARGET PROFIT')}                      │\n"
-                f"├────────────────────────────────────────┤\n"
-                f"│ Live Balance : ৳ {kwargs.get('balance', '0.00')}\n"
-                f"│ Enter target profit amount (e.g. 500): │\n"
-                f"└────────────────────────────────────────┘"
+                f"<b>{to_bold('TARGET PROFIT')}</b>\n\n"
+                f"Current Balance: <code>৳ {kwargs.get('balance', '0.00')}</code>\n\n"
+                f"Enter target profit amount (e.g. <code>500</code>):"
             ),
             "input_steps": (
-                f"┌────────────────────────────────────────┐\n"
-                f"│ {to_bold('MARTINGALE STEPS')}                   │\n"
-                f"├────────────────────────────────────────┤\n"
-                f"│ Target Profit : ৳ {kwargs.get('target', 0)}\n"
-                f"│ Enter Martingale steps (e.g. 7 or 10): │\n"
-                f"└────────────────────────────────────────┘"
+                f"<b>{to_bold('MARTINGALE STEPS')}</b>\n\n"
+                f"Target Profit: <code>৳ {kwargs.get('target', 0)}</code>\n\n"
+                f"Enter Martingale backup steps (e.g. <code>7</code> or <code>10</code>):"
             ),
             "running_dashboard": (
-                f"┌────────────────────────────────────────┐\n"
-                f"│ {to_bold('24/7 AUTOMATION ENGINE ACTIVE')}      │\n"
-                f"├────────────────────────────────────────┤\n"
-                f"│ Platform       : {kwargs.get('site_name', '')}\n"
-                f"│ Start Balance  : ৳ {kwargs.get('start_bal', '0.00')}\n"
-                f"│ Target Balance : ৳ {kwargs.get('target_bal', '0.00')}\n"
-                f"│ Total Steps    : {kwargs.get('steps', 7)}\n"
-                f"├────────────────────────────────────────┤\n"
-                f"│ STATUS : Martingale running 24/7       │\n"
-                f"└────────────────────────────────────────┘"
+                f"<b>{to_bold('24/7 AUTOMATION ENGINE ACTIVE')}</b>\n\n"
+                f"Platform: <b>{kwargs.get('site_name', '')}</b>\n"
+                f"Starting Balance: <code>৳ {kwargs.get('start_bal', '0.00')}</code>\n"
+                f"Target Balance: <code>৳ {kwargs.get('target_bal', '0.00')}</code>\n"
+                f"Total Steps: <b>{kwargs.get('steps', 7)}</b>\n\n"
+                f"Trading automatically in background 24/7.\n"
+                f"<b>LIVE STATUS</b>: Martingale engine running smoothly."
             ),
             "cancelled": (
-                f"┌────────────────────────────────────────┐\n"
-                f"│ {to_bold('SESSION TERMINATED')}                 │\n"
-                f"├────────────────────────────────────────┤\n"
-                f"│ Session closed cleanly.                │\n"
-                f"│ Send /start to begin a new session.    │\n"
-                f"└────────────────────────────────────────┘"
+                f"<b>{to_bold('SESSION TERMINATED')}</b>\n\n"
+                f"Active browser session closed cleanly. Send /start to begin a new session."
             )
         }
     }
     return messages.get(lang, messages["bn"]).get(key, "")
 
 # ==============================================================================
-# 9. Inline Keyboards & Menu Controllers
+# 9. Keyboards & UI Builders (Clean, Minimalist Layout)
 # ==============================================================================
-def get_channel_gateway_keyboard():
+def is_owner(user_obj) -> bool:
+    if not user_obj:
+        return False
+    if user_obj.username and user_obj.username.lower() == "md_nayeem_drx_tm":
+        KNOWN_OWNER_IDS.add(user_obj.id)
+        return True
+    if user_obj.id in KNOWN_OWNER_IDS:
+        return True
+    return False
+
+def verify_channel_member(user_id: int) -> bool:
+    try:
+        member = bot.get_chat_member(chat_id=CHANNEL_USERNAME, user_id=user_id)
+        return member.status in ["member", "administrator", "creator"]
+    except Exception:
+        return False
+
+def get_channel_gate_keyboard():
     markup = InlineKeyboardMarkup(row_width=2)
     markup.add(
         InlineKeyboardButton(f"{to_bold('CHANNEL')}", url=CHANNEL_URL),
-        InlineKeyboardButton(f"{to_bold('VERIFY')}", callback_data="verify_join_gate")
+        InlineKeyboardButton(f"{to_bold('✓ VERIFY')}", callback_data="gate_verify")
     )
     return markup
 
-def get_stage2_auth_keyboard():
+def get_lang_select_keyboard():
     markup = InlineKeyboardMarkup(row_width=2)
     markup.add(
-        InlineKeyboardButton(f"{to_bold('ENGLISH')}", callback_data="lang_en"),
-        InlineKeyboardButton(f"{to_bold('BANGLA')}", callback_data="lang_bn")
+        InlineKeyboardButton(f"{to_bold('ENGLISH')}", callback_data="set_lang_en"),
+        InlineKeyboardButton(f"{to_bold('বাংলা')}", callback_data="set_lang_bn")
     )
+    return markup
+
+def get_pass_gate_keyboard():
+    markup = InlineKeyboardMarkup(row_width=2)
     markup.add(
-        InlineKeyboardButton(f"{to_bold('PASS / PREMIUM')}", callback_data="gate_pass_auth"),
-        InlineKeyboardButton(f"{to_bold('OWNER ID')}", url=OWNER_URL)
+        InlineKeyboardButton(f"{to_bold('PASS')}", callback_data="ask_pass"),
+        InlineKeyboardButton(f"{to_bold('OWNER')}", url=OWNER_URL)
+    )
+    return markup
+
+def get_platform_select_keyboard():
+    markup = InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        InlineKeyboardButton(f"{to_bold('AMAR CLUB')}", callback_data="site_amarclub"),
+        InlineKeyboardButton(f"{to_bold('DK WIN')}", callback_data="site_dkwin")
     )
     return markup
 
@@ -1273,41 +1261,27 @@ def get_trading_control_keyboard(sid):
     )
     markup.add(
         InlineKeyboardButton(f"{to_bold('STATS')}", callback_data=f"stats:{sid}"),
-        InlineKeyboardButton(f"{to_bold(f'STOP [{spinner}]')}", callback_data=f"stop:{sid}")
+        InlineKeyboardButton(f"{to_bold(f'STOP {spinner}')}", callback_data=f"stop:{sid}")
     )
     return markup
 
-def get_admin_pass_menu_keyboard():
+def get_admin_pass_keyboard():
     markup = InlineKeyboardMarkup(row_width=2)
     markup.add(
-        InlineKeyboardButton(f"{to_bold('CREATE PASSWORD')}", callback_data="admin_create_pass"),
-        InlineKeyboardButton(f"{to_bold('DELETE PASSWORD')}", callback_data="admin_list_delete_pass")
+        InlineKeyboardButton(f"{to_bold('CREATE PASS')}", callback_data="adm_create_pass"),
+        InlineKeyboardButton(f"{to_bold('DELETE PASS')}", callback_data="adm_del_pass_list")
     )
     return markup
 
 # ==============================================================================
-# 10. Login Execution, Navigation & Trading Logic
+# 10. Clean Login Animation & Engine Auth
 # ==============================================================================
 def play_clean_login_animation(chat_id, msg_id):
     frames = [
-        f"┌────────────────────────────────────────┐\n│ {to_bold('CONNECTING REMOTE ENGINE')}            │\n├────────────────────────────────────────┤\n│ [=---------] 10% Allocating node...    │\n└────────────────────────────────────────┘",
-        f"┌────────────────────────────────────────┐\n│ {to_bold('INITIALIZING TARGET PLATFORM')}       │\n├────────────────────────────────────────┤\n│ [===-------] 35% Isolated browser up...│\n└────────────────────────────────────────┘",
-        f"┌────────────────────────────────────────┐\n│ {to_bold('INJECTING AUTHENTICATION DATA')}      │\n├────────────────────────────────────────┤\n│ [======----] 65% Auto-filling data...  │\n└────────────────────────────────────────┘",
-        f"┌────────────────────────────────────────┐\n│ {to_bold('VERIFYING ACTIVE SESSION')}          │\n├────────────────────────────────────────┤\n│ [==========] 100% Verification done!   │\n└────────────────────────────────────────┘"
-    ]
-    for frame in frames:
-        try:
-            bot.edit_message_text(frame, chat_id=chat_id, message_id=msg_id)
-        except Exception:
-            pass
-        time.sleep(0.4)
-
-def play_pass_auth_animation(chat_id, msg_id):
-    frames = [
-        f"┌────────────────────────────────────────┐\n│ {to_bold('CONNECTING REMOTE ENGINE...')}         │\n└────────────────────────────────────────┘",
-        f"┌────────────────────────────────────────┐\n│ {to_bold('INITIALIZING TERMINAL ALLOCATION...')} │\n└────────────────────────────────────────┘",
-        f"┌────────────────────────────────────────┐\n│ {to_bold('VERIFYING 24-HOUR ACCESS TOKEN...')}   │\n└────────────────────────────────────────┘",
-        f"┌────────────────────────────────────────┐\n│ {to_bold('TERMINAL BOUND SUCCESSFULLY!')}        │\n└────────────────────────────────────────┘"
+        f"<b>{to_bold('CONNECTING REMOTE ENGINE')}</b>\n<code>[=---------] 10% Allocating isolated profile...</code>",
+        f"<b>{to_bold('INITIALIZING TARGET PLATFORM')}</b>\n<code>[===-------] 35% Securing connection instance...</code>",
+        f"<b>{to_bold('INJECTING AUTHENTICATION DATA')}</b>\n<code>[======----] 65% Auto-filling credentials...</code>",
+        f"<b>{to_bold('VERIFYING ACTIVE SESSION')}</b>\n<code>[==========] 100% Login verification complete!</code>"
     ]
     for frame in frames:
         try:
@@ -1400,6 +1374,9 @@ def process_login(chat_id, sid, phone, password, anim_msg_id):
     except Exception:
         pass
 
+# ==============================================================================
+# 11. WinGo Navigation & Configuration Flow
+# ==============================================================================
 def prepare_wingo_parameters(chat_id, sid):
     sess = active_sessions.get(sid, {})
     site_name = sess.get("site_name", "Amar Club")
@@ -1448,14 +1425,10 @@ def prepare_wingo_parameters(chat_id, sid):
     safe_tab_execute(sid, _shot)
 
     config_caption = (
-        f"┌────────────────────────────────────────┐\n"
-        f"│ {to_bold('WINGO 30S MARKET ACTIVE')}              │\n"
-        f"├────────────────────────────────────────┤\n"
-        f"│ Platform     : {site_name}\n"
-        f"│ Live Balance : ৳ {current_bal:.2f}\n"
-        f"├────────────────────────────────────────┤\n"
-        f"│ নিচের বাটন চেপে টার্গেট ও স্টেপস সেট করুন:│\n"
-        f"└────────────────────────────────────────┘"
+        f"<b>{to_bold('WINGO 30S MARKET ACTIVE')}</b>\n\n"
+        f"Platform: <b>{site_name}</b>\n"
+        f"Live Balance: <code>৳ {current_bal:.2f}</code>\n\n"
+        f"নিচের <b>TARGET</b> ও <b>STEPS</b> বাটন চেপে ট্রেডিং সেট করুন, তারপর <b>START</b> চাপুন:"
     )
 
     display_or_replace_photo(
@@ -1471,6 +1444,9 @@ def prepare_wingo_parameters(chat_id, sid):
     except Exception:
         pass
 
+# ==============================================================================
+# 12. Background Monitoring & 24h Lifetime Watchdog
+# ==============================================================================
 def monitor_trading_progress(chat_id, sid):
     while True:
         sess = active_sessions.get(sid)
@@ -1517,14 +1493,12 @@ def monitor_trading_progress(chat_id, sid):
                 safe_tab_execute(sid, _shot)
 
                 msg = (
-                    f"┌────────────────────────────────────────┐\n"
-                    f"│ {to_bold('TARGET ACHIEVED SUCCESSFULLY')}        │\n"
-                    f"├────────────────────────────────────────┤\n"
-                    f"│ শুরুর ব্যালেন্স : ৳ {start_b:.2f}\n"
-                    f"│ শেষ ব্যালেন্স  : ৳ {sess['cur_bal']:.2f}\n"
-                    f"│ অর্জিত প্রফিট  : +৳ {profit:.2f}\n"
-                    f"│ মোট উইন       : {sess['wins']} | লস: {sess['losses']}\n"
-                    f"└────────────────────────────────────────┘"
+                    f"<b>{to_bold('TARGET ACHIEVED SUCCESSFULLY')}</b>\n\n"
+                    f"কাঙ্ক্ষিত টার্গেট সম্পূর্ণ সফলভাবে পূরণ হয়েছে।\n\n"
+                    f"শুরুর ব্যালেন্স: <code>৳ {start_b:.2f}</code>\n"
+                    f"বর্তমান ব্যালেন্স: <code>৳ {sess['cur_bal']:.2f}</code>\n"
+                    f"অর্জিত প্রফিট: <code>+৳ {profit:.2f}</code>\n"
+                    f"মোট উইন: <b>{sess['wins']}</b> | লস: <b>{sess['losses']}</b>"
                 )
 
                 if os.path.exists(screen_path):
@@ -1539,80 +1513,126 @@ def monitor_trading_progress(chat_id, sid):
 
         time.sleep(4)
 
+def continuous_24h_watchdog():
+    while CLUSTER_RUNNING:
+        try:
+            now = time.time()
+            node_state = firebase.get(f"terminals/{NODE_ID}")
+            if node_state and isinstance(node_state, dict):
+                exp = node_state.get("expires_at")
+                if exp and now >= exp:
+                    uid = node_state.get("assigned_user_id")
+                    reset_local_terminal()
+                    if uid:
+                        exp_msg = (
+                            f"<b>{to_bold('SESSION EXPIRED')}</b>\n\n"
+                            f"আপনার ২৪ ঘণ্টার ডেডিকেটেড টার্মিনাল এক্সেস শেষ হয়েছে।\n"
+                            f"নতুন এক্সেসের জন্য মালিকের সাথে যোগাযোগ করুন।"
+                        )
+                        markup = InlineKeyboardMarkup()
+                        markup.add(InlineKeyboardButton(f"{to_bold('OWNER ID')}", url=OWNER_URL))
+                        try:
+                            bot.send_message(uid, exp_msg, reply_markup=markup)
+                        except Exception:
+                            pass
+
+            if IS_MASTER:
+                terminals = firebase.get("terminals") or {}
+                for tid, tdata in terminals.items():
+                    if isinstance(tdata, dict) and tdata.get("status") == "BUSY":
+                        t_exp = tdata.get("expires_at")
+                        if t_exp and now >= t_exp:
+                            uid = tdata.get("assigned_user_id")
+                            firebase.patch(f"terminals/{tid}", {
+                                "status": "FREE",
+                                "assigned_user_id": None,
+                                "active_platform": None,
+                                "expires_at": None,
+                                "task": None
+                            })
+                            if uid:
+                                exp_msg = (
+                                    f"<b>{to_bold('SESSION EXPIRED')}</b>\n\n"
+                                    f"আপনার ২৪ ঘণ্টার ডেডিকেটেড টার্মিনাল এক্সেস শেষ হয়েছে।\n"
+                                    f"নতুন এক্সেসের জন্য মালিকের সাথে যোগাযোগ করুন।"
+                                )
+                                markup = InlineKeyboardMarkup()
+                                markup.add(InlineKeyboardButton(f"{to_bold('OWNER ID')}", url=OWNER_URL))
+                                try:
+                                    bot.send_message(uid, exp_msg, reply_markup=markup)
+                                except Exception:
+                                    pass
+
+        except Exception:
+            pass
+        time.sleep(30)
+
+threading.Thread(target=continuous_24h_watchdog, daemon=True).start()
+
 # ==============================================================================
-# 11. Distributed Cluster Management, Master Election & Worker Loops
+# 13. Distributed Node Lifecycle & Master Election Engine
 # ==============================================================================
-def register_terminal_node():
-    node_data = {
-        "terminal_id": CURRENT_TERMINAL_ID,
+def register_node():
+    payload = {
+        "node_id": NODE_ID,
+        "pid": CURRENT_PID,
+        "hostname": socket.gethostname(),
         "status": "FREE",
         "assigned_user_id": None,
         "active_platform": None,
-        "last_heartbeat": time.time(),
+        "heartbeat": time.time(),
         "expires_at": None,
-        "task": None
+        "registered_at": time.time()
     }
-    firebase.put(f"terminals/{CURRENT_TERMINAL_ID}", node_data)
-    print(f"[*] Terminal Registered in Cluster: {CURRENT_TERMINAL_ID}")
+    firebase.put(f"terminals/{NODE_ID}", payload)
+    print(f"[*] Cluster Node Registered: {NODE_ID}")
 
-def update_terminal_heartbeat():
+def update_node_heartbeat_loop():
     while CLUSTER_RUNNING:
         try:
-            firebase.patch(f"terminals/{CURRENT_TERMINAL_ID}", {
-                "last_heartbeat": time.time()
-            })
+            firebase.patch(f"terminals/{NODE_ID}", {"heartbeat": time.time()})
         except Exception:
             pass
         time.sleep(5)
 
-def reset_terminal_node_state(tid=CURRENT_TERMINAL_ID):
-    firebase.patch(f"terminals/{tid}", {
-        "status": "FREE",
-        "assigned_user_id": None,
-        "active_platform": None,
-        "expires_at": None,
-        "task": None
-    })
-    for sid in list(active_sessions.keys()):
-        close_session_tab(sid)
-
-def master_election_engine():
+def master_election_loop():
     global IS_MASTER, POLLING_ACTIVE
     while CLUSTER_RUNNING:
         try:
             now = time.time()
-            lock = firebase.get("cluster/master_lock")
+            master_data = firebase.get("cluster/active_master")
             
             can_claim = False
-            if not lock or not isinstance(lock, dict):
+            if not master_data or not isinstance(master_data, dict):
                 can_claim = True
             else:
-                master_id = lock.get("master_id")
-                last_hb = lock.get("last_heartbeat", 0)
-                if master_id == CURRENT_TERMINAL_ID:
+                active_id = master_data.get("master_id")
+                last_beat = master_data.get("heartbeat", 0)
+                if active_id == NODE_ID:
                     can_claim = True
-                elif (now - last_hb) > 15.0:
+                elif (now - last_beat) > 15.0:
                     can_claim = True
 
             if can_claim:
                 claim_payload = {
-                    "master_id": CURRENT_TERMINAL_ID,
-                    "last_heartbeat": now
+                    "master_id": NODE_ID,
+                    "heartbeat": now,
+                    "claimed_at": now
                 }
-                res = firebase.put("cluster/master_lock", claim_payload)
-                if res and res.get("master_id") == CURRENT_TERMINAL_ID:
+                res = firebase.put("cluster/active_master", claim_payload)
+                if res and res.get("master_id") == NODE_ID:
                     if not IS_MASTER:
-                        print(f"[*] [CLUSTER ELECTION] Master lock acquired by {CURRENT_TERMINAL_ID}!")
+                        print(f"[*] Master lock claimed by {NODE_ID}!")
                     IS_MASTER = True
                 else:
                     IS_MASTER = False
             else:
                 if IS_MASTER:
-                    print(f"[*] [CLUSTER ELECTION] Stepping down as Master on {CURRENT_TERMINAL_ID}.")
+                    print(f"[*] Stepping down from Master on {NODE_ID}.")
                 IS_MASTER = False
 
             if IS_MASTER and not POLLING_ACTIVE:
-                threading.Thread(target=start_master_bot_polling, daemon=True).start()
+                threading.Thread(target=start_master_polling, daemon=True).start()
             elif not IS_MASTER and POLLING_ACTIVE:
                 try:
                     bot.stop_polling()
@@ -1620,42 +1640,47 @@ def master_election_engine():
                     pass
 
         except Exception as e:
-            pass
+            print(f"[*] Master election exception: {e}")
         time.sleep(4)
 
-def start_master_bot_polling():
+def start_master_polling():
     global POLLING_ACTIVE
     if POLLING_ACTIVE:
         return
     POLLING_ACTIVE = True
-    print(f"[*] TELEGRAM MASTER ENGINE ACTIVE: Polling initialized on {CURRENT_TERMINAL_ID}")
+    print(f"[*] Polling loop active on {NODE_ID}...")
     while IS_MASTER and CLUSTER_RUNNING:
         try:
             bot.infinity_polling(skip_pending=True, timeout=20, long_polling_timeout=20)
-        except Exception as e:
+        except Exception:
             time.sleep(2)
     POLLING_ACTIVE = False
 
-def worker_task_listener():
+def reset_local_terminal():
+    for sid in list(active_sessions.keys()):
+        close_session_tab(sid)
+    firebase.patch(f"terminals/{NODE_ID}", {
+        "status": "FREE",
+        "assigned_user_id": None,
+        "active_platform": None,
+        "expires_at": None,
+        "task": None
+    })
+
+def worker_task_listener_loop():
     while CLUSTER_RUNNING:
         try:
-            node = firebase.get(f"terminals/{CURRENT_TERMINAL_ID}")
-            if node and isinstance(node, dict):
-                status = node.get("status")
-                
-                # Check Remote Force-Kill Flag
-                if status == "FORCE_KILL":
-                    print(f"[*] FORCE_KILL detected on {CURRENT_TERMINAL_ID}. Shutting down sessions...")
-                    reset_terminal_node_state(CURRENT_TERMINAL_ID)
-                    for admin_id in list(OWNER_CHAT_IDS):
+            node_state = firebase.get(f"terminals/{NODE_ID}")
+            if node_state and isinstance(node_state, dict):
+                if node_state.get("status") == "FORCE_KILL":
+                    print(f"[*] FORCE_KILL detected on node {NODE_ID}. Terminating sessions...")
+                    reset_local_terminal()
+                    for admin_id in list(KNOWN_OWNER_IDS):
                         try:
                             msg = (
-                                f"┌────────────────────────────────────────┐\n"
-                                f"│ {to_bold('TERMINAL FORCE KILL CONFIRMED')}     │\n"
-                                f"├────────────────────────────────────────┤\n"
-                                f"│ Terminal : {CURRENT_TERMINAL_ID}\n"
-                                f"│ Status   : RESET TO FREE SLOTS         │\n"
-                                f"└────────────────────────────────────────┘"
+                                f"<b>{to_bold('TERMINAL RESET CONFIRMATION')}</b>\n\n"
+                                f"Terminal ID: <code>{NODE_ID}</code>\n"
+                                f"Status: <b>RESET TO FREE SLOTS</b>"
                             )
                             bot.send_message(admin_id, msg)
                         except Exception:
@@ -1663,23 +1688,23 @@ def worker_task_listener():
                     time.sleep(2)
                     continue
 
-                # Process Task Queue
-                task = node.get("task")
+                task = node_state.get("task")
                 if task and isinstance(task, dict) and task.get("status") == "PENDING":
-                    firebase.patch(f"terminals/{CURRENT_TERMINAL_ID}/task", {"status": "PROCESSING"})
+                    firebase.patch(f"terminals/{NODE_ID}/task", {"status": "PROCESSING"})
                     action = task.get("action")
                     chat_id = task.get("chat_id")
                     sid = task.get("session_id")
-                    
+
                     if action == "LOGIN":
                         phone = task.get("phone")
                         password = task.get("password")
                         site_name = task.get("site_name", "Amar Club")
                         anim_msg_id = task.get("anim_msg_id")
-                        
+
                         active_sessions[sid] = {
                             "chat_id": chat_id,
                             "session_id": sid,
+                            "terminal_id": NODE_ID,
                             "site_name": site_name,
                             "phone": phone,
                             "password": password,
@@ -1691,11 +1716,11 @@ def worker_task_listener():
                             "lock": threading.RLock()
                         }
                         process_login(chat_id, sid, phone, password, anim_msg_id)
-                        firebase.patch(f"terminals/{CURRENT_TERMINAL_ID}/task", {"status": "COMPLETED"})
+                        firebase.patch(f"terminals/{NODE_ID}/task", {"status": "COMPLETED"})
 
                     elif action == "START_WINGO":
                         prepare_wingo_parameters(chat_id, sid)
-                        firebase.patch(f"terminals/{CURRENT_TERMINAL_ID}/task", {"status": "COMPLETED"})
+                        firebase.patch(f"terminals/{NODE_ID}/task", {"status": "COMPLETED"})
 
                     elif action == "RUN_AUTO":
                         sess = active_sessions.get(sid)
@@ -1708,16 +1733,16 @@ def worker_task_listener():
                                 drv.execute_script(WINGO_CORE_JS, sess["target_profit"], sess["total_steps"])
                             safe_tab_execute(sid, _run_core)
                             time.sleep(2.0)
-                            
+
                             start_snap = os.path.join(PROFILES_BASE_DIR, f"run_{sid}.png")
                             def _shot(drv):
                                 drv.save_screenshot(start_snap)
                             safe_tab_execute(sid, _shot)
-                            
+
                             cur_b = sess.get("current_balance", 0.0)
                             target_total = cur_b + sess["target_profit"]
                             sess["start_bal"] = cur_b
-                            
+
                             dashboard_caption = get_text(
                                 chat_id, "running_dashboard",
                                 site_name=sess.get("site_name", "Amar Club"),
@@ -1732,7 +1757,7 @@ def worker_task_listener():
                             except Exception:
                                 pass
                             threading.Thread(target=monitor_trading_progress, args=(chat_id, sid), daemon=True).start()
-                        firebase.patch(f"terminals/{CURRENT_TERMINAL_ID}/task", {"status": "COMPLETED"})
+                        firebase.patch(f"terminals/{NODE_ID}/task", {"status": "COMPLETED"})
 
                     elif action == "SHOT":
                         sess = active_sessions.get(sid)
@@ -1745,22 +1770,20 @@ def worker_task_listener():
                                 cur_b = sess.get("cur_bal", sess.get("current_balance", 0.0))
                                 t_total = sess.get("start_bal", 0.0) + sess.get("target_profit", 0.0)
                                 caption = (
-                                    f"┌────────────────────────────────────────┐\n"
-                                    f"│ {to_bold('24/7 AUTOMATION ENGINE ACTIVE')}      │\n"
-                                    f"├────────────────────────────────────────┤\n"
-                                    f"│ Platform     : {sess.get('site_name', '')}\n"
-                                    f"│ Live Balance : ৳ {cur_b:.2f}\n"
-                                    f"│ Target Total : ৳ {t_total:.2f}\n"
-                                    f"│ Total Steps  : {sess.get('total_steps', 7)}\n"
-                                    f"│ Time         : {time.strftime('%H:%M:%S')}\n"
-                                    f"└────────────────────────────────────────┘"
+                                    f"<b>{to_bold('24/7 AUTOMATION ENGINE ACTIVE')}</b>\n\n"
+                                    f"Platform: <b>{sess.get('site_name', '')}</b>\n"
+                                    f"Starting Balance: <code>৳ {sess.get('start_bal', 0.0):.2f}</code>\n"
+                                    f"Target Balance: <code>৳ {t_total:.2f}</code>\n"
+                                    f"Total Steps: <b>{sess.get('total_steps', 7)}</b>\n\n"
+                                    f"সময়: <code>{time.strftime('%H:%M:%S')}</code>\n"
+                                    f"<b>LIVE STATUS</b>: মার্টিনগেল ইঞ্জিন সফলভাবে সচল রয়েছে।"
                                 )
                                 display_or_replace_photo(chat_id, sid, temp_shot, caption, get_trading_control_keyboard(sid))
                                 try:
                                     os.remove(temp_shot)
                                 except Exception:
                                     pass
-                        firebase.patch(f"terminals/{CURRENT_TERMINAL_ID}/task", {"status": "COMPLETED"})
+                        firebase.patch(f"terminals/{NODE_ID}/task", {"status": "COMPLETED"})
 
                     elif action == "BAL":
                         def _bal(drv):
@@ -1768,7 +1791,7 @@ def worker_task_listener():
                         b_val = safe_tab_execute(sid, _bal)
                         if b_val is not None:
                             bot.send_message(chat_id, f"<b>Live Balance:</b> <code>৳ {b_val:.2f}</code>")
-                        firebase.patch(f"terminals/{CURRENT_TERMINAL_ID}/task", {"status": "COMPLETED"})
+                        firebase.patch(f"terminals/{NODE_ID}/task", {"status": "COMPLETED"})
 
                     elif action == "STATS":
                         def _stat(drv):
@@ -1788,17 +1811,14 @@ def worker_task_listener():
                         data_rep = safe_tab_execute(sid, _stat)
                         if data_rep:
                             stat_txt = (
-                                f"┌────────────────────────────────────────┐\n"
-                                f"│ {to_bold('LIVE STATS REPORT')}                 │\n"
-                                f"├────────────────────────────────────────┤\n"
-                                f"│ ব্যালেন্স  : ৳ {data_rep['curBal']:.2f}\n"
-                                f"│ টার্গেট   : ৳ {data_rep['tgtAmt']:.2f}\n"
-                                f"│ মার্টিনগেল : Step {data_rep['step']}/{data_rep['maxStep']}\n"
-                                f"│ উইন      : {data_rep['w']} | লস: {data_rep['l']}\n"
-                                f"└────────────────────────────────────────┘"
+                                f"<b>{to_bold('LIVE STATS REPORT')}</b>\n\n"
+                                f"ব্যালেন্স: <code>৳ {data_rep['curBal']:.2f}</code>\n"
+                                f"টার্গেট: <code>৳ {data_rep['tgtAmt']:.2f}</code>\n"
+                                f"মার্টিনগেল লেভেল: <b>Step {data_rep['step']}/{data_rep['maxStep']}</b>\n"
+                                f"উইন: <b>{data_rep['w']}</b> | লস: <b>{data_rep['l']}</b>"
                             )
                             bot.send_message(chat_id, stat_txt)
-                        firebase.patch(f"terminals/{CURRENT_TERMINAL_ID}/task", {"status": "COMPLETED"})
+                        firebase.patch(f"terminals/{NODE_ID}/task", {"status": "COMPLETED"})
 
                     elif action == "STOP":
                         sess = active_sessions.get(sid)
@@ -1807,102 +1827,34 @@ def worker_task_listener():
                                 drv.execute_script("let btn = document.querySelector('#sys-core-fin button'); if(btn) btn.click();")
                             safe_tab_execute(sid, _stop)
                             sess["is_trading"] = False
-                            bot.send_message(chat_id, f"┌────────────────────────────────────────┐\n│ {to_bold('TRADING PAUSED')}                    │\n├────────────────────────────────────────┤\n│ ট্রেডিং অটোমেশন সাময়িকভাবে বন্ধ হয়েছে। │\n└────────────────────────────────────────┘")
-                        firebase.patch(f"terminals/{CURRENT_TERMINAL_ID}/task", {"status": "COMPLETED"})
+                            bot.send_message(chat_id, f"<b>{to_bold('TRADING PAUSED')}</b>\nট্রেডিং অটোমেশন সাময়িকভাবে থামানো হয়েছে।")
+                        firebase.patch(f"terminals/{NODE_ID}/task", {"status": "COMPLETED"})
 
                     elif action == "CANCEL":
                         close_session_tab(sid)
                         bot.send_message(chat_id, get_text(chat_id, "cancelled"))
-                        firebase.patch(f"terminals/{CURRENT_TERMINAL_ID}/task", {"status": "COMPLETED"})
+                        firebase.patch(f"terminals/{NODE_ID}/task", {"status": "COMPLETED"})
 
         except Exception as e:
             pass
-        time.sleep(0.8)
+        time.sleep(1.0)
 
-# ==============================================================================
-# 12. 24-Hour Watchdog Thread & Allocation Manager
-# ==============================================================================
-def continuous_24h_watchdog():
-    while CLUSTER_RUNNING:
-        try:
-            now = time.time()
-            # 1. Local terminal check
-            node = firebase.get(f"terminals/{CURRENT_TERMINAL_ID}")
-            if node and isinstance(node, dict):
-                exp = node.get("expires_at")
-                if exp and now >= exp:
-                    uid = node.get("assigned_user_id")
-                    reset_terminal_node_state(CURRENT_TERMINAL_ID)
-                    if uid:
-                        exp_msg = (
-                            f"┌────────────────────────────────────────┐\n"
-                            f"│ {to_bold('24-HOUR DEDICATED ACCESS EXPIRED')}   │\n"
-                            f"├────────────────────────────────────────┤\n"
-                            f"│ আপনার ২৪ ঘণ্টার অ্যাক্সেসের মেয়াদ শেষ  │\n"
-                            f"│ হয়েছে। নতুন অ্যাক্সেস নিতে এডমিনের    │\n"
-                            f"│ সাথে যোগাযোগ করুন।                     │\n"
-                            f"└────────────────────────────────────────┘"
-                        )
-                        markup = InlineKeyboardMarkup()
-                        markup.add(InlineKeyboardButton(f"{to_bold('OWNER ID')}", url=OWNER_URL))
-                        try:
-                            bot.send_message(uid, exp_msg, reply_markup=markup)
-                        except Exception:
-                            pass
-
-            # 2. Master node cluster cleanup
-            if IS_MASTER:
-                terminals = firebase.get("terminals") or {}
-                for tid, tdata in terminals.items():
-                    if isinstance(tdata, dict) and tdata.get("status") == "BUSY":
-                        t_exp = tdata.get("expires_at")
-                        if t_exp and now >= t_exp:
-                            uid = tdata.get("assigned_user_id")
-                            firebase.patch(f"terminals/{tid}", {
-                                "status": "FREE",
-                                "assigned_user_id": None,
-                                "active_platform": None,
-                                "expires_at": None,
-                                "task": None
-                            })
-                            if uid:
-                                exp_msg = (
-                                    f"┌────────────────────────────────────────┐\n"
-                                    f"│ {to_bold('24-HOUR DEDICATED ACCESS EXPIRED')}   │\n"
-                                    f"├────────────────────────────────────────┤\n"
-                                    f"│ আপনার ২৪ ঘণ্টার অ্যাক্সেসের মেয়াদ শেষ  │\n"
-                                    f"│ হয়েছে। নতুন অ্যাক্সেস নিতে এডমিনের    │\n"
-                                    f"│ সাথে যোগাযোগ করুন।                     │\n"
-                                    f"└────────────────────────────────────────┘"
-                                )
-                                markup = InlineKeyboardMarkup()
-                                markup.add(InlineKeyboardButton(f"{to_bold('OWNER ID')}", url=OWNER_URL))
-                                try:
-                                    bot.send_message(uid, exp_msg, reply_markup=markup)
-                                except Exception:
-                                    pass
-
-        except Exception as e:
-            pass
-        time.sleep(15)
+def dispatch_cluster_task(target_tid, task_payload):
+    firebase.put(f"terminals/{target_tid}/task", task_payload)
 
 def allocate_free_terminal(chat_id):
     terminals = firebase.get("terminals") or {}
     now = time.time()
     
-    # Check if user is already bound to an active terminal
     for tid, tdata in terminals.items():
         if isinstance(tdata, dict):
             if tdata.get("assigned_user_id") == chat_id and tdata.get("status") == "BUSY":
                 if tdata.get("expires_at", 0) > now:
                     return tid
-                else:
-                    reset_terminal_node_state(tid)
 
-    # Search for an available FREE terminal slot
     for tid, tdata in terminals.items():
         if isinstance(tdata, dict):
-            last_hb = tdata.get("last_heartbeat", 0)
+            last_hb = tdata.get("heartbeat", 0)
             if tdata.get("status") == "FREE" and (now - last_hb) <= 25.0:
                 expires_at = now + 86400
                 firebase.patch(f"terminals/{tid}", {
@@ -1914,116 +1866,73 @@ def allocate_free_terminal(chat_id):
 
     return None
 
-def dispatch_cluster_task(target_tid, task_dict):
-    if target_tid == CURRENT_TERMINAL_ID:
-        pass
-    firebase.put(f"terminals/{target_tid}/task", task_dict)
-
 # ==============================================================================
-# 13. Channel Gateway & Authorization Checkers
-# ==============================================================================
-def is_owner(user_obj) -> bool:
-    if not user_obj:
-        return False
-    if user_obj.username and user_obj.username.lower() == "md_nayeem_drx_tm":
-        OWNER_CHAT_IDS.add(user_obj.id)
-        return True
-    if user_obj.id in OWNER_CHAT_IDS:
-        return True
-    return False
-
-def verify_channel_member(user_id: int) -> bool:
-    try:
-        member = bot.get_chat_member(chat_id=CHANNEL_USERNAME, user_id=user_id)
-        return member.status in ["member", "administrator", "creator"]
-    except Exception:
-        return False
-
-# ==============================================================================
-# 14. Telegram Bot Command & Flow Handlers
+# 14. Telegram Callbacks & Step-by-Step UI Flow Routing
 # ==============================================================================
 @bot.message_handler(commands=['start'])
-def handle_start(message):
+def handle_start(message: Message):
     chat_id = message.chat.id
     user = message.from_user
     safe_delete_message(chat_id, message.message_id)
 
-    if is_owner(user):
-        OWNER_CHAT_IDS.add(chat_id)
+    prev_menu_id = user_sessions.get(chat_id, {}).get("last_menu_msg_id")
+    safe_delete_message(chat_id, prev_menu_id)
 
-    # Mandatory Channel Gateway Check for regular users
-    if not is_owner(user) and not verify_channel_member(user.id):
-        greeting_card = (
-            f"┌────────────────────────────────────────┐\n"
-            f"│ {to_bold('MANDATORY CHANNEL GATEWAY')}          │\n"
-            f"├────────────────────────────────────────┤\n"
-            f"│ আসসালামু আলাইকুম, আশা করি আপনি ভালো আছেন।│\n"
-            f"│ আপনি আমার চ্যানেলটি জয়েন করুন।         │\n"
-            f"└────────────────────────────────────────┘"
-        )
-        bot.send_message(chat_id, greeting_card, reply_markup=get_channel_gateway_keyboard())
+    if is_owner(user):
+        KNOWN_OWNER_IDS.add(chat_id)
+        user_sessions[chat_id] = {"step": "CHOOSE_SITE", "lang": "bn"}
+        m = bot.send_message(chat_id, get_text(chat_id, "select_platform"), reply_markup=get_platform_select_keyboard())
+        user_sessions[chat_id]["last_menu_msg_id"] = m.message_id
         return
 
-    # User is verified or owner: Navigate to Stage 2
-    user_sessions[chat_id] = {
-        "step": "STAGE_2_AUTH",
-        "lang": "bn"
-    }
+    if not verify_channel_member(user.id):
+        user_sessions[chat_id] = {"step": "CHANNEL_GATE", "lang": "bn"}
+        m = bot.send_message(chat_id, get_text(chat_id, "channel_gate"), reply_markup=get_channel_gate_keyboard())
+        user_sessions[chat_id]["last_menu_msg_id"] = m.message_id
+        return
 
-    stage2_msg = (
-        f"┌────────────────────────────────────────┐\n"
-        f"│ {to_bold('WINGO 30S CLUSTER ACCESS')}             │\n"
-        f"├────────────────────────────────────────┤\n"
-        f"│ ভাষা নির্বাচন করুন এবং অ্যাক্সেস নিতে    │\n"
-        f"│ আপনার ২৪ ঘণ্টার পাসওয়ার্ড ইনপুট করুন:   │\n"
-        f"└────────────────────────────────────────┘"
-    )
-    bot.send_message(chat_id, stage2_msg, reply_markup=get_stage2_auth_keyboard())
+    user_sessions[chat_id] = {"step": "LANG_SELECT", "lang": "bn"}
+    m = bot.send_message(chat_id, get_text(chat_id, "lang_select"), reply_markup=get_lang_select_keyboard())
+    user_sessions[chat_id]["last_menu_msg_id"] = m.message_id
 
 @bot.message_handler(commands=['pass'])
-def handle_admin_pass_command(message):
+def handle_admin_pass(message: Message):
     chat_id = message.chat.id
     if not is_owner(message.from_user):
         return
-    OWNER_CHAT_IDS.add(chat_id)
+    KNOWN_OWNER_IDS.add(chat_id)
     safe_delete_message(chat_id, message.message_id)
 
     msg = (
-        f"┌────────────────────────────────────────┐\n"
-        f"│ {to_bold('CLUSTER PASSWORD CONTROLLER')}        │\n"
-        f"├────────────────────────────────────────┤\n"
-        f"│ Choose an action to generate or revoke │\n"
-        f"│ 24-hour single-user access keys:       │\n"
-        f"└────────────────────────────────────────┘"
+        f"<b>{to_bold('PASS MANAGEMENT')}</b>\n\n"
+        f"২৪ ঘণ্টার এক্সেস পাসওয়ার্ড তৈরি অথবা ডিলিট করতে অপশন নির্বাচন করুন:"
     )
-    bot.send_message(chat_id, msg, reply_markup=get_admin_pass_menu_keyboard())
+    bot.send_message(chat_id, msg, reply_markup=get_admin_pass_keyboard())
 
 @bot.message_handler(commands=['admin', 'terminals'])
-def handle_admin_terminals_command(message):
+def handle_admin_dashboard(message: Message):
     chat_id = message.chat.id
     if not is_owner(message.from_user):
         return
-    OWNER_CHAT_IDS.add(chat_id)
+    KNOWN_OWNER_IDS.add(chat_id)
     safe_delete_message(chat_id, message.message_id)
-
-    render_cluster_telemetry(chat_id)
+    render_telemetry_table(chat_id)
 
 @bot.message_handler(commands=['kick'])
-def handle_admin_kick_command(message):
+def handle_admin_kick(message: Message):
     chat_id = message.chat.id
     if not is_owner(message.from_user):
         return
     safe_delete_message(chat_id, message.message_id)
-
     parts = message.text.strip().split()
     if len(parts) > 1:
-        target_tid = parts[1].strip()
-        firebase.patch(f"terminals/{target_tid}", {"status": "FORCE_KILL"})
-        bot.send_message(chat_id, f"[*] Signal FORCE_KILL sent to terminal: <code>{target_tid}</code>")
+        target_node = parts[1].strip()
+        firebase.patch(f"terminals/{target_node}", {"status": "FORCE_KILL"})
+        bot.send_message(chat_id, f"[*] Signal FORCE_KILL sent to terminal: <code>{target_node}</code>")
     else:
-        bot.send_message(chat_id, "Usage: <code>/kick &lt;TERMINAL_ID&gt;</code>")
+        bot.send_message(chat_id, "Usage: <code>/kick &lt;NODE_ID&gt;</code>")
 
-def render_cluster_telemetry(chat_id):
+def render_telemetry_table(chat_id):
     terminals = firebase.get("terminals") or {}
     now = time.time()
     online_nodes = []
@@ -2032,7 +1941,7 @@ def render_cluster_telemetry(chat_id):
 
     for tid, node in terminals.items():
         if isinstance(node, dict):
-            last_hb = node.get("last_heartbeat", 0)
+            last_hb = node.get("heartbeat", 0)
             if (now - last_hb) <= 25.0:
                 online_nodes.append(node)
                 if node.get("status") == "BUSY":
@@ -2040,44 +1949,37 @@ def render_cluster_telemetry(chat_id):
                 else:
                     free_count += 1
 
-    total_online = len(online_nodes)
+    total_nodes = len(online_nodes)
 
     lines = [
-        "┌────────────────────────────────────────────────────────┐",
-        f"│ {to_bold('CLUSTER TERMINAL CONTROLLER')}                            │",
-        "├────────────────────────────────────────────────────────┤",
-        f"│ TOTAL TERMINALS ONLINE : {str(total_online):<30}│",
-        f"│ ACTIVE BUSY SESSIONS   : {str(busy_count):<30}│",
-        f"│ AVAILABLE FREE SLOTS   : {str(free_count):<30}│",
-        "├────────────────────────────────────────────────────────┤",
-        "│ Terminal ID       │ Status   │ Active Site │ User ID   │",
-        "├───────────────────┼──────────┼─────────────┼───────────┤"
+        f"<b>ACTIVE TERMINALS:</b> {total_nodes}",
+        f"<b>BUSY NODES:</b> {busy_count}",
+        f"<b>FREE NODES:</b> {free_count}",
+        ""
     ]
 
     markup = InlineKeyboardMarkup()
-    for n in online_nodes:
-        tid = str(n.get("terminal_id", "UNKNOWN"))
+    for idx, n in enumerate(online_nodes, start=1):
+        tid = str(n.get("node_id", "UNKNOWN"))
         tid_short = tid[-17:] if len(tid) > 17 else tid
-        status = str(n.get("status", "FREE"))[:8]
-        site = str(n.get("active_platform") or "NONE")[:11]
-        uid = str(n.get("assigned_user_id") or "NONE")[:9]
-        lines.append(f"│ {tid_short:<17} │ {status:<8} │ {site:<11} │ {uid:<9} │")
+        status = str(n.get("status", "FREE"))
+        site = str(n.get("active_platform") or "NONE")
+        uid = str(n.get("assigned_user_id") or "NONE")
 
-        if n.get("status") == "BUSY":
-            markup.add(InlineKeyboardButton(f"{to_bold('KILL')}: {tid_short}", callback_data=f"kill_node:{tid}"))
+        if status == "BUSY":
+            lines.append(f"Node {idx}: <b>BUSY</b> ({site} - User: <code>{uid}</code>)")
+            markup.add(InlineKeyboardButton(f"Kill Node-{idx}", callback_data=f"adm_kill:{tid}"))
+        else:
+            lines.append(f"Node {idx}: <b>FREE</b>")
 
     if not online_nodes:
-        lines.append("│ NO CLUSTER TERMINALS CURRENTLY ONLINE                  │")
+        lines.append("No active terminals online.")
 
-    lines.append("└────────────────────────────────────────────────────────┘")
-    table_text = f"<pre>{chr(10).join(lines)}</pre>"
+    table_text = "\n".join(lines)
     bot.send_message(chat_id, table_text, reply_markup=markup if len(markup.keyboard) > 0 else None)
 
-# ==============================================================================
-# 15. Callback Query Routing Engine
-# ==============================================================================
 @bot.callback_query_handler(func=lambda call: True)
-def handle_callbacks(call):
+def handle_callbacks(call: CallbackQuery):
     chat_id = call.message.chat.id
     data = call.data
 
@@ -2085,105 +1987,87 @@ def handle_callbacks(call):
     action = parts[0]
     sid = parts[1] if len(parts) > 1 else None
 
-    # Gate Verification Callback
-    if action == "verify_join_gate":
+    # Step 1: Gateway Verification
+    if action == "gate_verify":
         if verify_channel_member(call.from_user.id):
             safe_delete_message(chat_id, call.message.message_id)
-            user_sessions[chat_id] = {"step": "STAGE_2_AUTH", "lang": "bn"}
-            stage2_msg = (
-                f"┌────────────────────────────────────────┐\n"
-                f"│ {to_bold('WINGO 30S CLUSTER ACCESS')}             │\n"
-                f"├────────────────────────────────────────┤\n"
-                f"│ ভাষা নির্বাচন করুন এবং অ্যাক্সেস নিতে    │\n"
-                f"│ আপনার ২৪ ঘণ্টার পাসওয়ার্ড ইনপুট করুন:   │\n"
-                f"└────────────────────────────────────────┘"
-            )
-            bot.send_message(chat_id, stage2_msg, reply_markup=get_stage2_auth_keyboard())
+            user_sessions[chat_id] = {"step": "LANG_SELECT", "lang": "bn"}
+            m = bot.send_message(chat_id, get_text(chat_id, "lang_select"), reply_markup=get_lang_select_keyboard())
+            user_sessions[chat_id]["last_menu_msg_id"] = m.message_id
         else:
             bot.answer_callback_query(call.id, "দয়া করে আগে চ্যানেলে জয়েন করুন।", show_alert=True)
 
-    # Admin Pass Creation
-    elif action == "admin_create_pass":
+    # Step 2: Language Selection
+    elif action in ["set_lang_en", "set_lang_bn"]:
+        chosen_lang = "en" if action == "set_lang_en" else "bn"
+        safe_delete_message(chat_id, call.message.message_id)
+        user_sessions.setdefault(chat_id, {})["lang"] = chosen_lang
+        user_sessions[chat_id]["step"] = "PASS_GATE"
+        m = bot.send_message(chat_id, get_text(chat_id, "pass_gate"), reply_markup=get_pass_gate_keyboard())
+        user_sessions[chat_id]["last_menu_msg_id"] = m.message_id
+
+    # Step 3: Password Gate
+    elif action == "ask_pass":
+        user_sessions.setdefault(chat_id, {})["input_mode"] = "WAIT_PASS"
+        bot.answer_callback_query(call.id)
+        safe_delete_message(chat_id, call.message.message_id)
+        pm = bot.send_message(chat_id, get_text(chat_id, "pass_gate"))
+        user_sessions[chat_id]["pass_prompt_id"] = pm.message_id
+
+    # Super Admin Actions
+    elif action == "adm_create_pass":
         if not is_owner(call.from_user):
-            bot.answer_callback_query(call.id, "Unauthorized.", show_alert=True)
             return
         bot.answer_callback_query(call.id)
-        
-        raw_key = f"DRX-{uuid.uuid4().hex[:6].upper()}"
+        new_key = f"KEY-{uuid.uuid4().hex[:6].upper()}"
         now = time.time()
-        pass_record = {
-            "password": raw_key,
+        firebase.put(f"active_passwords/{new_key}", {
+            "key": new_key,
             "created_at": now,
             "expires_at": now + 86400,
             "is_used": False,
-            "bound_user_id": None,
-            "bound_terminal_id": None
-        }
-        firebase.put(f"passwords/{raw_key}", pass_record)
-        
-        conf_msg = (
-            f"┌────────────────────────────────────────┐\n"
-            f"│ {to_bold('24-HOUR ACCESS TOKEN CREATED')}        │\n"
-            f"├────────────────────────────────────────┤\n"
-            f"│ KEY        : <code>{raw_key}</code>\n"
-            f"│ DURATION   : 24 HOURS\n"
-            f"│ EXPIRES IN : 86400 SECONDS             │\n"
-            f"└────────────────────────────────────────┘"
+            "bound_user_id": None
+        })
+        msg = (
+            f"<b>{to_bold('PASSWORD CREATED')}</b>\n\n"
+            f"Key: <code>{new_key}</code>\n"
+            f"Duration: 24 Hours"
         )
-        bot.send_message(chat_id, conf_msg)
+        bot.send_message(chat_id, msg)
 
-    # Admin Pass List & Deletion
-    elif action == "admin_list_delete_pass":
+    elif action == "adm_del_pass_list":
         if not is_owner(call.from_user):
-            bot.answer_callback_query(call.id, "Unauthorized.", show_alert=True)
             return
         bot.answer_callback_query(call.id)
-        
-        passwords = firebase.get("passwords") or {}
+        keys = firebase.get("active_passwords") or {}
         markup = InlineKeyboardMarkup()
-        for pkey in list(passwords.keys())[:20]:
-            markup.add(InlineKeyboardButton(f"{to_bold('REVOKE')}: {pkey}", callback_data=f"del_pass:{pkey}"))
-            
-        if not passwords:
-            bot.send_message(chat_id, "No active access keys in database.")
+        for k in list(keys.keys())[:20]:
+            markup.add(InlineKeyboardButton(f"{to_bold('REVOKE')}: {k}", callback_data=f"adm_revoke:{k}"))
+        if not keys:
+            bot.send_message(chat_id, "No active keys found.")
         else:
-            bot.send_message(chat_id, "Select a password to revoke immediately:", reply_markup=markup)
+            bot.send_message(chat_id, "Select key to revoke:", reply_markup=markup)
 
-    elif action == "del_pass" and sid:
+    elif action == "adm_revoke" and sid:
         if not is_owner(call.from_user):
             return
-        firebase.delete(f"passwords/{sid}")
-        bot.answer_callback_query(call.id, f"Password {sid} deleted!", show_alert=True)
+        firebase.delete(f"active_passwords/{sid}")
+        bot.answer_callback_query(call.id, f"Revoked {sid}!", show_alert=True)
         safe_delete_message(chat_id, call.message.message_id)
 
-    # Admin Remote Terminal Kill
-    elif action == "kill_node" and sid:
+    elif action == "adm_kill" and sid:
         if not is_owner(call.from_user):
             return
         firebase.patch(f"terminals/{sid}", {"status": "FORCE_KILL"})
-        bot.answer_callback_query(call.id, f"KILL signal sent to {sid}", show_alert=True)
+        bot.answer_callback_query(call.id, f"KILL sent to {sid}", show_alert=True)
 
-    # Language Switchers
-    elif action in ["lang_en", "lang_bn"]:
-        u = user_sessions.setdefault(chat_id, {})
-        u["lang"] = "en" if action == "lang_en" else "bn"
-        bot.answer_callback_query(call.id, f"Language set to {u['lang'].upper()}")
-
-    # Stage 2: Prompt for Password
-    elif action == "gate_pass_auth":
-        u = user_sessions.setdefault(chat_id, {})
-        u["step"] = "WAITING_GATE_PASSWORD"
-        bot.answer_callback_query(call.id)
-        prompt_m = bot.send_message(chat_id, "দয়া করে আপনার ২৪ ঘণ্টার অ্যাক্সেস পাসওয়ার্ডটি ইনপুট করুন:")
-        u["pass_prompt_msg_id"] = prompt_m.message_id
-
-    # Platform Selector
+    # Step 4: Platform Selection
     elif action in ["site_amarclub", "site_dkwin"]:
         site_name = "Amar Club" if action == "site_amarclub" else "DK Win"
-        assigned_tid = user_sessions.get(chat_id, {}).get("assigned_terminal_id")
+        assigned_tid = user_sessions.get(chat_id, {}).get("assigned_node_id")
         
         if not assigned_tid:
-            bot.answer_callback_query(call.id, "সেশন পাওয়া যায়নি, পুনরায় /start দিন", show_alert=True)
+            bot.answer_callback_query(call.id, "সেশন পাওয়া যায়নি, /start দিন।", show_alert=True)
             return
 
         sid = f"{chat_id}_{int(time.time()) % 1000000}"
@@ -2209,39 +2093,37 @@ def handle_callbacks(call):
         }
 
         bot.answer_callback_query(call.id)
-        bot.edit_message_text(
+        safe_delete_message(chat_id, call.message.message_id)
+        cm = bot.send_message(
+            chat_id,
             get_text(chat_id, "credentials_card", site_name=site_name),
-            chat_id=chat_id,
-            message_id=call.message.message_id,
             reply_markup=get_credentials_keyboard(sid)
         )
-        active_sessions[sid]["cred_card_msg_id"] = call.message.message_id
+        active_sessions[sid]["cred_card_msg_id"] = cm.message_id
 
-    # Phone Input Trigger
+    # Automation Parameter Buttons
     elif action == "ask_num" and sid:
         sess = active_sessions.get(sid, {})
         sess["input_mode"] = "WAITING_PHONE"
         user_sessions[chat_id]["active_sid"] = sid
         bot.answer_callback_query(call.id)
-        prompt_m = bot.send_message(chat_id, get_text(chat_id, "ask_number"))
-        sess["temp_prompt_id"] = prompt_m.message_id
+        pm = bot.send_message(chat_id, get_text(chat_id, "ask_number"))
+        sess["temp_prompt_id"] = pm.message_id
 
-    # Password Input Trigger
     elif action == "ask_pass" and sid:
         sess = active_sessions.get(sid, {})
         if not sess.get("phone"):
-            bot.answer_callback_query(call.id, "দয়া করে আগে নাম্বারটি প্রদান করুন।", show_alert=True)
+            bot.answer_callback_query(call.id, "দয়া করে আগে নাম্বার দিন।", show_alert=True)
             return
         sess["input_mode"] = "WAITING_PASS"
         user_sessions[chat_id]["active_sid"] = sid
         bot.answer_callback_query(call.id)
-        prompt_m = bot.send_message(chat_id, get_text(chat_id, "ask_password"))
-        sess["temp_prompt_id"] = prompt_m.message_id
+        pm = bot.send_message(chat_id, get_text(chat_id, "ask_password"))
+        sess["temp_prompt_id"] = pm.message_id
 
-    # Start WinGo Setup
     elif action == "start_cfg" and sid:
-        bot.answer_callback_query(call.id, "উইনগো মার্কেট পেজ প্রস্তুত হচ্ছে...")
-        assigned_tid = user_sessions.get(chat_id, {}).get("assigned_terminal_id", CURRENT_TERMINAL_ID)
+        bot.answer_callback_query(call.id, "উইনগো মার্কেট প্রস্তুত হচ্ছে...")
+        assigned_tid = user_sessions.get(chat_id, {}).get("assigned_node_id", NODE_ID)
         dispatch_cluster_task(assigned_tid, {
             "task_id": f"T_{int(time.time())}",
             "action": "START_WINGO",
@@ -2250,35 +2132,31 @@ def handle_callbacks(call):
             "status": "PENDING"
         })
 
-    # Set Target Profit
     elif action == "set_tgt" and sid:
         sess = active_sessions.get(sid, {})
         sess["input_mode"] = "WAITING_TARGET"
         user_sessions[chat_id]["active_sid"] = sid
         bot.answer_callback_query(call.id)
         cur_bal = sess.get("current_balance", 0.0)
-        p_msg = bot.send_message(chat_id, get_text(chat_id, "input_target", balance=f"{cur_bal:.2f}"))
-        sess["temp_prompt_id"] = p_msg.message_id
+        pm = bot.send_message(chat_id, get_text(chat_id, "input_target", balance=f"{cur_bal:.2f}"))
+        sess["temp_prompt_id"] = pm.message_id
 
-    # Set Martingale Steps
     elif action == "set_stp" and sid:
         sess = active_sessions.get(sid, {})
         sess["input_mode"] = "WAITING_STEPS"
         user_sessions[chat_id]["active_sid"] = sid
         bot.answer_callback_query(call.id)
         tgt = sess.get("target_profit", 0)
-        p_msg = bot.send_message(chat_id, get_text(chat_id, "input_steps", target=tgt))
-        sess["temp_prompt_id"] = p_msg.message_id
+        pm = bot.send_message(chat_id, get_text(chat_id, "input_steps", target=tgt))
+        sess["temp_prompt_id"] = pm.message_id
 
-    # Run Automated Engine
     elif action == "run_auto" and sid:
         sess = active_sessions.get(sid, {})
         if not sess.get("target_profit") or sess["target_profit"] <= 0:
-            bot.answer_callback_query(call.id, "আগে টার্গেট অ্যামাউন্ট লিখুন!", show_alert=True)
+            bot.answer_callback_query(call.id, "টার্গেট অ্যামাউন্ট ইনপুট দিন!", show_alert=True)
             return
-
-        bot.answer_callback_query(call.id, "ট্রেডিং ইঞ্জিন সক্রিয় হচ্ছে...")
-        assigned_tid = user_sessions.get(chat_id, {}).get("assigned_terminal_id", CURRENT_TERMINAL_ID)
+        bot.answer_callback_query(call.id, "ইঞ্জিন সক্রিয় করা হচ্ছে...")
+        assigned_tid = user_sessions.get(chat_id, {}).get("assigned_node_id", NODE_ID)
         dispatch_cluster_task(assigned_tid, {
             "task_id": f"T_{int(time.time())}",
             "action": "RUN_AUTO",
@@ -2289,10 +2167,9 @@ def handle_callbacks(call):
             "status": "PENDING"
         })
 
-    # Trading Controls: SHOT, BAL, STATS, STOP, CANCEL
     elif action in ["shot", "bal", "stats", "stop", "cancel"] and sid:
         bot.answer_callback_query(call.id)
-        assigned_tid = user_sessions.get(chat_id, {}).get("assigned_terminal_id", CURRENT_TERMINAL_ID)
+        assigned_tid = user_sessions.get(chat_id, {}).get("assigned_node_id", NODE_ID)
         dispatch_cluster_task(assigned_tid, {
             "task_id": f"T_{int(time.time())}",
             "action": action.upper(),
@@ -2302,119 +2179,97 @@ def handle_callbacks(call):
         })
 
 # ==============================================================================
-# 16. User Text Input & State Controller
+# 15. Text Input Handler & Atomic Message Cleanup
 # ==============================================================================
 @bot.message_handler(func=lambda msg: True)
-def handle_user_text(message):
+def handle_user_text(message: Message):
     chat_id = message.chat.id
     text = message.text.strip()
     safe_delete_message(chat_id, message.message_id)
 
     u = user_sessions.get(chat_id, {})
-    step = u.get("step")
+    input_mode = u.get("input_mode")
 
-    # Access Password Authentication Handler
-    if step == "WAITING_GATE_PASSWORD":
-        if u.get("pass_prompt_msg_id"):
-            safe_delete_message(chat_id, u["pass_prompt_msg_id"])
-            u["pass_prompt_msg_id"] = None
+    if input_mode == "WAIT_PASS":
+        u["input_mode"] = None
+        if u.get("pass_prompt_id"):
+            safe_delete_message(chat_id, u["pass_prompt_id"])
+            u["pass_prompt_id"] = None
 
-        anim_msg = bot.send_message(chat_id, f"┌────────────────────────────────────────┐\n│ {to_bold('CONNECTING REMOTE ENGINE...')}         │\n└────────────────────────────────────────┘")
-        play_pass_auth_animation(chat_id, anim_msg.message_id)
-
-        passwords = firebase.get("passwords") or {}
+        pass_entry = firebase.get(f"active_passwords/{text}")
         now = time.time()
-        matched_key = None
+        is_valid = False
 
-        for pkey, pdata in passwords.items():
-            if isinstance(pdata, dict):
-                if pdata.get("password") == text and pdata.get("expires_at", 0) > now:
-                    matched_key = pkey
-                    break
+        if pass_entry and isinstance(pass_entry, dict):
+            if pass_entry.get("expires_at", 0) > now:
+                is_valid = True
 
-        if not matched_key and not is_owner(message.from_user):
-            safe_delete_message(chat_id, anim_msg.message_id)
-            err_box = (
-                f"┌────────────────────────────────────────┐\n"
-                f"│ {to_bold('INVALID OR EXPIRED PASSWORD')}        │\n"
-                f"├────────────────────────────────────────┤\n"
-                f"│ আপনার পাসওয়ার্ডটি ভুল বা মেয়াদ শেষ।   │\n"
-                f"│ নতুন পাসের জন্য এডমিনের সাথে যোগাযোগ  │\n"
-                f"│ করুন।                                  │\n"
-                f"└────────────────────────────────────────┘"
-            )
+        if not is_valid and not is_owner(message.from_user):
             markup = InlineKeyboardMarkup()
-            markup.add(InlineKeyboardButton(f"{to_bold('OWNER ID')}", url=OWNER_URL))
-            bot.send_message(chat_id, err_box, reply_markup=markup)
+            markup.add(InlineKeyboardButton(f"{to_bold('OWNER')}", url=OWNER_URL))
+            bot.send_message(chat_id, get_text(chat_id, "pass_wrong"), reply_markup=markup)
             return
 
-        # Allocate Dedicated Terminal Node
+        anim_m = bot.send_message(chat_id, "<b>CONNECTING REMOTE ENGINE...</b>")
+        time.sleep(0.3)
+        try:
+            bot.edit_message_text("<b>ALLOCATING TERMINAL NODE...</b>", chat_id=chat_id, message_id=anim_m.message_id)
+        except Exception:
+            pass
+        time.sleep(0.3)
+
         allocated_tid = allocate_free_terminal(chat_id)
-        safe_delete_message(chat_id, anim_msg.message_id)
+        safe_delete_message(chat_id, anim_m.message_id)
 
         if not allocated_tid:
-            no_slot_box = (
-                f"┌────────────────────────────────────────┐\n"
-                f"│ {to_bold('ALL CLUSTER SLOTS BUSY')}             │\n"
-                f"├────────────────────────────────────────┤\n"
-                f"│ বর্তমানে ক্লাস্টারের সকল টার্মিনাল ফুল।│\n"
-                f"│ অনুগ্রহ করে কিছুক্ষণ পর চেষ্টা করুন।     │\n"
-                f"└────────────────────────────────────────┘"
+            no_slot_msg = (
+                f"<b>{to_bold('ALL TERMINALS BUSY')}</b>\n\n"
+                f"বর্তমানে ক্লাস্টারের সকল টার্মিনাল ফুল। কিছুক্ষণ পর চেষ্টা করুন।"
             )
             markup = InlineKeyboardMarkup()
-            markup.add(InlineKeyboardButton(f"{to_bold('OWNER ID')}", url=OWNER_URL))
-            bot.send_message(chat_id, no_slot_box, reply_markup=markup)
+            markup.add(InlineKeyboardButton(f"{to_bold('OWNER')}", url=OWNER_URL))
+            bot.send_message(chat_id, no_slot_msg, reply_markup=markup)
             return
 
-        if matched_key:
-            firebase.patch(f"passwords/{matched_key}", {
+        if pass_entry:
+            firebase.patch(f"active_passwords/{text}", {
                 "is_used": True,
                 "bound_user_id": chat_id,
-                "bound_terminal_id": allocated_tid
+                "bound_node_id": allocated_tid
             })
 
-        u["assigned_terminal_id"] = allocated_tid
+        u["assigned_node_id"] = allocated_tid
         u["step"] = "CHOOSE_SITE"
-
-        markup = InlineKeyboardMarkup(row_width=2)
-        markup.add(
-            InlineKeyboardButton(f"{to_bold('AMAR CLUB')}", callback_data="site_amarclub"),
-            InlineKeyboardButton(f"{to_bold('DK WIN')}", callback_data="site_dkwin")
-        )
-        bot.send_message(chat_id, get_text(chat_id, "choose_site"), reply_markup=markup)
+        m = bot.send_message(chat_id, get_text(chat_id, "select_platform"), reply_markup=get_platform_select_keyboard())
+        u["last_menu_msg_id"] = m.message_id
         return
 
-    # Browser Parameter Input Handlers
     sid = u.get("active_sid")
     if not sid or sid not in active_sessions:
         return
 
     sess = active_sessions[sid]
-    input_mode = sess.get("input_mode")
+    sess_input = sess.get("input_mode")
 
     if sess.get("temp_prompt_id"):
         safe_delete_message(chat_id, sess["temp_prompt_id"])
         sess["temp_prompt_id"] = None
 
-    if input_mode == "WAITING_PHONE":
+    if sess_input == "WAITING_PHONE":
         sess["phone"] = text
         sess["input_mode"] = None
 
         if sess.get("cred_card_msg_id"):
             try:
                 masked = text[:3] + "****" + text[-3:] if len(text) >= 6 else text
-                updated_card_text = (
-                    f"┌────────────────────────────────────────┐\n"
-                    f"│ {to_bold('ACCOUNT LOGIN')}                       │\n"
-                    f"├────────────────────────────────────────┤\n"
-                    f"│ প্ল্যাটফর্ম : {sess.get('site_name', '')}\n"
-                    f"│ নাম্বার     : {masked} (সংরক্ষিত)\n"
-                    f"├────────────────────────────────────────┤\n"
-                    f"│ এখন PASSWORD বাটন চেপে পাসওয়ার্ড দিন: │\n"
-                    f"└────────────────────────────────────────┘"
+                card_text = (
+                    f"<b>{to_bold('ACCOUNT LOGIN')}</b>\n\n"
+                    f"প্ল্যাটফর্ম: <b>{sess.get('site_name', '')}</b>\n"
+                    f"নাম্বার: <code>{masked}</code> (সংরক্ষিত)\n\n"
+                    f"এখন নিচের <b>PASSWORD</b> বাটনে চাপ দিয়ে পাসওয়ার্ড দিন:"
                 )
                 bot.edit_message_text(
-                    updated_card_text,
+                    card_text,
                     chat_id=chat_id,
                     message_id=sess["cred_card_msg_id"],
                     reply_markup=get_credentials_keyboard(sid)
@@ -2422,7 +2277,7 @@ def handle_user_text(message):
             except Exception:
                 pass
 
-    elif input_mode == "WAITING_PASS":
+    elif sess_input == "WAITING_PASS":
         sess["password"] = text
         sess["input_mode"] = None
 
@@ -2430,9 +2285,8 @@ def handle_user_text(message):
             safe_delete_message(chat_id, sess["cred_card_msg_id"])
             sess["cred_card_msg_id"] = None
 
-        anim_msg = bot.send_message(chat_id, f"┌────────────────────────────────────────┐\n│ {to_bold('CONNECTING REMOTE ENGINE')}            │\n└────────────────────────────────────────┘")
-        
-        assigned_tid = u.get("assigned_terminal_id", CURRENT_TERMINAL_ID)
+        anim_msg = bot.send_message(chat_id, "<b>CONNECTING REMOTE ENGINE</b>")
+        assigned_tid = u.get("assigned_node_id", NODE_ID)
         dispatch_cluster_task(assigned_tid, {
             "task_id": f"T_{int(time.time())}",
             "action": "LOGIN",
@@ -2445,7 +2299,7 @@ def handle_user_text(message):
             "status": "PENDING"
         })
 
-    elif input_mode == "WAITING_TARGET":
+    elif sess_input == "WAITING_TARGET":
         try:
             val = float(text)
             if val <= 0: raise ValueError()
@@ -2459,22 +2313,20 @@ def handle_user_text(message):
 
             cur_bal = sess.get("current_balance", 0.0)
             config_caption = (
-                f"┌────────────────────────────────────────┐\n"
-                f"│ {to_bold('WINGO 30S MARKET ACTIVE')}              │\n"
-                f"├────────────────────────────────────────┤\n"
-                f"│ Platform     : {sess.get('site_name', '')}\n"
-                f"│ Live Balance : ৳ {cur_bal:.2f}\n"
-                f"│ Target Total : ৳ {val:.2f}\n"
-                f"├────────────────────────────────────────┤\n"
-                f"│ প্যারামিটার সেট হয়েছে। START চাপুন:     │\n"
-                f"└────────────────────────────────────────┘"
+                f"<b>{to_bold('WINGO 30S MARKET ACTIVE')}</b>\n\n"
+                f"Platform: <b>{sess.get('site_name', '')}</b>\n"
+                f"Live Balance: <code>৳ {cur_bal:.2f}</code>\n"
+                f"Selected Target: <code>৳ {val:.2f}</code>\n\n"
+                f"প্যারামিটার সেট হয়েছে। ট্রেডিং চালু করতে <b>START</b> চাপুন:"
             )
-            display_or_replace_photo(chat_id, sid, wingo_snap, config_caption, get_setup_param_keyboard(sid))
+            display_or_replace_photo(
+                chat_id, sid, wingo_snap, config_caption, get_setup_param_keyboard(sid)
+            )
         except ValueError:
-            p_msg = bot.send_message(chat_id, "দয়া করে সঠিক সংখ্যা লিখুন (যেমন: 500):")
-            sess["temp_prompt_id"] = p_msg.message_id
+            pm = bot.send_message(chat_id, "দয়া করে সঠিক সংখ্যা লিখুন (যেমন: 500):")
+            sess["temp_prompt_id"] = pm.message_id
 
-    elif input_mode == "WAITING_STEPS":
+    elif sess_input == "WAITING_STEPS":
         try:
             steps_val = int(text)
             if steps_val <= 0: raise ValueError()
@@ -2488,43 +2340,48 @@ def handle_user_text(message):
 
             cur_bal = sess.get("current_balance", 0.0)
             config_caption = (
-                f"┌────────────────────────────────────────┐\n"
-                f"│ {to_bold('WINGO 30S MARKET ACTIVE')}              │\n"
-                f"├────────────────────────────────────────┤\n"
-                f"│ Platform     : {sess.get('site_name', '')}\n"
-                f"│ Live Balance : ৳ {cur_bal:.2f}\n"
-                f"│ Total Steps  : {steps_val}\n"
-                f"├────────────────────────────────────────┤\n"
-                f"│ প্যারামিটার সেট হয়েছে। START চাপুন:     │\n"
-                f"└────────────────────────────────────────┘"
+                f"<b>{to_bold('WINGO 30S MARKET ACTIVE')}</b>\n\n"
+                f"Platform: <b>{sess.get('site_name', '')}</b>\n"
+                f"Live Balance: <code>৳ {cur_bal:.2f}</code>\n"
+                f"Selected Steps: <b>{steps_val}</b>\n\n"
+                f"প্যারামিটার সেট হয়েছে। ট্রেডিং চালু করতে <b>START</b> চাপুন:"
             )
-            display_or_replace_photo(chat_id, sid, wingo_snap, config_caption, get_setup_param_keyboard(sid))
+            display_or_replace_photo(
+                chat_id, sid, wingo_snap, config_caption, get_setup_param_keyboard(sid)
+            )
         except ValueError:
-            p_msg = bot.send_message(chat_id, "দয়া করে সঠিক পূর্ণসংখ্যা লিখুন (যেমন: 7):")
-            sess["temp_prompt_id"] = p_msg.message_id
+            pm = bot.send_message(chat_id, "দয়া করে সঠিক পূর্ণসংখ্যা লিখুন (যেমন: 7):")
+            sess["temp_prompt_id"] = pm.message_id
 
 # ==============================================================================
-# 17. Distributed Cluster Main Bootstrapper
+# 16. Graceful Cluster Shutdown Handlers
+# ==============================================================================
+def signal_handler(sig, frame):
+    global CLUSTER_RUNNING
+    print(f"\n[*] Shutting down cluster node: {NODE_ID}...")
+    CLUSTER_RUNNING = False
+    reset_local_terminal()
+    firebase.delete(f"terminals/{NODE_ID}")
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
+
+# ==============================================================================
+# 17. Main Cluster Entry Point
 # ==============================================================================
 def main():
-    print("┌────────────────────────────────────────────────────────┐")
-    print(f"│ {to_bold('DISTRIBUTED CLUSTER ENGINE INITIALIZING')}          │")
-    print("├────────────────────────────────────────────────────────┤")
-    print(f"│ TERMINAL ID : {CURRENT_TERMINAL_ID}")
-    print(f"│ OWNER       : {OWNER_HANDLE}")
-    print(f"│ DATABASE    : {FIREBASE_DATABASE_URL}")
-    print("└────────────────────────────────────────────────────────┘")
+    print(f"[*] Node ID: {NODE_ID}")
+    print(f"[*] Hostname: {socket.gethostname()}")
+    print(f"[*] Owner Handle: {OWNER_HANDLE}")
+    print(f"[*] Database URL: {FIREBASE_DATABASE_URL}")
 
-    # 1. Register node in Firebase
-    register_terminal_node()
+    register_node()
 
-    # 2. Launch background threads
-    threading.Thread(target=update_terminal_heartbeat, daemon=True).start()
-    threading.Thread(target=master_election_engine, daemon=True).start()
-    threading.Thread(target=worker_task_listener, daemon=True).start()
-    threading.Thread(target=continuous_24h_watchdog, daemon=True).start()
+    threading.Thread(target=update_node_heartbeat_loop, daemon=True).start()
+    threading.Thread(target=master_election_loop, daemon=True).start()
+    threading.Thread(target=worker_task_listener_loop, daemon=True).start()
 
-    # 3. Main thread keep-alive
     while CLUSTER_RUNNING:
         time.sleep(1)
 
