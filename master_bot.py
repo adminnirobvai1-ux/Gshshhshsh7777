@@ -76,7 +76,7 @@ def safe_delete_message(chat_id, message_id):
 # ==============================================================================
 # SECTION 3: CONFIGURATION, TOKENS & CLUSTER IDENTIFIERS
 # ==============================================================================
-TOKEN = os.getenv("BOT_TOKEN", "8808949150:AAFGbqgk8mv45-GvQP4N9gRDmyxYHjkPnWE")
+TOKEN = os.getenv("BOT_TOKEN", "8808949150:AAHbKwxT1thd-NFsGXj4focJohe063GpWNY")
 bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
 
 OWNER_HANDLE = "@MD_NAYEEM_DRX_TM"
@@ -896,9 +896,9 @@ const autoTotalSteps = arguments[1];
 })();
 """
 
-# ==============================================
+# ==============================================================================
 # SECTION 6: FIREFOX ISOLATED WEBDRIVER & MEMORY ENGINE
-# ==============================================
+# ==============================================================================
 def allocate_session_tab(session_id, target_url):
     sess = active_sessions.get(session_id)
     if not sess:
@@ -1026,7 +1026,7 @@ def get_text(chat_id, key, **kwargs):
             "credentials_card": (
                 f"<b>{to_bold('ACCOUNT LOGIN')}</b>\n\n"
                 f"প্ল্যাটফর্ম: <b>{kwargs.get('site_name', '')}</b>\n\n"
-                f"দয়া করে নিচের বাটন চেপে আপনার নাম্বার এবং পাসওয়ার্ড দিন। এটি নিরাপদ রাখা হবে।"
+                f"দয়া করে নিচের বাটন চেপে আপনার নাম্বার এবং পাসওয়ার্ড দিন। এটি সম্পূর্ণ নিরাপদ রাখা হবে।"
             ),
             "ask_number": (
                 f"<b>{to_bold('ACCOUNT NUMBER')}</b>\n\n"
@@ -1404,7 +1404,7 @@ def worker_task_listener_loop():
                                 drv.execute_script("let btn = document.querySelector('#sys-core-fin button'); if(btn) btn.click();")
                             safe_tab_execute(sid, _stop)
                             sess["is_trading"] = False
-                            bot.send_message(chat_id, f"<b>{to_bold('TRADING PAUSED')}</b>\nট্রেডিং সাময়িকভাবে থামানো হয়েছে।")
+                            bot.send_message(chat_id, f"<b>{to_bold('TRADING PAUSED')}</b>\nট্রেডিং অটোমেশন সাময়িকভাবে থামানো হয়েছে।")
                         firebase.patch(f"terminals/{NODE_ID}/task", {"status": "COMPLETED"})
 
                     elif action == "CANCEL":
@@ -1621,14 +1621,14 @@ def get_admin_pass_keyboard():
     return markup
 
 # ==============================================================================
-# SECTION 13: CORE WINGO AUTOMATION PROCEDURES
+# SECTION 13: CORE WINGO AUTOMATION PROCEDURES & LIVE ANIMATION
 # ==============================================================================
 def play_clean_login_animation(chat_id, msg_id):
     frames = [
-        f"<b>{to_bold('CONNECTING REMOTE ENGINE')}</b>\n<code>আইসোলেটেড প্রোফাইল প্রস্তুত হচ্ছে... (১০%)</code>",
-        f"<b>{to_bold('INITIALIZING TARGET PLATFORM')}</b>\n<code>প্ল্যাটফর্মে কানেক্ট করা হচ্ছে... (৩৫%)</code>",
-        f"<b>{to_bold('INJECTING AUTHENTICATION DATA')}</b>\n<code>লগইন তথ্য প্রদান করা হচ্ছে... (৬৫%)</code>",
-        f"<b>{to_bold('VERIFYING ACTIVE SESSION')}</b>\n<code>ভেরিফিকেশন সম্পন্ন হয়েছে! (১০০%)</code>"
+        "<b>CONNECTING REMOTE ENGINE</b>\n<code>▰▱▱▱▱▱▱▱▱▱ 10% Allocating isolated profile...</code>",
+        "<b>INITIALIZING TARGET PLATFORM</b>\n<code>▰▰▰▱▱▱▱▱▱▱ 35% Securing connection instance...</code>",
+        "<b>INJECTING AUTHENTICATION DATA</b>\n<code>▰▰▰▰▰▰▱▱▱▱ 65% Auto-filling credentials...</code>",
+        "<b>VERIFYING ACTIVE SESSION</b>\n<code>▰▰▰▰▰▰▰▰▰▰ 100% Login verification complete!</code>"
     ]
     for frame in frames:
         try:
@@ -1877,12 +1877,14 @@ def handle_start(message: Message):
         user_sessions[chat_id]["last_menu_msg_id"] = m.message_id
         return
 
+    # Step 1: Channel Verification Gate
     if not verify_channel_member(user.id):
         user_sessions[chat_id] = {"step": "CHANNEL_GATE", "lang": "bn"}
         m = bot.send_message(chat_id, get_text(chat_id, "channel_gate"), reply_markup=get_channel_gate_keyboard())
         user_sessions[chat_id]["last_menu_msg_id"] = m.message_id
         return
 
+    # Step 2: Language Select
     user_sessions[chat_id] = {"step": "LANG_SELECT", "lang": "bn"}
     m = bot.send_message(chat_id, get_text(chat_id, "lang_select"), reply_markup=get_lang_select_keyboard())
     user_sessions[chat_id]["last_menu_msg_id"] = m.message_id
@@ -1982,6 +1984,7 @@ def handle_callbacks(call: CallbackQuery):
     action = parts[0]
     sid = parts[1] if len(parts) > 1 else None
 
+    # Step 1: Channel Gate Verification
     if action == "gate_verify":
         if verify_channel_member(call.from_user.id):
             safe_delete_message(chat_id, call.message.message_id)
@@ -1991,6 +1994,7 @@ def handle_callbacks(call: CallbackQuery):
         else:
             bot.answer_callback_query(call.id, "দয়া করে আগে চ্যানেলে জয়েন করুন।", show_alert=True)
 
+    # Step 2: Language Selection
     elif action == "set_lang" and sid:
         chosen_lang = sid
         safe_delete_message(chat_id, call.message.message_id)
@@ -1999,6 +2003,7 @@ def handle_callbacks(call: CallbackQuery):
         m = bot.send_message(chat_id, get_text(chat_id, "pass_gate"), reply_markup=get_pass_gate_keyboard())
         user_sessions[chat_id]["last_menu_msg_id"] = m.message_id
 
+    # Step 3: Trigger Passkey Input
     elif action == "gate_click_pass":
         user_sessions.setdefault(chat_id, {})["input_mode"] = "WAIT_PASS"
         bot.answer_callback_query(call.id)
@@ -2057,6 +2062,7 @@ def handle_callbacks(call: CallbackQuery):
         firebase.patch(f"terminals/{sid}", {"status": "FORCE_KILL"})
         bot.answer_callback_query(call.id, f"{sid}-কে রিস্টার্ট কমান্ড পাঠানো হয়েছে।", show_alert=True)
 
+    # Step 4: Platform Selection
     elif action in ["site_amarclub", "site_dkwin"]:
         site_name = "Amar Club" if action == "site_amarclub" else "DK Win"
         assigned_tid = user_sessions.get(chat_id, {}).get("assigned_node_id")
@@ -2184,6 +2190,7 @@ def handle_user_text(message: Message):
     u = user_sessions.get(chat_id, {})
     input_mode = u.get("input_mode")
 
+    # Step 3 Passkey Validation
     if input_mode == "WAIT_PASS":
         u["input_mode"] = None
         if u.get("pass_prompt_id"):
@@ -2279,6 +2286,7 @@ def handle_user_text(message: Message):
             safe_delete_message(chat_id, sess["cred_card_msg_id"])
             sess["cred_card_msg_id"] = None
 
+        # Clean animated connection progress
         anim_msg = bot.send_message(chat_id, "<b>CONNECTING REMOTE ENGINE</b>")
         assigned_tid = u.get("assigned_node_id", NODE_ID)
         dispatch_cluster_task(assigned_tid, {
