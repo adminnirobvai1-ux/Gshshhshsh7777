@@ -54,7 +54,7 @@ def safe_delete_message(chat_id, message_id):
 # ==========================================
 # 3. Master Bot Configurations & Constants
 # ==========================================
-TOKEN = "8808949150:AAF236nZ7xG3kPxlxubELHqChpn4IPycFL4"
+TOKEN = "8808949150:AAGehY-s2kZKblgZtYqwtsCiDRypLx8O8hU"
 OWNER_ID = 8707571669
 
 PAYMENT_BKASH = "01870829343"
