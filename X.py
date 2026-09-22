@@ -21,15 +21,12 @@ def install_and_import(package_name, import_name=None):
 
 install_and_import("pyTelegramBotAPI", "telebot")
 install_and_import("selenium")
-install_and_import("requests")
 
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto
 from selenium import webdriver
 from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.firefox.service import Service as FirefoxService
-import requests
-import uuid
 
 # ==========================================
 # 2. Mathematical Bold Unicode & System Utils
@@ -59,7 +56,7 @@ def safe_delete_message(chat_id, message_id):
 # ==========================================
 # 3. Configuration & State Management
 # ==========================================
-TOKEN = "8991156137:AAHW2Vk30vxB5WpmV1qXIXz5j2eG94VCXlI"
+TOKEN = "8808949150:AAGSpz9tmSWxOiEHc6C7TjEmHikgO8bZR-A"
 bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
 
 URL_AMARCLUB_LOGIN = "https://amarclub1.com/#/login"
@@ -1739,171 +1736,433 @@ def handle_user_text(message):
             p_msg = bot.send_message(chat_id, "দয়া করে সঠিক পূর্ণসংখ্যা লিখুন (যেমন: 7):")
             sess["temp_prompt_id"] = p_msg.message_id
 
-
 # ==========================================
-# 13.5. FIREBASE DISTRIBUTED CLUSTER LOGIC
+# 14. Firebase RTDB Distributed Cluster Linking Architecture
 # ==========================================
-FIREBASE_URL = "https://x7e77eey-default-rtdb.firebaseio.com"
-NODE_ID = uuid.uuid4().hex
-IS_MASTER = False
+import urllib.request
+import urllib.error
+import uuid
 
-def fb_get(path):
+FIREBASE_RTDB_URL = "https://x7e77eey-default-rtdb.firebaseio.com"
+NODE_ID = f"term_{socket.gethostname()}_{os.getpid()}_{uuid.uuid4().hex[:6]}"
+
+IS_CLUSTER_MASTER = False
+CLUSTER_ACTIVE = True
+
+def firebase_sync_http(path: str, method: str = "GET", payload=None, timeout: float = 4.0):
+    url = f"{FIREBASE_RTDB_URL.rstrip('/')}/{path.strip('/')}.json"
+    raw_data = None
+    headers = {"Content-Type": "application/json"}
+    if payload is not None:
+        raw_data = json.dumps(payload).encode("utf-8")
+    
+    req = urllib.request.Request(url, data=raw_data, headers=headers, method=method)
     try:
-        r = requests.get(f"{FIREBASE_URL}{path}.json", timeout=5)
-        return r.json()
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            res_content = response.read()
+            if res_content:
+                return json.loads(res_content.decode("utf-8"))
+            return None
     except Exception:
         return None
 
-def fb_put(path, data):
-    try:
-        requests.put(f"{FIREBASE_URL}{path}.json", json=data, timeout=5)
-    except Exception:
-        pass
+def cluster_claim_master_leadership():
+    global IS_CLUSTER_MASTER
+    now = time.time()
+    current_master = firebase_sync_http("cluster/active_master", "GET")
+    
+    elect = False
+    if not current_master or not isinstance(current_master, dict):
+        elect = True
+    else:
+        last_hb = float(current_master.get("heartbeat", 0))
+        if now - last_hb > 15.0:
+            elect = True
+        elif current_master.get("node_id") == NODE_ID:
+            elect = True
 
-def fb_patch(path, data):
-    try:
-        requests.patch(f"{FIREBASE_URL}{path}.json", json=data, timeout=5)
-    except Exception:
-        pass
+    if elect:
+        claim_packet = {
+            "node_id": NODE_ID,
+            "heartbeat": now,
+            "claimed_at": now
+        }
+        res = firebase_sync_http("cluster/active_master", "PUT", claim_packet)
+        if res and res.get("node_id") == NODE_ID:
+            IS_CLUSTER_MASTER = True
+            print(f"[*] [{to_bold(NODE_ID)}] Cluster Election: ASSUMED MASTER ROLE.")
+            return True
 
-def fb_delete(path):
-    try:
-        requests.delete(f"{FIREBASE_URL}{path}.json", timeout=5)
-    except Exception:
-        pass
+    IS_CLUSTER_MASTER = False
+    active_id = current_master.get("node_id", "Unknown") if isinstance(current_master, dict) else "Unknown"
+    print(f"[*] [{to_bold(NODE_ID)}] Cluster Role: WORKER (Active Master: {active_id}).")
+    return False
 
-def cluster_heartbeat_loop():
-    global IS_MASTER
-    while True:
+def cluster_register_local_node():
+    node_payload = {
+        "status": "FREE",
+        "heartbeat": time.time(),
+        "assigned_user_id": None,
+        "task": None,
+        "node_id": NODE_ID,
+        "registered_at": time.time()
+    }
+    firebase_sync_http(f"terminals/{NODE_ID}", "PUT", node_payload)
+    print(f"[*] [{to_bold(NODE_ID)}] Registered in cluster registry (/terminals/{NODE_ID}) as FREE.")
+
+def cluster_node_heartbeat_loop():
+    while CLUSTER_ACTIVE:
         try:
-            now = time.time()
-            # Master Election Check
-            master_data = fb_get("/cluster/active_master")
-            
-            if not master_data or (now - master_data.get("heartbeat", 0)) > 15:
-                # Claim Master
-                fb_put("/cluster/active_master", {"node_id": NODE_ID, "heartbeat": now})
-                if not IS_MASTER:
-                    print(f"[*] Node {NODE_ID} claimed MASTER status.")
-                IS_MASTER = True
-            elif master_data.get("node_id") == NODE_ID:
-                # Update Master Heartbeat
-                fb_patch("/cluster/active_master", {"heartbeat": now})
-                IS_MASTER = True
-            else:
-                if IS_MASTER:
-                    print(f"[*] Node {NODE_ID} demoted to WORKER.")
-                IS_MASTER = False
-
-            # Update Node Registry
-            fb_patch(f"/terminals/{NODE_ID}", {
-                "heartbeat": now
-            })
+            hb_data = {"heartbeat": time.time()}
+            firebase_sync_http(f"terminals/{NODE_ID}", "PATCH", hb_data)
         except Exception:
             pass
-            
         time.sleep(5)
 
-# 1. Register initial state
-fb_put(f"/terminals/{NODE_ID}", {
-    "status": "FREE",
-    "heartbeat": time.time(),
-    "assigned_user_id": None,
-    "task": None
-})
+def cluster_master_heartbeat_loop():
+    while CLUSTER_ACTIVE and IS_CLUSTER_MASTER:
+        try:
+            m_data = {"heartbeat": time.time()}
+            firebase_sync_http("cluster/active_master", "PATCH", m_data)
+        except Exception:
+            pass
+        time.sleep(5)
 
-threading.Thread(target=cluster_heartbeat_loop, daemon=True).start()
+def cluster_remote_task_listener():
+    """
+    Worker loop: listens for remote tasks dispatched under /terminals/{NODE_ID}/task
+    and launches local headless Selenium drivers automatically.
+    """
+    while CLUSTER_ACTIVE:
+        try:
+            task = firebase_sync_http(f"terminals/{NODE_ID}/task", "GET")
+            if task and isinstance(task, dict):
+                # Instantly clear task payload to guarantee exactly-once processing
+                firebase_sync_http(f"terminals/{NODE_ID}/task", "DELETE")
+                
+                t_type = task.get("type")
+                if t_type == "LOGIN_AND_TRADE":
+                    chat_id = task["chat_id"]
+                    sid = task["session_id"]
+                    site_name = task.get("site_name", "Amar Club")
+                    phone = task["phone"]
+                    password = task["password"]
+                    anim_msg_id = task.get("anim_msg_id")
 
-# 2. Automatic Free Device Redirect (The Loop)
-original_process_login = process_login
+                    print(f"[*] [{to_bold(NODE_ID)}] Received dispatched remote session: {sid} for Chat: {chat_id}")
 
+                    # Initialize isolated worker state in local memory
+                    active_sessions[sid] = {
+                        "chat_id": chat_id,
+                        "session_id": sid,
+                        "site_name": site_name,
+                        "phone": phone,
+                        "password": password,
+                        "target_profit": 0,
+                        "total_steps": 7,
+                        "is_trading": False,
+                        "created_at": time.time(),
+                        "anim_tick": 0,
+                        "lock": threading.RLock()
+                    }
+                    user_sessions.setdefault(chat_id, {})["active_sid"] = sid
+
+                    # Mark local device BUSY
+                    firebase_sync_http(f"terminals/{NODE_ID}", "PATCH", {
+                        "status": "BUSY",
+                        "assigned_user_id": chat_id,
+                        "session_id": sid
+                    })
+
+                    # Launch local driver via original login flow
+                    threading.Thread(
+                        target=_original_process_login,
+                        args=(chat_id, sid, phone, password, anim_msg_id),
+                        daemon=True
+                    ).start()
+
+            # Listen for relayed Telegram interactions for sessions hosted on this worker
+            action_pkt = firebase_sync_http(f"terminals/{NODE_ID}/action", "GET")
+            if action_pkt and isinstance(action_pkt, dict):
+                firebase_sync_http(f"terminals/{NODE_ID}/action", "DELETE")
+                kind = action_pkt.get("kind")
+                if kind == "CALLBACK":
+                    class MockChat:
+                        id = action_pkt["chat_id"]
+                    class MockMessage:
+                        chat = MockChat()
+                        message_id = action_pkt["message_id"]
+                    class MockCall:
+                        id = action_pkt.get("call_id", "")
+                        data = action_pkt["data"]
+                        message = MockMessage()
+
+                    threading.Thread(target=_original_handle_callbacks, args=(MockCall(),), daemon=True).start()
+
+                elif kind == "TEXT_INPUT":
+                    class MockChat:
+                        id = action_pkt["chat_id"]
+                    class MockMsg:
+                        chat = MockChat()
+                        message_id = action_pkt["message_id"]
+                        text = action_pkt["text"]
+
+                    threading.Thread(target=_original_handle_user_text, args=(MockMsg(),), daemon=True).start()
+
+        except Exception as e:
+            pass
+        time.sleep(1.2)
+
+def cluster_session_watchdog_loop():
+    """
+    Session Watchdog & Auto-Free:
+    Monitors active sessions. When sessions end or 24h expires, resets terminal to FREE.
+    """
+    while CLUSTER_ACTIVE:
+        try:
+            now = time.time()
+            if not active_sessions:
+                # If this terminal has no active browser session, ensure it is FREE in Firebase
+                cur_stat = firebase_sync_http(f"terminals/{NODE_ID}/status", "GET")
+                if cur_stat == "BUSY":
+                    firebase_sync_http(f"terminals/{NODE_ID}", "PATCH", {
+                        "status": "FREE",
+                        "assigned_user_id": None,
+                        "task": None,
+                        "session_id": None
+                    })
+            else:
+                for sid, sess in list(active_sessions.items()):
+                    c_time = sess.get("created_at", now)
+                    if now - c_time >= 86400:
+                        print(f"[*] 24-hour expiration watchdog triggering auto-free for: {sid}")
+                        close_session_tab(sid)
+
+            # If Master, check for dead nodes that crashed while BUSY and reset orphan sessions
+            if IS_CLUSTER_MASTER:
+                terms = firebase_sync_http("terminals", "GET")
+                if terms and isinstance(terms, dict):
+                    for tid, tval in terms.items():
+                        if isinstance(tval, dict):
+                            hb = float(tval.get("heartbeat", 0))
+                            if now - hb > 25.0 and tval.get("status") != "OFFLINE":
+                                firebase_sync_http(f"terminals/{tid}/status", "PUT", "OFFLINE")
+        except Exception:
+            pass
+        time.sleep(10)
+
+# ==========================================
+# Non-Destructive Interception Wrappers
+# ==========================================
+_original_close_session_tab = close_session_tab
+def close_session_tab(session_id):
+    """Wrapped to auto-free device in Firebase instantly on close"""
+    _original_close_session_tab(session_id)
+    try:
+        firebase_sync_http(f"terminals/{NODE_ID}", "PATCH", {
+            "status": "FREE",
+            "assigned_user_id": None,
+            "task": None,
+            "session_id": None
+        })
+        firebase_sync_http(f"sessions/{session_id}", "DELETE")
+        print(f"[*] [{to_bold(NODE_ID)}] Session {session_id} ended. Status reset to FREE in Firebase.")
+    except Exception:
+        pass
+
+_original_process_login = process_login
 def distributed_process_login(chat_id, sid, phone, password, anim_msg_id):
-    global IS_MASTER
-    
-    # Master dispatches to the first FREE node
-    terminals = fb_get("/terminals") or {}
-    target_node = None
+    """
+    Automatic Free Device Redirect Loop:
+    Master checks Firebase /terminals for an online FREE device.
+    Redirects to the target node or executes locally.
+    """
+    all_terminals = firebase_sync_http("terminals", "GET")
     now = time.time()
-    
-    for t_id, t_data in terminals.items():
-        if t_data.get("status") == "FREE" and (now - t_data.get("heartbeat", 0)) < 15:
-            target_node = t_id
-            break
-            
-    if not target_node:
-        target_node = NODE_ID  # Fallback to self
-        
-    print(f"[*] Master dispatching task to Node {target_node}")
-    fb_patch(f"/terminals/{target_node}", {"status": "BUSY"})
-    
-    task_payload = {
-        "chat_id": chat_id,
-        "sid": sid,
-        "phone": phone,
-        "password": password,
-        "anim_msg_id": anim_msg_id
-    }
-    
-    if target_node == NODE_ID:
-        original_process_login(**task_payload)
-    else:
-        fb_put(f"/terminals/{target_node}/task", task_payload)
+    free_target_node = None
 
+    if all_terminals and isinstance(all_terminals, dict):
+        for tid, tinfo in all_terminals.items():
+            if isinstance(tinfo, dict) and tinfo.get("status") == "FREE":
+                hb = float(tinfo.get("heartbeat", 0))
+                if now - hb <= 15.0:
+                    free_target_node = tid
+                    break
+
+    # If no online node reports FREE, allocate current node as fallback
+    if not free_target_node:
+        free_target_node = NODE_ID
+
+    sess = active_sessions.get(sid, {})
+    site_name = sess.get("site_name", "Amar Club")
+
+    if free_target_node == NODE_ID:
+        print(f"[*] [{to_bold(NODE_ID)}] Self-assigned task. Running login locally...")
+        firebase_sync_http(f"terminals/{NODE_ID}", "PATCH", {
+            "status": "BUSY",
+            "assigned_user_id": chat_id,
+            "session_id": sid
+        })
+        firebase_sync_http(f"sessions/{sid}", "PUT", {
+            "node_id": NODE_ID,
+            "chat_id": chat_id,
+            "site_name": site_name
+        })
+        _original_process_login(chat_id, sid, phone, password, anim_msg_id)
+    else:
+        print(f"[*] [{to_bold(NODE_ID)}] Disagree/Busy - Redirecting session {sid} to free device: {free_target_node}")
+        
+        # Mark target terminal as BUSY
+        firebase_sync_http(f"terminals/{free_target_node}", "PATCH", {
+            "status": "BUSY",
+            "assigned_user_id": chat_id,
+            "session_id": sid
+        })
+        # Record cluster mapping for cross-terminal Telegram event routing
+        firebase_sync_http(f"sessions/{sid}", "PUT", {
+            "node_id": free_target_node,
+            "chat_id": chat_id,
+            "site_name": site_name
+        })
+        # Dispatch task to remote terminal listener loop
+        task_payload = {
+            "type": "LOGIN_AND_TRADE",
+            "chat_id": chat_id,
+            "session_id": sid,
+            "site_name": site_name,
+            "phone": phone,
+            "password": password,
+            "anim_msg_id": anim_msg_id,
+            "dispatched_at": time.time()
+        }
+        firebase_sync_http(f"terminals/{free_target_node}/task", "PUT", task_payload)
+
+# Bind process_login to our distributed dispatch function
 process_login = distributed_process_login
 
-# 3. Worker task listener
-def worker_task_listener():
-    while True:
-        try:
-            if not IS_MASTER:
-                task = fb_get(f"/terminals/{NODE_ID}/task")
-                if task:
-                    print(f"[*] Worker {NODE_ID} received delegated task!")
-                    fb_delete(f"/terminals/{NODE_ID}/task")
-                    fb_patch(f"/terminals/{NODE_ID}", {"status": "BUSY"})
-                    threading.Thread(target=original_process_login, kwargs=task, daemon=True).start()
-        except Exception:
-            pass
-        time.sleep(2)
+# Wrap Telegram Callbacks & Message Routers to Relay Events to Remote Workers
+_original_handle_callbacks = handle_callbacks
+def distributed_handle_callbacks(call):
+    data = call.data or ""
+    parts = data.split(":")
+    action = parts[0]
+    sid = parts[1] if len(parts) > 1 else None
 
-threading.Thread(target=worker_task_listener, daemon=True).start()
+    if not sid or action in ["lang_en", "lang_bn", "site_amarclub", "site_dkwin"]:
+        return _original_handle_callbacks(call)
 
-# 4. Session Watchdog & Auto-Free hooks
-original_close_session_tab = close_session_tab
+    # Check which node owns this session
+    target_node = NODE_ID
+    if sid not in active_sessions or not active_sessions[sid].get("driver"):
+        meta = firebase_sync_http(f"sessions/{sid}", "GET")
+        if meta and isinstance(meta, dict) and meta.get("node_id"):
+            target_node = meta["node_id"]
 
-def distributed_close_session_tab(session_id):
-    original_close_session_tab(session_id)
-    fb_patch(f"/terminals/{NODE_ID}", {"status": "FREE"})
-    print(f"[*] Node {NODE_ID} marked as FREE after session close.")
-
-close_session_tab = distributed_close_session_tab
-
-def distributed_watchdog_auto_free():
-    while True:
-        try:
-            if len(active_sessions) == 0:
-                fb_patch(f"/terminals/{NODE_ID}", {"status": "FREE"})
-        except Exception:
-            pass
-        time.sleep(30)
-
-threading.Thread(target=distributed_watchdog_auto_free, daemon=True).start()
-
-# Intercept infinity_polling to respect Master/Worker rules
-original_infinity_polling = bot.infinity_polling
-
-def distributed_infinity_polling(*args, **kwargs):
-    print(f"[*] Node {NODE_ID} Booting... Waiting 3 seconds for Master election.")
-    time.sleep(3)
-    if IS_MASTER:
-        print(f"[*] Launching Telegram Polling on MASTER Node...")
-        original_infinity_polling(*args, **kwargs)
+    if target_node == NODE_ID:
+        return _original_handle_callbacks(call)
     else:
-        print(f"[*] Launching WORKER Node. Telegram Polling skipped to prevent 409 errors.")
-        while True:
-            time.sleep(3600)
+        # Forward interaction packet to the remote terminal hosting this Selenium tab
+        relay_pkt = {
+            "kind": "CALLBACK",
+            "action": action,
+            "sid": sid,
+            "call_id": call.id,
+            "data": call.data,
+            "chat_id": call.message.chat.id,
+            "message_id": call.message.message_id,
+            "ts": time.time()
+        }
+        firebase_sync_http(f"terminals/{target_node}/action", "PUT", relay_pkt)
+        try:
+            bot.answer_callback_query(call.id)
+        except Exception:
+            pass
 
-bot.infinity_polling = distributed_infinity_polling
+_original_handle_user_text = handle_user_text
+def distributed_handle_user_text(message):
+    chat_id = message.chat.id
+    u = user_sessions.get(chat_id, {})
+    sid = u.get("active_sid")
+
+    target_node = NODE_ID
+    if sid:
+        if sid not in active_sessions or not active_sessions[sid].get("driver"):
+            meta = firebase_sync_http(f"sessions/{sid}", "GET")
+            if meta and isinstance(meta, dict) and meta.get("node_id"):
+                target_node = meta["node_id"]
+
+    if target_node == NODE_ID:
+        return _original_handle_user_text(message)
+    else:
+        # Forward text to assigned remote terminal
+        relay_pkt = {
+            "kind": "TEXT_INPUT",
+            "chat_id": chat_id,
+            "sid": sid,
+            "text": message.text.strip(),
+            "message_id": message.message_id,
+            "ts": time.time()
+        }
+        firebase_sync_http(f"terminals/{target_node}/action", "PUT", relay_pkt)
+        safe_delete_message(chat_id, message.message_id)
+
+# Dynamically patch pyTelegramBotAPI handler references
+for h in bot.callback_query_handlers:
+    if h.get('function') == _original_handle_callbacks:
+        h['function'] = distributed_handle_callbacks
+
+for h in bot.message_handlers:
+    if h.get('function') == _original_handle_user_text:
+        h['function'] = distributed_handle_user_text
+
+# ==========================================
+# Master-Worker Polling Engine Integration
+# ==========================================
+_original_bot_infinity_polling = bot.infinity_polling
+
+def cluster_managed_infinity_polling(*args, **kwargs):
+    # 1. Register this terminal in Firebase
+    cluster_register_local_node()
+
+    # 2. Launch background node heartbeat & task listening threads
+    threading.Thread(target=cluster_node_heartbeat_loop, daemon=True).start()
+    threading.Thread(target=cluster_remote_task_listener, daemon=True).start()
+    threading.Thread(target=cluster_session_watchdog_loop, daemon=True).start()
+
+    # 3. Perform Master Election
+    claimed_master = cluster_claim_master_leadership()
+
+    if claimed_master:
+        # Start Master heartbeat loop
+        threading.Thread(target=cluster_master_heartbeat_loop, daemon=True).start()
+        print(f"[*] [{to_bold(NODE_ID)}] Starting Telegram Infinity Polling as Cluster MASTER...")
+        _original_bot_infinity_polling(*args, **kwargs)
+    else:
+        print(f"[*] [{to_bold(NODE_ID)}] WORKER Active: Telegram polling bypassed to prevent Conflict 409.")
+        # Worker standby loop with automated failover detection
+        while CLUSTER_ACTIVE:
+            time.sleep(5)
+            # Check if active master expired (>15s)
+            m_info = firebase_sync_http("cluster/active_master", "GET")
+            now = time.time()
+            master_dead = False
+            if not m_info or not isinstance(m_info, dict):
+                master_dead = True
+            else:
+                last_hb = float(m_info.get("heartbeat", 0))
+                if now - last_hb > 15.0:
+                    master_dead = True
+
+            if master_dead:
+                print(f"[*] [{to_bold(NODE_ID)}] Active master timeout detected (>15s). Attempting election promotion...")
+                if cluster_claim_master_leadership():
+                    threading.Thread(target=cluster_master_heartbeat_loop, daemon=True).start()
+                    print(f"[*] [{to_bold(NODE_ID)}] Promoted to MASTER! Starting Telegram polling...")
+                    _original_bot_infinity_polling(*args, **kwargs)
+                    break
+
+# Wrap bot.infinity_polling so base execution invokes cluster logic
+bot.infinity_polling = cluster_managed_infinity_polling
 
 # ==========================================
 # 14. Main Execution
