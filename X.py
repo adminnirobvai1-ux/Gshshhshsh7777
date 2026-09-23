@@ -6,6 +6,10 @@ import threading
 import shutil
 import json
 import socket
+import gc
+import urllib.request
+import urllib.error
+import uuid
 
 # ==========================================
 # 1. Automatic Package Installer
@@ -37,11 +41,11 @@ def to_bold(text: str) -> str:
     res = []
     for c in str(text):
         n = ord(c)
-        if 65 <= n <= 90:      
+        if 65 <= n <= 90:
             res.append(chr(n + 119743))
-        elif 97 <= n <= 122:   
+        elif 97 <= n <= 122:
             res.append(chr(n + 119737))
-        elif 48 <= n <= 57:    
+        elif 48 <= n <= 57:
             res.append(chr(n + 120764))
         else:
             res.append(c)
@@ -56,7 +60,7 @@ def safe_delete_message(chat_id, message_id):
         pass
 
 # ==========================================
-# 3. Process Hygiene & Zombie Killer Engine
+# 3. Aggressive Process Hygiene & Zombie Killer
 # ==========================================
 def kill_process_tree(pid):
     try:
@@ -159,7 +163,7 @@ PLATFORMS = {
 }
 
 # ==========================================
-# 5. TRUE ISOLATION: One Driver per Session
+# 5. TRUE ISOLATION: 1-Driver-per-Session Architecture
 # ==========================================
 def allocate_session_tab(session_id, target_url):
     sess = active_sessions.get(session_id)
@@ -175,7 +179,7 @@ def allocate_session_tab(session_id, target_url):
     options.add_argument("--headless")
     options.add_argument("-profile")
     options.add_argument(profile_dir)
-    
+
     options.set_preference("browser.sessionhistory.max_entries", 1)
     options.set_preference("browser.sessionhistory.max_total_viewers", 0)
     options.set_preference("image.mem.surfacecache.max_size_kb", 1024)
@@ -187,14 +191,14 @@ def allocate_session_tab(session_id, target_url):
 
     service = FirefoxService(log_output=os.devnull)
     driver = webdriver.Firefox(service=service, options=options)
-    
+
     driver.set_page_load_timeout(20)
     driver.set_script_timeout(15)
     driver.implicitly_wait(3)
     driver.set_window_size(390, 844)
-    
+
     driver.get(target_url)
-    
+
     sess["driver"] = driver
     sess["window_handle"] = driver.current_window_handle
     return driver, sess["window_handle"]
@@ -203,10 +207,10 @@ def safe_tab_execute(sid, task_fn, timeout=20.0):
     sess = active_sessions.get(sid)
     if not sess:
         return None
-        
+
     lock = sess.get("lock")
     driver = sess.get("driver")
-    
+
     if not driver or not lock:
         return None
 
@@ -229,7 +233,7 @@ def safe_tab_execute(sid, task_fn, timeout=20.0):
     worker_thread.join(timeout=timeout)
 
     if not result_container["completed"]:
-        print(f"[*] safe_tab_execute timed out (> {timeout}s) for {sid}. Recycling session tab...")
+        print(f"[*] safe_tab_execute watchdog triggered (> {timeout}s) for {sid}. Force-releasing lock.")
         try:
             lock.release()
         except RuntimeError:
@@ -241,6 +245,8 @@ def safe_tab_execute(sid, task_fn, timeout=20.0):
         lock.release()
     except RuntimeError:
         pass
+
+    gc.collect()
 
     if result_container["error"]:
         print(f"[*] Execute error for {sid}: {result_container['error']}")
@@ -263,12 +269,13 @@ def close_session_tab(session_id):
                     kill_process_tree(driver.service.process.pid)
             except Exception:
                 pass
-        
+
         profile_dir = os.path.join(PROFILES_BASE_DIR, f"profile_{session_id}")
         if os.path.exists(profile_dir):
             shutil.rmtree(profile_dir, ignore_errors=True)
-    
+
     cleanup_zombie_browsers()
+    gc.collect()
 
 # ==========================================
 # 6. Smart Telegram Image Replacement Engine
@@ -305,8 +312,15 @@ def display_or_replace_photo(chat_id, session_id, image_path, caption_text, repl
         except Exception as e:
             print(f"[*] Photo replace error: {e}")
 
+    try:
+        if os.path.exists(image_path):
+            os.remove(image_path)
+    except Exception:
+        pass
+    gc.collect()
+
 # ==========================================
-# 7. Universal In-Browser JavaScript Code
+# 7. JavaScript Engines (Watchdog & Modals)
 # ==========================================
 AUTO_FILL_AND_CLICK_JS = """
 const phone = arguments[0];
@@ -424,7 +438,7 @@ return { status: "PENDING" };
 
 NEW_WINGO_RUNBOX_JS = """
 (function(){
-    if(document.getElementById('_run_box')) return;
+    if(document.getElementById('_run_box')) return "ALREADY_PRESENT";
     var s = [
         'body > div > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(7) > div:nth-of-type(3) > div > div:nth-of-type(2) > div > div > div > img',
         'body > div > div:nth-of-type(3) > div:nth-of-type(5) > div:nth-of-type(2) > div:nth-of-type(3) > div > div > div > img',
@@ -456,26 +470,6 @@ NEW_WINGO_RUNBOX_JS = """
         if(typeof el.click === 'function') el.click();
         return true;
     }
-    var b = document.createElement('div');
-    b.id = '_run_box';
-    b.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#18181b;padding:6px 10px;border-radius:30px;display:flex;gap:6px;align-items:center;z-index:99999999;box-shadow:0 6px 16px rgba(0,0,0,0.3);font:12px sans-serif;';
-    var allBtn = document.createElement('button');
-    allBtn.innerText = '▶ All';
-    allBtn.style.cssText = 'background:#f59e0b;color:#000;border:none;padding:4px 8px;border-radius:20px;cursor:pointer;font-weight:bold;font-size:11px;';
-    allBtn.onclick = function(){ var el = findTarget(); if(el){ trigger(el); } };
-    b.appendChild(allBtn);
-    var wBtn = document.createElement('button');
-    wBtn.innerText = 'Wingo';
-    wBtn.style.cssText = 'background:#22c55e;color:#000;border:none;padding:4px 8px;border-radius:20px;cursor:pointer;font-weight:bold;font-size:11px;';
-    wBtn.onclick = function(){ var el = findTarget(); if(el){ trigger(el); } };
-    b.appendChild(wBtn);
-    var x = document.createElement('span');
-    x.innerText = '✕';
-    x.style.cssText = 'cursor:pointer;color:#a1a1aa;margin-left:4px;font-weight:bold;';
-    x.onclick = function(){ b.remove(); };
-    b.appendChild(x);
-    document.body.appendChild(b);
-
     var targetEl = findTarget();
     if(targetEl){ trigger(targetEl); return "CLICKED_TARGET"; }
     return "BOX_INJECTED";
@@ -980,6 +974,11 @@ const autoTotalSteps = arguments[1];
                                     sessionStorage.setItem('drx_sig',cSig);
                                     sessionStorage.setItem('drx_p_bal',st.curBal);
                                     st.tradesDone++;
+                                    if(st.tradesDone > 0 && st.tradesDone % 50 === 0){
+                                        try {
+                                            document.querySelectorAll('iframe, .van-toast').forEach(el => el.remove());
+                                        } catch(e){}
+                                    }
                                 }else{
                                     uSts.innerText=uF('ERR');
                                     uSts.className='txt-blk-err';
@@ -998,6 +997,41 @@ const autoTotalSteps = arguments[1];
         }
         isFetchingApi=false;
     };
+
+    let tradeStartTs = 0;
+    setInterval(() => {
+        if (st.isTrd) {
+            if (!tradeStartTs) tradeStartTs = Date.now();
+            else if (Date.now() - tradeStartTs > 12000) {
+                st.isTrd = false;
+                isFetchingApi = false;
+                tradeStartTs = 0;
+                document.querySelectorAll('.drx-elec-target').forEach(el => el.classList.remove('drx-elec-target'));
+                const uSts = document.getElementById('ui-sts');
+                if (uSts) { uSts.innerText = uF('RST'); uSts.className = 'txt-blk-warn'; }
+            }
+        } else {
+            tradeStartTs = 0;
+        }
+    }, 3000);
+
+    setInterval(() => {
+        try {
+            const dismissSels = [
+                '.van-dialog__confirm', '.dialog-confirm',
+                '.van-popup__close-icon', 'button[class*="close"]',
+                'button[class*="confirm"]', '.van-button--primary',
+                '.van-overlay'
+            ];
+            dismissSels.forEach(sel => {
+                document.querySelectorAll(sel).forEach(el => {
+                    if (el && el.offsetParent !== null && !el.closest('#sys-core-fin') && !el.closest('#_run_box')) {
+                        el.click();
+                    }
+                });
+            });
+        } catch(e){}
+    }, 2500);
 
     if (!window.__WINGO_WDOG) {
         window.__WINGO_WDOG = setInterval(() => {
@@ -1409,12 +1443,6 @@ def process_login(chat_id, sid, phone, password, anim_msg_id):
         get_start_screen_keyboard(sid)
     )
 
-    try:
-        if os.path.exists(login_snap):
-            os.remove(login_snap)
-    except Exception:
-        pass
-
 # ==========================================
 # 12. WinGo Navigation & Configuration Flow
 # ==========================================
@@ -1479,12 +1507,6 @@ def prepare_wingo_parameters(chat_id, sid):
         get_setup_param_keyboard(sid)
     )
 
-    try:
-        if os.path.exists(wingo_snap):
-            os.remove(wingo_snap)
-    except Exception:
-        pass
-
 # ==========================================
 # 13. Background Monitoring & Lifetime Watchdog
 # ==========================================
@@ -1544,10 +1566,6 @@ def monitor_trading_progress(chat_id, sid):
 
                 if os.path.exists(screen_path):
                     display_or_replace_photo(chat_id, sid, screen_path, msg, None)
-                    try:
-                        os.remove(screen_path)
-                    except Exception:
-                        pass
                 else:
                     bot.send_message(chat_id, msg)
                 break
@@ -1792,12 +1810,6 @@ def handle_callbacks(call):
             get_trading_control_keyboard(sid)
         )
 
-        try:
-            if os.path.exists(start_snap):
-                os.remove(start_snap)
-        except Exception:
-            pass
-
         threading.Thread(target=monitor_trading_progress, args=(chat_id, sid), daemon=True).start()
 
     elif action == "shot" and sid in active_sessions:
@@ -1822,10 +1834,6 @@ def handle_callbacks(call):
                 f"<b>LIVE STATUS</b>: মার্টিনগেল ইঞ্জিন সফলভাবে সচল রয়েছে।"
             )
             display_or_replace_photo(chat_id, sid, temp_shot, caption, get_trading_control_keyboard(sid))
-            try:
-                os.remove(temp_shot)
-            except Exception:
-                pass
         else:
             bot.send_message(chat_id, "ফুটেজ সংগ্রহ করা যায়নি, পেজটি লোড হচ্ছে...")
 
@@ -2022,16 +2030,13 @@ def handle_user_text(message):
             sess["temp_prompt_id"] = p_msg.message_id
 
 # ==========================================
-# 16. Firebase RTDB 4-Node Cluster Linking & Failover Engine
+# 16. Firebase RTDB Dual-Brain & Multi-Server Coordinator
 # ==========================================
-import urllib.request
-import urllib.error
-import uuid
-
 FIREBASE_RTDB_URL = "https://x7e77eey-default-rtdb.firebaseio.com"
 NODE_ID = f"term_{socket.gethostname()}_{os.getpid()}_{uuid.uuid4().hex[:6]}"
 
 IS_CLUSTER_MASTER = False
+IS_STANDBY_MASTER = False
 CLUSTER_ACTIVE = True
 
 def firebase_sync_http(path: str, method: str = "GET", payload=None, timeout: float = 4.0):
@@ -2040,7 +2045,7 @@ def firebase_sync_http(path: str, method: str = "GET", payload=None, timeout: fl
     headers = {"Content-Type": "application/json"}
     if payload is not None:
         raw_data = json.dumps(payload).encode("utf-8")
-    
+
     req = urllib.request.Request(url, data=raw_data, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as response:
@@ -2051,37 +2056,51 @@ def firebase_sync_http(path: str, method: str = "GET", payload=None, timeout: fl
     except Exception:
         return None
 
-def cluster_claim_master_leadership():
-    global IS_CLUSTER_MASTER
+def cluster_claim_leadership():
+    global IS_CLUSTER_MASTER, IS_STANDBY_MASTER
     now = time.time()
-    current_master = firebase_sync_http("cluster/active_master", "GET")
-    
-    elect = False
-    if not current_master or not isinstance(current_master, dict):
-        elect = True
-    else:
-        last_hb = float(current_master.get("heartbeat", 0))
-        if now - last_hb > 15.0:
-            elect = True
-        elif current_master.get("node_id") == NODE_ID:
-            elect = True
 
-    if elect:
-        claim_packet = {
-            "node_id": NODE_ID,
-            "heartbeat": now,
-            "claimed_at": now
-        }
-        res = firebase_sync_http("cluster/active_master", "PUT", claim_packet)
+    primary = firebase_sync_http("cluster/active_master", "GET")
+    claim_primary = False
+    if not primary or not isinstance(primary, dict):
+        claim_primary = True
+    else:
+        last_hb = float(primary.get("heartbeat", 0))
+        if now - last_hb > 10.0 or primary.get("node_id") == NODE_ID:
+            claim_primary = True
+
+    if claim_primary:
+        packet = {"node_id": NODE_ID, "heartbeat": now, "claimed_at": now}
+        res = firebase_sync_http("cluster/active_master", "PUT", packet)
         if res and res.get("node_id") == NODE_ID:
             IS_CLUSTER_MASTER = True
-            print(f"[*] [{to_bold(NODE_ID)}] Cluster Election: ASSUMED MASTER ROLE.")
-            return True
+            IS_STANDBY_MASTER = False
+            print(f"[*] [{to_bold(NODE_ID)}] Cluster Election: ASSUMED PRIMARY MASTER ROLE (BRAIN A).")
+            return "MASTER"
+
+    standby = firebase_sync_http("cluster/standby_master", "GET")
+    claim_standby = False
+    if not standby or not isinstance(standby, dict):
+        claim_standby = True
+    else:
+        last_hb_s = float(standby.get("heartbeat", 0))
+        if now - last_hb_s > 10.0 or standby.get("node_id") == NODE_ID:
+            claim_standby = True
+
+    if claim_standby:
+        packet_s = {"node_id": NODE_ID, "heartbeat": now, "claimed_at": now}
+        res_s = firebase_sync_http("cluster/standby_master", "PUT", packet_s)
+        if res_s and res_s.get("node_id") == NODE_ID:
+            IS_CLUSTER_MASTER = False
+            IS_STANDBY_MASTER = True
+            print(f"[*] [{to_bold(NODE_ID)}] Cluster Role: HOT-STANDBY MASTER (BRAIN B).")
+            return "STANDBY"
 
     IS_CLUSTER_MASTER = False
-    active_id = current_master.get("node_id", "Unknown") if isinstance(current_master, dict) else "Unknown"
-    print(f"[*] [{to_bold(NODE_ID)}] Cluster Role: WORKER (Active Master: {active_id}).")
-    return False
+    IS_STANDBY_MASTER = False
+    active_id = primary.get("node_id", "Unknown") if isinstance(primary, dict) else "Unknown"
+    print(f"[*] [{to_bold(NODE_ID)}] Cluster Role: WORKER NODE (Active Primary: {active_id}).")
+    return "WORKER"
 
 def cluster_register_local_node():
     node_payload = {
@@ -2090,6 +2109,7 @@ def cluster_register_local_node():
         "assigned_user_id": None,
         "task": None,
         "node_id": NODE_ID,
+        "load": len(active_sessions),
         "registered_at": time.time()
     }
     firebase_sync_http(f"terminals/{NODE_ID}", "PUT", node_payload)
@@ -2099,7 +2119,11 @@ def cluster_node_heartbeat_loop():
     while CLUSTER_ACTIVE:
         try:
             status_val = "BUSY" if active_sessions else "FREE"
-            hb_data = {"heartbeat": time.time(), "status": status_val}
+            hb_data = {
+                "heartbeat": time.time(),
+                "status": status_val,
+                "load": len(active_sessions)
+            }
             firebase_sync_http(f"terminals/{NODE_ID}", "PATCH", hb_data)
         except Exception:
             pass
@@ -2112,7 +2136,16 @@ def cluster_master_heartbeat_loop():
             firebase_sync_http("cluster/active_master", "PATCH", m_data)
         except Exception:
             pass
-        time.sleep(5)
+        time.sleep(4)
+
+def cluster_standby_heartbeat_loop():
+    while CLUSTER_ACTIVE and IS_STANDBY_MASTER:
+        try:
+            s_data = {"heartbeat": time.time()}
+            firebase_sync_http("cluster/standby_master", "PATCH", s_data)
+        except Exception:
+            pass
+        time.sleep(4)
 
 def cluster_remote_task_listener():
     while CLUSTER_ACTIVE:
@@ -2120,12 +2153,12 @@ def cluster_remote_task_listener():
             if not active_sessions:
                 time.sleep(2.0)
             else:
-                time.sleep(1.0)
+                time.sleep(0.8)
 
             task = firebase_sync_http(f"terminals/{NODE_ID}/task", "GET")
             if task and isinstance(task, dict):
                 firebase_sync_http(f"terminals/{NODE_ID}/task", "DELETE")
-                
+
                 t_type = task.get("type")
                 if t_type == "LOGIN_AND_TRADE":
                     chat_id = task["chat_id"]
@@ -2137,7 +2170,7 @@ def cluster_remote_task_listener():
                     password = task["password"]
                     anim_msg_id = task.get("anim_msg_id")
 
-                    print(f"[*] [{to_bold(NODE_ID)}] Received dispatched remote session: {sid} for Chat: {chat_id}")
+                    print(f"[*] [{to_bold(NODE_ID)}] Received task: {sid} for Chat: {chat_id}")
 
                     active_sessions[sid] = {
                         "chat_id": chat_id,
@@ -2159,7 +2192,8 @@ def cluster_remote_task_listener():
                     firebase_sync_http(f"terminals/{NODE_ID}", "PATCH", {
                         "status": "BUSY",
                         "assigned_user_id": chat_id,
-                        "session_id": sid
+                        "session_id": sid,
+                        "load": len(active_sessions)
                     })
 
                     threading.Thread(
@@ -2209,7 +2243,8 @@ def cluster_session_watchdog_loop():
                         "status": "FREE",
                         "assigned_user_id": None,
                         "task": None,
-                        "session_id": None
+                        "session_id": None,
+                        "load": 0
                     })
             else:
                 for sid, sess in list(active_sessions.items()):
@@ -2227,24 +2262,22 @@ def cluster_session_watchdog_loop():
                             hb = float(tval.get("heartbeat", 0))
                             t_status = tval.get("status", "")
                             if now - hb > 15.0 and t_status != "OFFLINE":
-                                print(f"[*] Node {tid} timed out (>15s). Marking OFFLINE and evaluating failover...")
+                                print(f"[*] Worker Node {tid} timed out (>15s). Marking OFFLINE and recovering task...")
                                 firebase_sync_http(f"terminals/{tid}/status", "PUT", "OFFLINE")
 
                                 dead_sid = tval.get("session_id")
                                 if dead_sid and dead_sid in all_sessions:
                                     sess_meta = all_sessions[dead_sid]
                                     print(f"[*] Active session failover triggered for: {dead_sid}")
-                                    
-                                    new_worker = None
+
+                                    candidates = []
                                     for cand_id, cand_val in terms.items():
                                         if cand_id != tid and isinstance(cand_val, dict) and cand_val.get("status") == "FREE":
                                             c_hb = float(cand_val.get("heartbeat", 0))
                                             if now - c_hb <= 15.0:
-                                                new_worker = cand_id
-                                                break
+                                                candidates.append((cand_id, cand_val.get("load", 0)))
 
-                                    if not new_worker:
-                                        new_worker = NODE_ID
+                                    new_worker = min(candidates, key=lambda x: x[1])[0] if candidates else NODE_ID
 
                                     print(f"[*] Re-delegating session {dead_sid} to node: {new_worker}")
                                     sess_meta["node_id"] = new_worker
@@ -2284,10 +2317,11 @@ def close_session_tab(session_id):
             "status": "FREE",
             "assigned_user_id": None,
             "task": None,
-            "session_id": None
+            "session_id": None,
+            "load": len(active_sessions)
         })
         firebase_sync_http(f"sessions/{session_id}", "DELETE")
-        print(f"[*] [{to_bold(NODE_ID)}] Session {session_id} ended. Status reset to FREE in Firebase.")
+        print(f"[*] [{to_bold(NODE_ID)}] Session {session_id} ended. Node marked FREE.")
     except Exception:
         pass
 
@@ -2297,15 +2331,17 @@ def distributed_process_login(chat_id, sid, phone, password, anim_msg_id):
     now = time.time()
     free_target_node = None
 
+    candidates = []
     if all_terminals and isinstance(all_terminals, dict):
         for tid, tinfo in all_terminals.items():
             if isinstance(tinfo, dict) and tinfo.get("status") == "FREE":
                 hb = float(tinfo.get("heartbeat", 0))
                 if now - hb <= 15.0:
-                    free_target_node = tid
-                    break
+                    candidates.append((tid, tinfo.get("load", 0)))
 
-    if not free_target_node:
+    if candidates:
+        free_target_node = min(candidates, key=lambda x: x[1])[0]
+    else:
         free_target_node = NODE_ID
 
     sess = active_sessions.get(sid, {})
@@ -2318,7 +2354,8 @@ def distributed_process_login(chat_id, sid, phone, password, anim_msg_id):
         firebase_sync_http(f"terminals/{NODE_ID}", "PATCH", {
             "status": "BUSY",
             "assigned_user_id": chat_id,
-            "session_id": sid
+            "session_id": sid,
+            "load": len(active_sessions) + 1
         })
         firebase_sync_http(f"sessions/{sid}", "PUT", {
             "node_id": NODE_ID,
@@ -2331,7 +2368,7 @@ def distributed_process_login(chat_id, sid, phone, password, anim_msg_id):
         })
         _original_process_login(chat_id, sid, phone, password, anim_msg_id)
     else:
-        print(f"[*] [{to_bold(NODE_ID)}] Redirecting session {sid} ({site_name}) to free device: {free_target_node}")
+        print(f"[*] [{to_bold(NODE_ID)}] Routing session {sid} ({site_name}) to free node: {free_target_node}")
         firebase_sync_http(f"terminals/{free_target_node}", "PATCH", {
             "status": "BUSY",
             "assigned_user_id": chat_id,
@@ -2436,7 +2473,7 @@ for h in bot.message_handlers:
         h['function'] = distributed_handle_user_text
 
 # ==========================================
-# 18. Master-Worker Polling Engine Integration
+# 18. Dual-Brain Telegram Polling Coordinator
 # ==========================================
 _original_bot_infinity_polling = bot.infinity_polling
 
@@ -2447,31 +2484,52 @@ def cluster_managed_infinity_polling(*args, **kwargs):
     threading.Thread(target=cluster_remote_task_listener, daemon=True).start()
     threading.Thread(target=cluster_session_watchdog_loop, daemon=True).start()
 
-    claimed_master = cluster_claim_master_leadership()
+    role = cluster_claim_leadership()
 
-    if claimed_master:
+    if role == "MASTER":
         threading.Thread(target=cluster_master_heartbeat_loop, daemon=True).start()
-        print(f"[*] [{to_bold(NODE_ID)}] Starting Telegram Infinity Polling as Cluster MASTER...")
+        print(f"[*] [{to_bold(NODE_ID)}] Starting Telegram Polling as PRIMARY MASTER (BRAIN A)...")
         _original_bot_infinity_polling(*args, **kwargs)
+    elif role == "STANDBY":
+        threading.Thread(target=cluster_standby_heartbeat_loop, daemon=True).start()
+        print(f"[*] [{to_bold(NODE_ID)}] HOT-STANDBY active. Monitoring Primary Master...")
+        while CLUSTER_ACTIVE:
+            time.sleep(3)
+            primary_data = firebase_sync_http("cluster/active_master", "GET")
+            now = time.time()
+            primary_dead = False
+            if not primary_data or not isinstance(primary_data, dict):
+                primary_dead = True
+            else:
+                last_hb = float(primary_data.get("heartbeat", 0))
+                if now - last_hb > 10.0:
+                    primary_dead = True
+
+            if primary_dead:
+                print(f"[*] Primary Master offline (>10s). HOT-STANDBY promoting to PRIMARY MASTER...")
+                claim_res = cluster_claim_leadership()
+                if claim_res == "MASTER":
+                    threading.Thread(target=cluster_master_heartbeat_loop, daemon=True).start()
+                    _original_bot_infinity_polling(*args, **kwargs)
+                    break
     else:
         print(f"[*] [{to_bold(NODE_ID)}] WORKER Active: Telegram polling bypassed to prevent Conflict 409.")
         while CLUSTER_ACTIVE:
             time.sleep(5)
-            m_info = firebase_sync_http("cluster/active_master", "GET")
+            primary = firebase_sync_http("cluster/active_master", "GET")
+            standby = firebase_sync_http("cluster/standby_master", "GET")
             now = time.time()
-            master_dead = False
-            if not m_info or not isinstance(m_info, dict):
-                master_dead = True
-            else:
-                last_hb = float(m_info.get("heartbeat", 0))
-                if now - last_hb > 15.0:
-                    master_dead = True
 
-            if master_dead:
-                print(f"[*] [{to_bold(NODE_ID)}] Master timeout detected (>15s). Attempting election promotion...")
-                if cluster_claim_master_leadership():
+            claim_needed = False
+            if not primary or not isinstance(primary, dict) or (now - float(primary.get("heartbeat", 0)) > 12.0):
+                if not standby or not isinstance(standby, dict) or (now - float(standby.get("heartbeat", 0)) > 12.0):
+                    claim_needed = True
+
+            if claim_needed:
+                print(f"[*] Master & Standby timeout detected. Attempting election promotion...")
+                new_role = cluster_claim_leadership()
+                if new_role == "MASTER":
                     threading.Thread(target=cluster_master_heartbeat_loop, daemon=True).start()
-                    print(f"[*] [{to_bold(NODE_ID)}] Promoted to MASTER! Starting Telegram polling...")
                     _original_bot_infinity_polling(*args, **kwargs)
                     break
 
