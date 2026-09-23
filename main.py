@@ -109,7 +109,7 @@ def cleanup_zombie_browsers():
 # ==========================================
 # 4. Configuration & Master/Worker Constants
 # ==========================================
-TOKEN = "8808949150:AAGSpz9tmSWxOiEHc6C7TjEmHikgO8bZR-A"
+TOKEN = "8808949150:AAG7kRdGWhozI5q6hNz7JRItCnXJtK793AQ"
 bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
 
 # Non-Headless execution inside VPS desktop display by default
