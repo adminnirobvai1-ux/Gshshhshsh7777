@@ -20,7 +20,7 @@ def install_and_import(package_name, import_name=None):
     try:
         __import__(import_name)
     except ImportError:
-        print(f"[*] Installing package: {package_name}...")
+        print(f"[*] Installing required package: {package_name}...")
         subprocess.check_call([sys.executable, "-m", "pip", "install", package_name])
 
 install_and_import("pyTelegramBotAPI", "telebot")
@@ -110,6 +110,9 @@ def cleanup_zombie_browsers():
 TOKEN = "8808949150:AAGSpz9tmSWxOiEHc6C7TjEmHikgO8bZR-A"
 bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
 
+# Set HEADLESS=true via environment to enable headless; defaults to visible VPS Desktop GUI
+HEADLESS_MODE = os.environ.get("HEADLESS", "false").lower() == "true"
+
 URL_AMARCLUB_LOGIN = "https://amarclub1.com/#/login"
 URL_DKWIN_LOGIN = "https://dkwin6.com/#/login"
 
@@ -163,7 +166,20 @@ PLATFORMS = {
 }
 
 # ==========================================
-# 5. TRUE ISOLATION: 1-Driver-per-Session Architecture
+# 5. Network Speed Check Helper
+# ==========================================
+def measure_network_latency(url: str, timeout: float = 3.0) -> float:
+    try:
+        start_ts = time.time()
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            response.read(256)
+        return round((time.time() - start_ts) * 1000, 2)
+    except Exception:
+        return 9999.0
+
+# ==========================================
+# 6. Session Allocation & Isolation Engine
 # ==========================================
 def allocate_session_tab(session_id, target_url):
     sess = active_sessions.get(session_id)
@@ -176,7 +192,9 @@ def allocate_session_tab(session_id, target_url):
     os.makedirs(profile_dir, exist_ok=True)
 
     options = Options()
-    options.add_argument("--headless")
+    if HEADLESS_MODE:
+        options.add_argument("--headless")
+
     options.add_argument("-profile")
     options.add_argument(profile_dir)
 
@@ -192,10 +210,10 @@ def allocate_session_tab(session_id, target_url):
     service = FirefoxService(log_output=os.devnull)
     driver = webdriver.Firefox(service=service, options=options)
 
-    driver.set_page_load_timeout(20)
+    driver.set_page_load_timeout(25)
     driver.set_script_timeout(15)
     driver.implicitly_wait(3)
-    driver.set_window_size(390, 844)
+    driver.set_window_size(412, 915)
 
     driver.get(target_url)
 
@@ -216,7 +234,6 @@ def safe_tab_execute(sid, task_fn, timeout=20.0):
 
     acquired = lock.acquire(timeout=5.0)
     if not acquired:
-        print(f"[*] Lock acquisition timed out for {sid}.")
         return None
 
     result_container = {"res": None, "error": None, "completed": False}
@@ -233,7 +250,6 @@ def safe_tab_execute(sid, task_fn, timeout=20.0):
     worker_thread.join(timeout=timeout)
 
     if not result_container["completed"]:
-        print(f"[*] safe_tab_execute watchdog triggered (> {timeout}s) for {sid}. Force-releasing lock.")
         try:
             lock.release()
         except RuntimeError:
@@ -249,7 +265,6 @@ def safe_tab_execute(sid, task_fn, timeout=20.0):
     gc.collect()
 
     if result_container["error"]:
-        print(f"[*] Execute error for {sid}: {result_container['error']}")
         return None
 
     return result_container["res"]
@@ -278,7 +293,7 @@ def close_session_tab(session_id):
     gc.collect()
 
 # ==========================================
-# 6. Smart Telegram Image Replacement Engine
+# 7. Telegram Media & Clean Replacement
 # ==========================================
 def display_or_replace_photo(chat_id, session_id, image_path, caption_text, reply_markup=None):
     sess = active_sessions.get(session_id, {})
@@ -309,8 +324,8 @@ def display_or_replace_photo(chat_id, session_id, image_path, caption_text, repl
                     parse_mode="HTML"
                 )
                 sess["live_photo_message_id"] = msg.message_id
-        except Exception as e:
-            print(f"[*] Photo replace error: {e}")
+        except Exception:
+            pass
 
     try:
         if os.path.exists(image_path):
@@ -320,8 +335,33 @@ def display_or_replace_photo(chat_id, session_id, image_path, caption_text, repl
     gc.collect()
 
 # ==========================================
-# 7. JavaScript Engines (Watchdog & Modals)
+# 8. In-Browser JavaScript Automation Engine
 # ==========================================
+MODAL_AUTO_DISMISSER_JS = """
+(function(){
+    if (window.__MODAL_DISMISSER_ACTIVE) return;
+    window.__MODAL_DISMISSER_ACTIVE = true;
+    const sweepModals = () => {
+        const selectors = [
+            '.van-dialog__confirm', '.dialog-confirm',
+            '.van-popup__close-icon', 'button[class*="close"]',
+            'button[class*="confirm"]', '.van-button--primary',
+            '.van-overlay', '.dialog-close', '.close-btn'
+        ];
+        selectors.forEach(sel => {
+            document.querySelectorAll(sel).forEach(el => {
+                if (el && el.offsetParent !== null && !el.closest('#sys-core-fin') && !el.closest('#_run_box')) {
+                    try { el.click(); } catch(e){}
+                }
+            });
+        });
+    };
+    setInterval(sweepModals, 1500);
+    const obs = new MutationObserver(() => sweepModals());
+    obs.observe(document.body, { childList: true, subtree: true });
+})();
+"""
+
 AUTO_FILL_AND_CLICK_JS = """
 const phone = arguments[0];
 const pass = arguments[1];
@@ -330,9 +370,9 @@ if (!window.location.hash.includes('login')) {
   window.location.hash = '#/login';
 }
 
-const initDialogConfirm = document.querySelector('.van-dialog__confirm, .dialog-confirm, button[class*="confirm"], .van-button--primary');
-if (initDialogConfirm) {
-    try { initDialogConfirm.click(); } catch(e){}
+const initConfirm = document.querySelector('.van-dialog__confirm, .dialog-confirm, button[class*="confirm"], .van-button--primary');
+if (initConfirm) {
+    try { initConfirm.click(); } catch(e){}
 }
 
 let elN = document.querySelector('input[type="tel"], input[placeholder*="phone" i], input[placeholder*="Phone" i]') || 
@@ -348,7 +388,7 @@ if (!elN || !elP || !elL) {
   return "NOT_READY";
 }
 
-const clearAndSetVal = (el, val) => {
+const clearAndSet = (el, val) => {
   el.focus();
   el.value = '';
   const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
@@ -361,10 +401,10 @@ const clearAndSetVal = (el, val) => {
   el.dispatchEvent(new Event('change', { bubbles: true }));
 };
 
-clearAndSetVal(elN, phone);
+clearAndSet(elN, phone);
 
 setTimeout(() => {
-  clearAndSetVal(elP, pass);
+  clearAndSet(elP, pass);
   setTimeout(() => {
     elL.click();
   }, 700);
@@ -387,21 +427,21 @@ if (dialog) {
         const confirmBtn = dialog.querySelector('.van-dialog__confirm, button[class*="confirm"], .van-button--danger, .van-button--primary, button');
         if (confirmBtn) {
             try { confirmBtn.click(); } catch(e){}
-            return { status: "CONFIRM_CLICKED", message: "Auto-confirmed already logged in prompt" };
+            return { status: "CONFIRM_CLICKED", message: "Auto-confirmed device prompt" };
         }
     }
 }
 
-const isBonusModal = bodyText.includes('BONUS DAILY RECHARGE') || 
-                     bodyText.includes('DAILY RECHARGE') || 
-                     bodyText.includes('Daily Bonus') ||
-                     bodyText.includes('Deposit Bonus') ||
-                     bodyText.includes('Announcement');
+const isBonus = bodyText.includes('BONUS DAILY RECHARGE') || 
+                bodyText.includes('DAILY RECHARGE') || 
+                bodyText.includes('Daily Bonus') ||
+                bodyText.includes('Deposit Bonus') ||
+                bodyText.includes('Announcement');
 
-if (isBonusModal) {
-    const confirmBtn = document.querySelector('.van-dialog__confirm, .dialog-confirm, button[class*="confirm"], button[class*="close"], .van-popup__close-icon');
-    if (confirmBtn) {
-        try { confirmBtn.click(); } catch(e){}
+if (isBonus) {
+    const closeBtn = document.querySelector('.van-dialog__confirm, .dialog-confirm, button[class*="confirm"], button[class*="close"], .van-popup__close-icon');
+    if (closeBtn) {
+        try { closeBtn.click(); } catch(e){}
     }
     return { status: "SUCCESS" };
 }
@@ -409,9 +449,7 @@ if (isBonusModal) {
 try {
     const t1 = localStorage.getItem('token') || localStorage.getItem('token_str') || localStorage.getItem('auth');
     const t2 = sessionStorage.getItem('token') || sessionStorage.getItem('auth');
-    if (t1 || t2) {
-        return { status: "SUCCESS" };
-    }
+    if (t1 || t2) return { status: "SUCCESS" };
 } catch(e){}
 
 if (!href.includes('/login') && (!hash.includes('login') || hash.length > 8)) {
@@ -426,7 +464,7 @@ if (toast && toast.innerText && toast.innerText.trim().length > 0) {
         if (loginBtn) {
             try { loginBtn.click(); } catch(e){}
         }
-        return { status: "PENDING", message: "Handling session takeover..." };
+        return { status: "PENDING", message: "Takeover session handling..." };
     }
     if (t.includes('password') || t.includes('incorrect') || t.includes('wrong') || t.includes('Account does not exist') || t.includes('frozen')) {
         return { status: "ERROR", message: t };
@@ -563,21 +601,6 @@ const autoTotalSteps = arguments[1];
     window.__WINGO_ST = st;
 
     let curApiIdx=0,isFetchingApi=false;
-    const VoiceEngine={
-        speak(msg,lang='en-US',rate=1.1){
-            if(!('speechSynthesis' in window))return;
-            try{
-                window.speechSynthesis.cancel();
-                let utter=new SpeechSynthesisUtterance(msg);
-                utter.lang=lang;
-                utter.rate=rate;
-                utter.pitch=1.2;
-                utter.volume=1;
-                window.speechSynthesis.speak(utter);
-            }catch(e){}
-        }
-    };
-
     let dTimeLeft=30;
     setInterval(()=>{
         let uClk=document.getElementById('ui-clk');
@@ -649,78 +672,36 @@ const autoTotalSteps = arguments[1];
     let p=document.createElement('div');
     p.id='sys-core-fin';
     p.style.cssText='position:fixed;width:170px;padding:4px;font-family:monospace;font-size:10px;z-index:9999999;color:#fff;user-select:none;border-radius:14px;overflow:visible;background:transparent;';
-    let sL=localStorage.getItem('drx_ui_x'),sT=localStorage.getItem('drx_ui_y');
-    if(sL&&sT){p.style.left=sL;p.style.top=sT;}else{p.style.top='20px';p.style.right='20px';}
-
-    let stl=document.createElement('style');
-    stl.innerHTML='@keyframes titlePulseAnim{0%{transform:scale(1);text-shadow:0 0 10px #00ff00;}50%{transform:scale(1.05);text-shadow:0 0 20px #00ff00,0 0 30px #fff;}100%{transform:scale(1);text-shadow:0 0 10px #00ff00;}}.drx-in{background:rgba(10,12,18,0.92);backdrop-filter:blur(6px);position:relative;overflow:visible;z-index:1;display:flex;flex-direction:column;height:100%;border-radius:12px;border:2px solid #00ff00;box-sizing:border-box;}input::-webkit-outer-spin-button,input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}.txt-blk{color:#fff;text-shadow:1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,0px 4px 5px #000;font-weight:900;letter-spacing:1px;}.txt-blk-accent{color:#00ff00;text-shadow:1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,0px 4px 5px #000;font-weight:900;letter-spacing:1px;}.txt-blk-warn{color:#ffcc00;text-shadow:1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,0px 4px 5px #000;font-weight:900;letter-spacing:1px;}.txt-blk-err{color:#f00;text-shadow:1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,0px 4px 5px #000;font-weight:900;letter-spacing:1px;}.txt-blk-cyan{color:#0ff;text-shadow:1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,0px 4px 5px #000;font-weight:900;letter-spacing:1px;}.txt-blk-mag{color:#f0f;text-shadow:1px 1px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,0px 4px 5px #000;font-weight:900;letter-spacing:1px;}.drx-elec-target{border-radius:8px!important;position:relative;z-index:9999!important;transition:all 0.1s;background:rgba(0,0,0,0.5)!important;border:2px solid #00ff00!important;}.drx-title-anim{display:inline-block;animation:titlePulseAnim 2s infinite ease-in-out;}';
-    document.body.appendChild(stl);
-    p.className='drx-wrap';
+    p.style.top='20px';p.style.right='20px';
 
     let inC=document.createElement('div');
-    inC.className='drx-in';
+    inC.style.cssText='background:rgba(10,12,18,0.92);position:relative;display:flex;flex-direction:column;height:100%;border-radius:12px;border:2px solid #00ff00;box-sizing:border-box;';
     let h=document.createElement('div');
-    h.style.cssText='padding:8px;font-size:12px;display:flex;justify-content:space-between;cursor:move;border-bottom:2px solid #000;background:transparent;';
-    h.innerHTML='<span class="txt-blk drx-title-anim" id="drx-title">' + uF('WINZY-MARTINGALE') + '</span><span style="cursor:pointer;" class="txt-blk-err" id="sys-cls">X</span>';
+    h.style.cssText='padding:8px;font-size:12px;display:flex;justify-content:space-between;border-bottom:2px solid #000;background:transparent;';
+    h.innerHTML='<span style="color:#00ff00;font-weight:900;">' + uF('WINZY-MARTINGALE') + '</span>';
     inC.appendChild(h);
-
-    let drg=false,sx,sy,sl,st_y;
-    function dSt(e){
-        if(e.target.tagName==='SPAN'&&e.target.id==='sys-cls')return;
-        drg=true;
-        let ev=e.type.includes('touch')?e.touches[0]:e;
-        sx=ev.clientX;sy=ev.clientY;
-        sl=p.offsetLeft;st_y=p.offsetTop;
-    }
-    function dMv(e){
-        if(!drg)return;
-        e.preventDefault();
-        let ev=e.type.includes('touch')?e.touches[0]:e;
-        p.style.left=(sl+ev.clientX-sx)+'px';
-        p.style.top=(st_y+ev.clientY-sy)+'px';
-    }
-    function dEn(){
-        drg=false;
-        localStorage.setItem('drx_ui_x',p.style.left);
-        localStorage.setItem('drx_ui_y',p.style.top);
-    }
-    h.addEventListener('mousedown',dSt);
-    document.addEventListener('mousemove',dMv);
-    document.addEventListener('mouseup',dEn);
-
-    h.querySelector('#sys-cls').onclick=()=>{
-        clearInterval(st.autoInt);
-        clearInterval(st.preScn);
-        if(st.balanceCheckInterval)clearInterval(st.balanceCheckInterval);
-        p.remove();
-        lkOvl.remove();
-        document.body.style.overflow='';
-    };
 
     let b=document.createElement('div');
     b.style.cssText='padding:10px;display:flex;flex-direction:column;gap:8px;background:transparent;';
 
     const p1=document.createElement('div');
-    p1.innerHTML='<div style="text-align:center;margin-bottom:8px;padding:6px;background:transparent;border-radius:6px;border:2px solid #000;"><span class="txt-blk" style="font-size:9px;color:#ccc;">' + uF('CURRENT BAL') + '</span><br><span id="pre-bal" class="txt-blk" style="font-size:15px;color:#fff;">--</span></div>';
+    p1.innerHTML='<div style="text-align:center;margin-bottom:8px;padding:6px;background:transparent;border-radius:6px;border:2px solid #000;"><span style="font-size:9px;color:#ccc;">' + uF('CURRENT BAL') + '</span><br><span id="pre-bal" style="font-size:15px;color:#fff;font-weight:bold;">--</span></div>';
 
     const tgtInp=document.createElement('input');
     tgtInp.type='number';
     tgtInp.value=autoTargetProfit || '';
-    tgtInp.placeholder='TARGET PROFIT (৳)';
-    tgtInp.className='txt-blk';
-    tgtInp.style.cssText='width:100%;box-sizing:border-box;padding:8px;margin-bottom:8px;background:transparent;border:2px solid #000;border-radius:4px;text-align:center;font-size:11px;outline:none;color:#fff;';
+    tgtInp.placeholder='TARGET PROFIT';
+    tgtInp.style.cssText='width:100%;box-sizing:border-box;padding:8px;margin-bottom:8px;background:transparent;border:2px solid #000;border-radius:4px;text-align:center;font-size:11px;color:#fff;';
 
     const stepInp=document.createElement('input');
     stepInp.type='number';
     stepInp.value=autoTotalSteps || 7;
-    stepInp.placeholder='TOTAL STEPS (e.g. 7)';
-    stepInp.className='txt-blk-cyan';
-    stepInp.style.cssText='width:100%;box-sizing:border-box;padding:8px;margin-bottom:8px;background:transparent;border:2px solid #000;border-radius:4px;text-align:center;font-size:11px;outline:none;color:#0ff;';
+    stepInp.placeholder='TOTAL STEPS';
+    stepInp.style.cssText='width:100%;box-sizing:border-box;padding:8px;margin-bottom:8px;background:transparent;border:2px solid #000;border-radius:4px;text-align:center;font-size:11px;color:#0ff;';
 
     const goBtn=document.createElement('button');
     goBtn.innerText=uF('START');
-    goBtn.className='txt-blk-accent';
-    goBtn.style.cssText='width:100%;box-sizing:border-box;padding:8px;background:transparent;border:2px solid #000;border-radius:4px;cursor:pointer;font-size:11px;font-weight:bold;transition:0.2s;';
+    goBtn.style.cssText='width:100%;box-sizing:border-box;padding:8px;background:transparent;border:2px solid #000;border-radius:4px;cursor:pointer;font-size:11px;font-weight:bold;color:#00ff00;';
 
     p1.appendChild(tgtInp);
     p1.appendChild(stepInp);
@@ -739,23 +720,24 @@ const autoTotalSteps = arguments[1];
 
     const balBx=document.createElement('div');
     balBx.style.cssText='padding:6px;text-align:center;background:transparent;border-radius:6px;border:2px solid #000;margin-bottom:6px;';
-    balBx.innerHTML='<div class="txt-blk" style="font-size:9px;color:#ccc;">' + uF('LIVE BAL / PROFIT') + '</div><div id="ui-bal" class="txt-blk" style="font-size:16px;color:#fff;">--</div>';
+    balBx.innerHTML='<div style="font-size:9px;color:#ccc;">' + uF('LIVE BAL / PROFIT') + '</div><div id="ui-bal" style="font-size:16px;color:#fff;font-weight:bold;">--</div>';
 
-    let aiRow='<div style="display:flex;justify-content:space-between;border-bottom:2px dashed #000;"><span class="txt-blk" style="color:#ccc;">' + uF('AI:') + '</span><span id="ui-ai" class="txt-blk-cyan">VIP JSON API</span></div>';
     const infBx=document.createElement('div');
-    infBx.style.cssText='padding:6px;font-size:10px;line-height:2;background:transparent;border-radius:6px;border:2px solid #000;position:relative;overflow:hidden;';
-    infBx.innerHTML=aiRow+'<div style="display:flex;justify-content:space-between;border-bottom:2px dashed #000;"><span class="txt-blk" style="color:#ccc;">' + uF('TGT:') + '</span><span id="ui-tgt" class="txt-blk" style="color:#fff;">0</span></div>' + '<div style="display:flex;justify-content:space-between;border-bottom:2px dashed #000;"><span class="txt-blk" style="color:#ccc;">' + uF('STP:') + '</span><span id="ui-bet" class="txt-blk-warn" style="color:#ffcc00;cursor:pointer;">5</span></div>' + '<div style="display:flex;justify-content:space-between;border-bottom:2px dashed #000;"><span class="txt-blk" style="color:#ccc;">' + uF('CLK:') + '</span><span id="ui-clk" class="txt-blk" style="color:#fff;">00:30</span></div>' + '<div style="display:flex;justify-content:space-between;border-bottom:2px dashed #000;"><span class="txt-blk" style="color:#ccc;">' + uF('STS:') + '</span><span id="ui-sts" class="txt-blk" style="color:#fff;">' + uF('WAIT') + '</span></div>';
+    infBx.style.cssText='padding:6px;font-size:10px;line-height:2;background:transparent;border-radius:6px;border:2px solid #000;';
+    infBx.innerHTML='<div style="display:flex;justify-content:space-between;"><span style="color:#ccc;">TGT:</span><span id="ui-tgt" style="color:#fff;">0</span></div>' +
+                    '<div style="display:flex;justify-content:space-between;"><span style="color:#ccc;">STP:</span><span id="ui-bet" style="color:#ffcc00;">5</span></div>' +
+                    '<div style="display:flex;justify-content:space-between;"><span style="color:#ccc;">CLK:</span><span id="ui-clk" style="color:#fff;">00:30</span></div>' +
+                    '<div style="display:flex;justify-content:space-between;"><span style="color:#ccc;">STS:</span><span id="ui-sts" style="color:#00ff00;">' + uF('WAIT') + '</span></div>';
 
     const ghBox=document.createElement('div');
     ghBox.id='gh-box-wrap';
-    ghBox.style.cssText='width:100%;height:26px;background:transparent;border:2px solid #000;border-radius:4px;padding:2px 4px;margin-top:4px;box-sizing:border-box;overflow:hidden;display:flex;flex-direction:column;justify-content:center;';
-    ghBox.innerHTML='<div id="gh-content" class="txt-blk" style="font-size:7.5px;line-height:1.2;color:#fff;white-space:pre-wrap;text-align:left;width:100%;">Syncing API...</div>';
+    ghBox.style.cssText='width:100%;height:26px;background:transparent;border:2px solid #000;border-radius:4px;padding:2px 4px;margin-top:4px;box-sizing:border-box;overflow:hidden;';
+    ghBox.innerHTML='<div id="gh-content" style="font-size:7.5px;line-height:1.2;color:#fff;">Syncing VIP API...</div>';
     infBx.appendChild(ghBox);
 
     const stpBtn=document.createElement('button');
     stpBtn.innerText=uF('STOP');
-    stpBtn.className='txt-blk-err';
-    stpBtn.style.cssText='width:100%;padding:8px;background:transparent;border:2px solid #000;border-radius:4px;cursor:pointer;font-size:11px;margin-top:6px;transition:0.2s;';
+    stpBtn.style.cssText='width:100%;padding:8px;background:transparent;border:2px solid #000;border-radius:4px;cursor:pointer;font-size:11px;margin-top:6px;color:#f00;font-weight:bold;';
 
     p2.appendChild(balBx);
     p2.appendChild(infBx);
@@ -767,95 +749,57 @@ const autoTotalSteps = arguments[1];
     p.appendChild(inC);
     document.body.appendChild(p);
 
-    const drx_triggerEvent=(el,etype)=>{
-        let ev=new Event(etype,{bubbles:true,cancelable:true});
-        el.dispatchEvent(ev);
-    };
-
     const drx_simClick=el=>{
         if(!el)return;
-        ['pointerdown','mousedown','touchstart','pointerup','mouseup','touchend','click'].forEach(evt=>{
-            try{
-                el.dispatchEvent(new MouseEvent(evt,{bubbles:true,cancelable:true,view:window}));
-            }catch(e){}
+        ['pointerdown','mousedown','pointerup','mouseup','click'].forEach(evt=>{
+            try{ el.dispatchEvent(new MouseEvent(evt,{bubbles:true,cancelable:true,view:window})); }catch(e){}
         });
+        if(typeof el.click === 'function') el.click();
     };
 
     const exeTrd=(pred,amt,cb)=>{
         try{
-            let btn=null,targetText=pred.toLowerCase(),btns=document.querySelectorAll('button, div, span');
+            let btn=null,tText=pred.toLowerCase(),btns=document.querySelectorAll('button, div, span');
             for(let i=0;i<btns.length;i++){
                 let t=(btns[i].innerText||'').trim().toLowerCase();
-                if(t===targetText&&btns[i].offsetParent&&!btns[i].children.length){
+                if(t===tText&&btns[i].offsetParent&&!btns[i].children.length){
                     btn=btns[i];
                     break;
                 }
             }
             if(!btn){
-                if(targetText==='big')btn=document.querySelector('.Betting__C-foot-b');
-                else if(targetText==='small')btn=document.querySelector('.Betting__C-foot-s');
-                else if(targetText==='green')btn=document.querySelector('button[class*="green"], div[class*="green"]');
-                else if(targetText==='red')btn=document.querySelector('button[class*="red"], div[class*="red"]');
-                else if(targetText==='violet')btn=document.querySelector('button[class*="violet"], div[class*="violet"]');
+                if(tText==='big')btn=document.querySelector('.Betting__C-foot-b');
+                else if(tText==='small')btn=document.querySelector('.Betting__C-foot-s');
             }
-            if(!btn){
-                if(cb)cb(false);
-                return;
-            }
-            btn.classList.add('drx-elec-target');
+            if(!btn){ if(cb)cb(false); return; }
             drx_simClick(btn);
 
-            let checkAttempts=0,valInterval=setInterval(()=>{
-                checkAttempts++;
+            let attempts=0,valInt=setInterval(()=>{
+                attempts++;
                 let inpEl=document.querySelector("input[type='number'], input.van-field__control");
-                if(inpEl||checkAttempts>15){
-                    clearInterval(valInterval);
+                if(inpEl||attempts>15){
+                    clearInterval(valInt);
                     if(inpEl){
                         inpEl.focus();
-                        let setV=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,"value").set;
-                        if(setV)setV.call(inpEl,String(amt));
-                        else inpEl.value=amt;
-                        drx_triggerEvent(inpEl,'input');
-                        drx_triggerEvent(inpEl,'change');
-                        drx_triggerEvent(inpEl,'blur');
+                        inpEl.value=amt;
+                        inpEl.dispatchEvent(new Event('input',{bubbles:true}));
+                        inpEl.dispatchEvent(new Event('change',{bubbles:true}));
                     }
                     setTimeout(()=>{
                         let dEl=document.querySelector('button.bet-amount, button[class*="bet-amount"]');
-                        if(dEl){
-                            drx_simClick(dEl);
-                        }else{
+                        if(dEl) drx_simClick(dEl);
+                        else {
                             document.querySelectorAll('button').forEach(b=>{
-                                if((b.innerText||'').includes('Total amount')&&b.offsetParent)drx_simClick(b);
+                                if((b.innerText||'').includes('Total amount')&&b.offsetParent) drx_simClick(b);
                             });
                         }
-                        btn.classList.remove('drx-elec-target');
-                        setTimeout(()=>{if(cb)cb(true);},2000);
+                        setTimeout(()=>{if(cb)cb(true);},1800);
                     },800);
                 }
             },200);
         }catch(e){
             if(cb)cb(false);
         }
-    };
-
-    const scnUI=cb=>{
-        let ov=document.createElement('div');
-        ov.style.cssText='position:fixed;top:0;left:0;width:100vw;height:100vh;background:transparent;z-index:9999998;pointer-events:none;overflow:hidden;';
-        let cBase='#00ff00',rL=document.createElement('div');
-        rL.style.cssText='position:absolute;width:100%;height:2px;background:' + cBase + ';box-shadow:0 0 10px 3px ' + cBase + ';animation:sR 0.6s linear infinite alternate;';
-        let gL=document.createElement('div');
-        gL.style.cssText='position:absolute;height:100%;width:3px;background:' + cBase + ';box-shadow:0 0 15px 5px ' + cBase + ';animation:sG 0.6s cubic-bezier(0.25,0.1,0.25,1) infinite alternate;';
-        let sS=document.createElement('style');
-        sS.innerHTML='@keyframes sR{0%{top:-10px;}100%{top:100vh;}}@keyframes sG{0%{left:-10px;}100%{left:100vw;}}';
-        document.head.appendChild(sS);
-        ov.appendChild(rL);
-        ov.appendChild(gL);
-        document.body.appendChild(ov);
-        setTimeout(()=>{
-            ov.remove();
-            sS.remove();
-            if(cb)cb();
-        },1500);
     };
 
     const getNextLivePeriod=str=>{
@@ -879,13 +823,10 @@ const autoTotalSteps = arguments[1];
             if(st.curBal>=st.tgtAmt&&st.curBal>0){
                 uBal.innerText=uF(st.curBal.toFixed(2) + ' (DONE)');
                 uSts.innerText=uF('DONE');
-                uSts.className='txt-blk-accent';
                 stpBtn.style.display='none';
-                VoiceEngine.speak("Target reached successfully.");
                 st.isRun=false;
                 clearInterval(st.autoInt);
                 lkOvl.style.display='none';
-                document.body.style.overflow='';
                 return;
             }else{
                 uBal.innerText=uF(st.curBal>0?st.curBal.toFixed(2):'--');
@@ -895,9 +836,9 @@ const autoTotalSteps = arguments[1];
             let dataArray = null;
             try {
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 3500);
+                const tid = setTimeout(() => controller.abort(), 3500);
                 let res = await fetch("https://data-vip-247-hack.ai.studio/apipid.json?ts=" + ts, { signal: controller.signal });
-                clearTimeout(timeoutId);
+                clearTimeout(tid);
                 dataArray = await res.json();
             } catch(e) {
                 isFetchingApi = false;
@@ -913,27 +854,14 @@ const autoTotalSteps = arguments[1];
                         if(st.lastPred===actualR){
                             st.w++;
                             st.stpIdx=0;
-                            st.cur_w_streak++;
-                            st.cur_l_streak=0;
-                            if(st.cur_w_streak>st.max_w_streak) st.max_w_streak=st.cur_w_streak;
                         }else{
                             st.l++;
                             st.stpIdx=Math.min(st.stpIdx+1,st.dynSeq.length-1);
-                            curApiIdx=(curApiIdx===0&&dataArray.length>1)?1:0;
-                            st.cur_l_streak++;
-                            st.cur_w_streak=0;
-                            if(st.cur_l_streak>st.max_l_streak) st.max_l_streak=st.cur_l_streak;
                         }
                     }
                     st.lastPeriod=cSig;
-                    let timeLeft=dTimeLeft;
-                    if(timeLeft<=cfg.minSf){
-                        uSts.innerText=uF('<10S');
-                        uSts.className='txt-blk-warn';
-                    }
                     st.isTrd=true;
                     uSts.innerText=uF('CHK...');
-                    uSts.className='txt-blk-warn';
                     let nBal=chkBal();
                     uBal.innerText=uF(nBal.toFixed(2));
                     if(nBal>=st.tgtAmt&&nBal>0){
@@ -943,17 +871,15 @@ const autoTotalSteps = arguments[1];
                     }
                     if(st.stpIdx>=st.dynSeq.length)st.stpIdx=st.dynSeq.length-1;
                     let tAmt=st.manualOverrideBet?st.manualOverrideBet:st.dynSeq[st.stpIdx];
-                    uBet.innerText=uF(st.manualOverrideBet?tAmt+' (FIX)':(tAmt + ' (S' + (st.stpIdx+1) + ')'));
+                    uBet.innerText=uF(tAmt + ' (S' + (st.stpIdx+1) + ')');
                     if(nBal<tAmt){
                         uSts.innerText=uF('LOW');
-                        uSts.className='txt-blk-err';
                         st.stpIdx=0;
                         st.isTrd=false;
                         isFetchingApi=false;
                         return;
                     }
                     uSts.innerText=uF('DB...');
-                    uSts.className='txt-blk-cyan';
                     setTimeout(()=>{
                         let activeLogicNew=dataArray[curApiIdx],prediction=(activeLogicNew.pred||'BIG').toUpperCase();
                         st.lastPred=prediction;
@@ -961,27 +887,17 @@ const autoTotalSteps = arguments[1];
                         if(ghC)ghC.textContent='Step: ' + (st.stpIdx+1) + '/' + st.dynSeq.length + ' (Amt: ' + tAmt + ')\\nPred: ' + prediction + ' | W:' + st.w + ' L:' + st.l;
                         if(prediction==='SKIP'){
                             uSts.innerText=uF('SKIP');
-                            uSts.className='txt-blk-warn';
                             sessionStorage.setItem('drx_sig',cSig);
                             setTimeout(()=>{st.isTrd=false;},1000);
                         }else{
                             uSts.innerText=uF('EXC...');
-                            uSts.className='txt-blk';
                             exeTrd(prediction,tAmt,(suc)=>{
                                 if(suc){
                                     uSts.innerText=uF('OK');
-                                    uSts.className='txt-blk-accent';
                                     sessionStorage.setItem('drx_sig',cSig);
-                                    sessionStorage.setItem('drx_p_bal',st.curBal);
                                     st.tradesDone++;
-                                    if(st.tradesDone > 0 && st.tradesDone % 50 === 0){
-                                        try {
-                                            document.querySelectorAll('iframe, .van-toast').forEach(el => el.remove());
-                                        } catch(e){}
-                                    }
                                 }else{
                                     uSts.innerText=uF('ERR');
-                                    uSts.className='txt-blk-err';
                                 }
                                 setTimeout(()=>{st.isTrd=false;},1000);
                             });
@@ -989,7 +905,6 @@ const autoTotalSteps = arguments[1];
                     },1800);
                 }else if(!st.isTrd){
                     uSts.innerText=uF('SCAN');
-                    uSts.className='txt-blk';
                 }
             }
         }catch(e){
@@ -1006,94 +921,55 @@ const autoTotalSteps = arguments[1];
                 st.isTrd = false;
                 isFetchingApi = false;
                 tradeStartTs = 0;
-                document.querySelectorAll('.drx-elec-target').forEach(el => el.classList.remove('drx-elec-target'));
                 const uSts = document.getElementById('ui-sts');
-                if (uSts) { uSts.innerText = uF('RST'); uSts.className = 'txt-blk-warn'; }
+                if (uSts) uSts.innerText = uF('RST');
             }
         } else {
             tradeStartTs = 0;
         }
     }, 3000);
 
-    setInterval(() => {
-        try {
-            const dismissSels = [
-                '.van-dialog__confirm', '.dialog-confirm',
-                '.van-popup__close-icon', 'button[class*="close"]',
-                'button[class*="confirm"]', '.van-button--primary',
-                '.van-overlay'
-            ];
-            dismissSels.forEach(sel => {
-                document.querySelectorAll(sel).forEach(el => {
-                    if (el && el.offsetParent !== null && !el.closest('#sys-core-fin') && !el.closest('#_run_box')) {
-                        el.click();
-                    }
-                });
-            });
-        } catch(e){}
-    }, 2500);
-
-    if (!window.__WINGO_WDOG) {
-        window.__WINGO_WDOG = setInterval(() => {
-            if (window.__WINGO_ST && window.__WINGO_ST.isRun && !window.__WINGO_ST.autoInt) {
-                window.__WINGO_ST.autoInt = setInterval(apiLoopTask, 1000);
-            }
-        }, 4000);
-    }
-
     goBtn.onclick=()=>{
         let inputTarget=parseFloat(tgtInp.value);
         if(!inputTarget||inputTarget<=0){
-            alert('Please enter Target Profit Amount!');
+            alert('Please enter target profit amount!');
             tgtInp.focus();
             return;
         }
         let inputSteps=parseInt(stepInp.value)||1;
-        if(inputSteps<=0)inputSteps=1;
-        st.totalSteps=inputSteps;
+        st.totalSteps=inputSteps<=0?1:inputSteps;
         clearInterval(st.preScn);
         st.tradesDone=0;
         st.w=0;
         st.l=0;
-        curApiIdx=0;
         let liveB=chkBal();
         st.startBal=liveB;
         st.tgtAmt=(inputTarget<=liveB)?(liveB+inputTarget):inputTarget;
         st.dynSeq=generateSmartSequence(liveB,st.totalSteps);
         st.stpIdx=0;
-        VoiceEngine.speak("Engine started with smart step calculation.");
-        scnUI(()=>{
-            sessionStorage.removeItem('drx_sig');
-            sessionStorage.removeItem('drx_p_bal');
-            document.getElementById('ui-tgt').innerText=uF(st.tgtAmt.toFixed(0));
-            p1.style.display='none';
-            p2.style.display='block';
-            lkOvl.style.display='block';
-            document.body.style.overflow='hidden';
-            st.isRun=true;
-            st.isTrd=false;
-            document.getElementById('ui-sts').innerText=uF('RDY');
-            st.autoInt=setInterval(apiLoopTask,1000);
-        });
+        sessionStorage.removeItem('drx_sig');
+        document.getElementById('ui-tgt').innerText=uF(st.tgtAmt.toFixed(0));
+        p1.style.display='none';
+        p2.style.display='block';
+        lkOvl.style.display='block';
+        st.isRun=true;
+        st.isTrd=false;
+        document.getElementById('ui-sts').innerText=uF('RDY');
+        st.autoInt=setInterval(apiLoopTask,1000);
     };
 
     stpBtn.onclick=()=>{
         st.isRun=false;
         clearInterval(st.autoInt);
         sessionStorage.removeItem('drx_sig');
-        sessionStorage.removeItem('drx_p_bal');
         document.getElementById('ui-sts').innerText=uF('HLT');
-        document.getElementById('ui-sts').className='txt-blk-err';
         lkOvl.style.display='none';
-        document.body.style.overflow='';
         p2.style.display='none';
         p1.style.display='block';
     };
 
     if (autoTargetProfit && autoTotalSteps) {
-        setTimeout(() => {
-            goBtn.click();
-        }, 1200);
+        setTimeout(() => { goBtn.click(); }, 1200);
     }
 
     return "INJECTED_SUCCESSFULLY";
@@ -1101,138 +977,7 @@ const autoTotalSteps = arguments[1];
 """
 
 # ==========================================
-# 8. Dynamic Multilingual Templates
-# ==========================================
-def get_text(chat_id, key, **kwargs):
-    sess = user_sessions.get(chat_id, {})
-    lang = sess.get("lang", "bn")
-
-    messages = {
-        "bn": {
-            "welcome": (
-                f"<b>{to_bold('WINGO 30S VIP AUTOMATION')}</b>\n\n"
-                f"স্বাগতম আপনাকে প্রিমিয়াম উইনগো ট্রেডিং অটোমেশন প্ল্যাটফর্মে।\n"
-                f"দয়া করে আপনার পছন্দের ভাষা নির্বাচন করুন:"
-            ),
-            "choose_site": (
-                f"<b>{to_bold('SELECT PLATFORM')}</b>\n\n"
-                f"আসসালামু আলাইকুম, দয়া করে আপনি আপনার একটি ট্রেডিং সাইট নির্বাচন করুন:"
-            ),
-            "credentials_card": (
-                f"<b>{to_bold('ACCOUNT LOGIN')}</b>\n\n"
-                f"প্ল্যাটফর্ম: <b>{kwargs.get('site_name', '')}</b>\n\n"
-                f"আসসালামু আলাইকুম, দয়া করে নিচের বাটন চেপে আপনার নাম্বার এবং পাসওয়ার্ড দিন। "
-                f"এটি সম্পূর্ণ গোপন থাকবে এবং কাজ শেষে চ্যাট থেকে মুছে যাবে।"
-            ),
-            "ask_number": (
-                f"<b>{to_bold('ACCOUNT NUMBER')}</b>\n\n"
-                f"আপনার একাউন্ট নাম্বার (ফোন নাম্বার) লিখে পাঠান:"
-            ),
-            "ask_password": (
-                f"<b>{to_bold('ACCOUNT PASSWORD')}</b>\n\n"
-                f"আপনার একাউন্টের পাসওয়ার্ড লিখে পাঠান:"
-            ),
-            "login_success": (
-                f"<b>{to_bold('LOGIN SUCCESSFUL')}</b>\n\n"
-                f"Platform: <b>{kwargs.get('site_name', '')}</b>\n"
-                f"Account: <code>{kwargs.get('phone', '')}</code>\n\n"
-                f"লগইন সফল হয়েছে। ট্রেডিং শুরু করতে নিচে <b>START</b> বাটন চাপুন:"
-            ),
-            "login_failed": (
-                f"<b>{to_bold('LOGIN FAILED')}</b>\n\n"
-                f"Platform: <b>{kwargs.get('site_name', '')}</b>\n"
-                f"Reason: <i>{kwargs.get('error', 'ভুল তথ্য বা টাইমআউট')}</i>\n\n"
-                f"পুনরায় চেষ্টা করার জন্য /start চাপুন।"
-            ),
-            "input_target": (
-                f"<b>{to_bold('TARGET PROFIT')}</b>\n\n"
-                f"বর্তমান ব্যালেন্স: <code>৳ {kwargs.get('balance', '0.00')}</code>\n\n"
-                f"আপনি কত টাকা প্রফিট করতে চান? পরিমাণটি লিখুন (যেমন: <code>500</code>):"
-            ),
-            "input_steps": (
-                f"<b>{to_bold('MARTINGALE STEPS')}</b>\n\n"
-                f"টার্গেট প্রফিট: <code>৳ {kwargs.get('target', 0)}</code>\n\n"
-                f"মার্টিনগেল ব্যাকআপ স্টেপ সংখ্যা লিখুন (যেমন: <code>7</code> বা <code>10</code>):"
-            ),
-            "running_dashboard": (
-                f"<b>{to_bold('24/7 AUTOMATION ENGINE ACTIVE')}</b>\n\n"
-                f"Platform: <b>{kwargs.get('site_name', '')}</b>\n"
-                f"Starting Balance: <code>৳ {kwargs.get('start_bal', '0.00')}</code>\n"
-                f"Target Balance: <code>৳ {kwargs.get('target_bal', '0.00')}</code>\n"
-                f"Total Steps: <b>{kwargs.get('steps', 7)}</b>\n\n"
-                f"Trading automatically in background 24/7.\n"
-                f"<b>LIVE STATUS</b>: মার্টিনগেল ইঞ্জিন সফলভাবে সচল রয়েছে।"
-            ),
-            "cancelled": (
-                f"<b>{to_bold('SESSION TERMINATED')}</b>\n\n"
-                f"বর্তমান সেশনটি সুন্দরভাবে বন্ধ করা হয়েছে। নতুন সেশনের জন্য /start পাঠান।"
-            )
-        },
-        "en": {
-            "welcome": (
-                f"<b>{to_bold('WINGO 30S VIP AUTOMATION')}</b>\n\n"
-                f"Welcome to the high-tech WinGo Auto-Trading Platform.\n"
-                f"Please choose your preferred language:"
-            ),
-            "choose_site": (
-                f"<b>{to_bold('SELECT PLATFORM')}</b>\n\n"
-                f"Please select your trading platform:"
-            ),
-            "credentials_card": (
-                f"<b>{to_bold('ACCOUNT LOGIN')}</b>\n\n"
-                f"Platform: <b>{kwargs.get('site_name', '')}</b>\n"
-                f"Please click buttons below to provide your Number and Password. "
-                f"Credentials will be hidden and auto-deleted immediately for security."
-            ),
-            "ask_number": (
-                f"<b>{to_bold('ACCOUNT NUMBER')}</b>\n\n"
-                f"Enter your account phone number:"
-            ),
-            "ask_password": (
-                f"<b>{to_bold('ACCOUNT PASSWORD')}</b>\n\n"
-                f"Enter your account password:"
-            ),
-            "login_success": (
-                f"<b>{to_bold('LOGIN SUCCESSFUL')}</b>\n\n"
-                f"Platform: <b>{kwargs.get('site_name', '')}</b>\n"
-                f"Account: <code>{kwargs.get('phone', '')}</code>\n\n"
-                f"Login completed. Press <b>START</b> below to configure and run trading:"
-            ),
-            "login_failed": (
-                f"<b>{to_bold('LOGIN FAILED')}</b>\n\n"
-                f"Platform: <b>{kwargs.get('site_name', '')}</b>\n"
-                f"Reason: <i>{kwargs.get('error', 'Invalid credentials')}</i>\n\n"
-                f"Type /start to retry."
-            ),
-            "input_target": (
-                f"<b>{to_bold('TARGET PROFIT')}</b>\n\n"
-                f"Current Balance: <code>৳ {kwargs.get('balance', '0.00')}</code>\n\n"
-                f"Enter target profit amount (e.g. <code>500</code>):"
-            ),
-            "input_steps": (
-                f"<b>{to_bold('MARTINGALE STEPS')}</b>\n\n"
-                f"Target Profit: <code>৳ {kwargs.get('target', 0)}</code>\n\n"
-                f"Enter Martingale backup steps (e.g. <code>7</code> or <code>10</code>):"
-            ),
-            "running_dashboard": (
-                f"<b>{to_bold('24/7 AUTOMATION ENGINE ACTIVE')}</b>\n\n"
-                f"Platform: <b>{kwargs.get('site_name', '')}</b>\n"
-                f"Starting Balance: <code>৳ {kwargs.get('start_bal', '0.00')}</code>\n"
-                f"Target Balance: <code>৳ {kwargs.get('target_bal', '0.00')}</code>\n"
-                f"Total Steps: <b>{kwargs.get('steps', 7)}</b>\n\n"
-                f"Trading automatically in background 24/7.\n"
-                f"<b>LIVE STATUS</b>: Martingale engine running smoothly."
-            ),
-            "cancelled": (
-                f"<b>{to_bold('SESSION TERMINATED')}</b>\n\n"
-                f"Active browser session closed cleanly. Send /start to begin a new session."
-            )
-        }
-    }
-    return messages.get(lang, messages["bn"]).get(key, "")
-
-# ==========================================
-# 9. Interactive Control Keyboards
+# 9. Clean English Interactive Keyboards
 # ==========================================
 def get_credentials_keyboard(sid):
     sess = active_sessions.get(sid, {})
@@ -1297,12 +1042,12 @@ def get_trading_control_keyboard(sid):
 def get_channel_join_keyboard():
     markup = InlineKeyboardMarkup(row_width=1)
     markup.add(
-        InlineKeyboardButton(f"{to_bold('JOIN CHANNEL')}", url=CHANNEL_URL),
-        InlineKeyboardButton(f"{to_bold('CHECK JOINED')}", callback_data="check_channel_joined")
+        InlineKeyboardButton(f"{to_bold('JOIN OFFICIAL CHANNEL')}", url=CHANNEL_URL),
+        InlineKeyboardButton(f"{to_bold('VERIFY MEMBERSHIP')}", callback_data="check_channel_joined")
     )
     return markup
 
-def get_passkey_keyboard():
+def get_passkey_gate_keyboard():
     markup = InlineKeyboardMarkup(row_width=2)
     markup.add(
         InlineKeyboardButton(f"{to_bold('ENTER PASSKEY')}", callback_data="btn_enter_pass"),
@@ -1327,16 +1072,75 @@ def get_six_platform_keyboard():
     return markup
 
 # ==========================================
-# 10. Gateway & Security Helpers
+# 10. Passkey Storage & Management Helpers
+# ==========================================
+def generate_24h_passkey() -> str:
+    token_str = "KEY-" + uuid.uuid4().hex[:6].upper()
+    now_ts = time.time()
+    payload = {
+        "created_at": now_ts,
+        "expires_at": now_ts + 86400,
+        "valid_hours": 24,
+        "status": "active"
+    }
+    firebase_sync_http(f"passkeys/{token_str}", "PUT", payload)
+    return token_str
+
+def revoke_passkey(key_str: str):
+    firebase_sync_http(f"passkeys/{key_str}", "DELETE")
+
+def get_all_passkeys() -> dict:
+    data = firebase_sync_http("passkeys", "GET")
+    if not data or not isinstance(data, dict):
+        return {}
+    now_ts = time.time()
+    valid_keys = {}
+    for k, v in list(data.items()):
+        if isinstance(v, dict):
+            exp = float(v.get("expires_at", 0))
+            if exp > now_ts:
+                valid_keys[k] = v
+            else:
+                revoke_passkey(k)
+    return valid_keys
+
+def get_passkey_menu_keyboard():
+    markup = InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        InlineKeyboardButton(f"{to_bold('GENERATE NEW 24H PASSKEY')}", callback_data="pk_gen_new"),
+        InlineKeyboardButton(f"{to_bold('VIEW ACTIVE PASSKEYS')}", callback_data="pk_list_active"),
+        InlineKeyboardButton(f"{to_bold('REVOKE PASSKEY')}", callback_data="pk_prompt_revoke")
+    )
+    return markup
+
+# ==========================================
+# 11. Admin Control Dashboard Keyboards
+# ==========================================
+def get_admin_dashboard_keyboard():
+    markup = InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        InlineKeyboardButton(f"{to_bold('WORKER STATUS')}", callback_data="adm_workers"),
+        InlineKeyboardButton(f"{to_bold('ACTIVE LOGINS')}", callback_data="adm_logins")
+    )
+    markup.add(
+        InlineKeyboardButton(f"{to_bold('SPEED TEST / PING')}", callback_data="adm_ping"),
+        InlineKeyboardButton(f"{to_bold('PASSKEY MANAGER')}", callback_data="adm_passkeys")
+    )
+    markup.add(
+        InlineKeyboardButton(f"{to_bold('TASK COMPLETED MONITOR')}", callback_data="adm_tasks"),
+        InlineKeyboardButton(f"{to_bold('REFRESH')}", callback_data="adm_refresh")
+    )
+    return markup
+
+# ==========================================
+# 12. Authentication Helpers
 # ==========================================
 def check_channel_membership(user_id):
     if user_id == SUPER_ADMIN_ID:
         return True
     try:
         member = bot.get_chat_member(CHANNEL_USERNAME, user_id)
-        if member.status in ['creator', 'administrator', 'member']:
-            return True
-        return False
+        return member.status in ['creator', 'administrator', 'member']
     except Exception:
         return True
 
@@ -1344,11 +1148,10 @@ def is_user_pass_valid(chat_id):
     if chat_id == SUPER_ADMIN_ID:
         return True
     u = user_sessions.get(chat_id, {})
-    pass_exp = u.get("pass_expiry", 0)
-    return time.time() < pass_exp
+    return time.time() < u.get("pass_expiry", 0)
 
 # ==========================================
-# 11. Clean Login Animation & Engine Auth
+# 13. Clean Login Animation & Engine Auth
 # ==========================================
 def play_clean_login_animation(chat_id, msg_id):
     frames = [
@@ -1362,7 +1165,7 @@ def play_clean_login_animation(chat_id, msg_id):
             bot.edit_message_text(frame, chat_id=chat_id, message_id=msg_id)
         except Exception:
             pass
-        time.sleep(0.4)
+        time.sleep(0.35)
 
 def process_login(chat_id, sid, phone, password, anim_msg_id):
     sess = active_sessions.get(sid, {})
@@ -1374,16 +1177,15 @@ def process_login(chat_id, sid, phone, password, anim_msg_id):
 
     try:
         driver, handle = allocate_session_tab(sid, login_url)
+        safe_tab_execute(sid, lambda drv: drv.execute_script(MODAL_AUTO_DISMISSER_JS))
     except Exception as e:
         safe_delete_message(chat_id, anim_msg_id)
-        bot.send_message(chat_id, get_text(chat_id, "login_failed", site_name=site_name, error=str(e)))
+        bot.send_message(chat_id, f"<b>{to_bold('LOGIN FAILED')}</b>\n\nPlatform: <b>{site_name}</b>\nReason: <i>{e}</i>")
         return
 
     fill_ok = False
     for _ in range(70):
-        def _fill(drv):
-            return drv.execute_script(AUTO_FILL_AND_CLICK_JS, phone, password)
-        res = safe_tab_execute(sid, _fill)
+        res = safe_tab_execute(sid, lambda drv: drv.execute_script(AUTO_FILL_AND_CLICK_JS, phone, password))
         if res == "SUCCESS":
             fill_ok = True
             time.sleep(2.0)
@@ -1392,16 +1194,14 @@ def process_login(chat_id, sid, phone, password, anim_msg_id):
 
     if not fill_ok:
         safe_delete_message(chat_id, anim_msg_id)
-        bot.send_message(chat_id, get_text(chat_id, "login_failed", site_name=site_name, error="লগইন ফর্ম পাওয়া যায়নি"))
+        bot.send_message(chat_id, f"<b>{to_bold('LOGIN FAILED')}</b>\n\nPlatform: <b>{site_name}</b>\nReason: <i>Login form not found.</i>")
         close_session_tab(sid)
         return
 
     login_status = "PENDING"
     err_detail = ""
     for _ in range(40):
-        def _chk(drv):
-            return drv.execute_script(CHECK_LOGIN_STATUS_JS)
-        res = safe_tab_execute(sid, _chk)
+        res = safe_tab_execute(sid, lambda drv: drv.execute_script(CHECK_LOGIN_STATUS_JS))
         if isinstance(res, dict):
             if res.get("status") == "SUCCESS":
                 login_status = "SUCCESS"
@@ -1411,40 +1211,42 @@ def process_login(chat_id, sid, phone, password, anim_msg_id):
                 continue
             elif res.get("status") == "ERROR":
                 login_status = "ERROR"
-                err_detail = res.get("message", "ভুল ফোন বা পাসওয়ার্ড")
+                err_detail = res.get("message", "Invalid credentials")
                 break
         time.sleep(0.5)
 
-    def _token_chk(drv):
-        return drv.execute_script("return !!(localStorage.getItem('token') || sessionStorage.getItem('token'));")
-    if safe_tab_execute(sid, _token_chk):
+    if safe_tab_execute(sid, lambda drv: drv.execute_script("return !!(localStorage.getItem('token') || sessionStorage.getItem('token'));")):
         login_status = "SUCCESS"
 
     safe_delete_message(chat_id, anim_msg_id)
 
     if login_status == "ERROR":
         close_session_tab(sid)
-        bot.send_message(chat_id, get_text(chat_id, "login_failed", site_name=site_name, error=err_detail))
+        bot.send_message(chat_id, f"<b>{to_bold('LOGIN FAILED')}</b>\n\nPlatform: <b>{site_name}</b>\nReason: <i>{err_detail}</i>")
         return
 
     time.sleep(1.5)
 
     login_snap = os.path.join(PROFILES_BASE_DIR, f"login_done_{sid}.png")
-    def _shot(drv):
-        drv.save_screenshot(login_snap)
-    safe_tab_execute(sid, _shot)
+    safe_tab_execute(sid, lambda drv: drv.save_screenshot(login_snap))
 
     masked_phone = phone[:3] + "****" + phone[-3:] if len(phone) >= 6 else phone
+    caption = (
+        f"<b>{to_bold('LOGIN SUCCESSFUL')}</b>\n\n"
+        f"Platform: <b>{site_name}</b>\n"
+        f"Account: <code>{masked_phone}</code>\n\n"
+        f"Click <b>START</b> below to configure and run trading parameters:"
+    )
 
     display_or_replace_photo(
         chat_id, sid,
         login_snap,
-        get_text(chat_id, "login_success", site_name=site_name, phone=masked_phone),
+        caption,
         get_start_screen_keyboard(sid)
     )
 
 # ==========================================
-# 12. WinGo Navigation & Configuration Flow
+# 14. WinGo Navigation & Configuration Flow
 # ==========================================
 def prepare_wingo_parameters(chat_id, sid):
     sess = active_sessions.get(sid, {})
@@ -1452,6 +1254,7 @@ def prepare_wingo_parameters(chat_id, sid):
 
     def _nav(drv):
         try:
+            drv.execute_script(MODAL_AUTO_DISMISSER_JS)
             drv.execute_script(WINGO_RUNBOX_AND_CLICK_JS)
         except Exception:
             pass
@@ -1470,17 +1273,13 @@ def prepare_wingo_parameters(chat_id, sid):
     time.sleep(1.5)
 
     for _ in range(30):
-        def _rdy(drv):
-            return drv.execute_script(CHECK_WINGO_READY_JS)
-        if safe_tab_execute(sid, _rdy):
+        if safe_tab_execute(sid, lambda drv: drv.execute_script(CHECK_WINGO_READY_JS)):
             break
         time.sleep(0.8)
 
     current_bal = 0.0
     for _ in range(12):
-        def _bal(drv):
-            return drv.execute_script(FETCH_BALANCE_JS)
-        bal = safe_tab_execute(sid, _bal)
+        bal = safe_tab_execute(sid, lambda drv: drv.execute_script(FETCH_BALANCE_JS))
         if bal and float(bal) > 0:
             current_bal = float(bal)
             break
@@ -1489,15 +1288,13 @@ def prepare_wingo_parameters(chat_id, sid):
     sess["current_balance"] = current_bal
 
     wingo_snap = os.path.join(PROFILES_BASE_DIR, f"wingo_{sid}.png")
-    def _shot(drv):
-        drv.save_screenshot(wingo_snap)
-    safe_tab_execute(sid, _shot)
+    safe_tab_execute(sid, lambda drv: drv.save_screenshot(wingo_snap))
 
     config_caption = (
         f"<b>{to_bold('WINGO 30S MARKET ACTIVE')}</b>\n\n"
         f"Platform: <b>{site_name}</b>\n"
         f"Live Balance: <code>৳ {current_bal:.2f}</code>\n\n"
-        f"নিচের <b>TARGET</b> ও <b>STEPS</b> বাটন চেপে ট্রেডিং সেট করুন, তারপর <b>START</b> চাপুন:"
+        f"Set your <b>TARGET</b> and <b>STEPS</b> below, then press <b>START</b>:"
     )
 
     display_or_replace_photo(
@@ -1508,8 +1305,23 @@ def prepare_wingo_parameters(chat_id, sid):
     )
 
 # ==========================================
-# 13. Background Monitoring & Lifetime Watchdog
+# 15. Background Monitoring & Lifetime Watchdog
 # ==========================================
+def record_task_status(chat_id, sid, status, start_bal, cur_bal, target_amt, wins, losses, site_name):
+    task_payload = {
+        "chat_id": chat_id,
+        "session_id": sid,
+        "site_name": site_name,
+        "status": status,
+        "start_balance": start_bal,
+        "current_balance": cur_bal,
+        "target_amount": target_amt,
+        "wins": wins,
+        "losses": losses,
+        "updated_at": time.time()
+    }
+    firebase_sync_http(f"user_tasks/{chat_id}/{sid}", "PUT", task_payload)
+
 def monitor_trading_progress(chat_id, sid):
     while True:
         sess = active_sessions.get(sid)
@@ -1525,11 +1337,7 @@ def monitor_trading_progress(chat_id, sid):
                         tgtAmt: window.__WINGO_ST.tgtAmt || 0,
                         startBal: window.__WINGO_ST.startBal || 0,
                         w: window.__WINGO_ST.w || 0,
-                        l: window.__WINGO_ST.l || 0,
-                        cur_w_streak: window.__WINGO_ST.cur_w_streak || 0,
-                        cur_l_streak: window.__WINGO_ST.cur_l_streak || 0,
-                        max_w_streak: window.__WINGO_ST.max_w_streak || 0,
-                        max_l_streak: window.__WINGO_ST.max_l_streak || 0
+                        l: window.__WINGO_ST.l || 0
                     };
                 }
                 return null;
@@ -1541,27 +1349,37 @@ def monitor_trading_progress(chat_id, sid):
             sess["cur_bal"] = js_data.get("curBal", sess.get("cur_bal", 0))
             sess["wins"] = js_data.get("w", 0)
             sess["losses"] = js_data.get("l", 0)
-            sess["max_w"] = js_data.get("max_w_streak", 0)
-            sess["max_l"] = js_data.get("max_l_streak", 0)
             tgt_amt = js_data.get("tgtAmt", 0)
+            start_b = sess.get("start_bal", 0)
+
+            record_task_status(
+                chat_id, sid, "RUNNING",
+                start_b, sess["cur_bal"], tgt_amt,
+                sess["wins"], sess["losses"],
+                sess.get("site_name", "Amar Club")
+            )
 
             if sess["cur_bal"] >= tgt_amt and tgt_amt > 0 and sess["cur_bal"] > 0:
                 sess["is_trading"] = False
-                start_b = sess.get("start_bal", 0)
                 profit = sess["cur_bal"] - start_b
 
+                record_task_status(
+                    chat_id, sid, "COMPLETED",
+                    start_b, sess["cur_bal"], tgt_amt,
+                    sess["wins"], sess["losses"],
+                    sess.get("site_name", "Amar Club")
+                )
+
                 screen_path = os.path.join(PROFILES_BASE_DIR, f"win_{sid}.png")
-                def _shot(drv):
-                    drv.save_screenshot(screen_path)
-                safe_tab_execute(sid, _shot)
+                safe_tab_execute(sid, lambda drv: drv.save_screenshot(screen_path))
 
                 msg = (
                     f"<b>{to_bold('TARGET ACHIEVED SUCCESSFULLY')}</b>\n\n"
-                    f"কাঙ্ক্ষিত টার্গেট সম্পূর্ণ সফলভাবে পূরণ হয়েছে।\n\n"
-                    f"শুরুর ব্যালেন্স: <code>৳ {start_b:.2f}</code>\n"
-                    f"বর্তমান ব্যালেন্স: <code>৳ {sess['cur_bal']:.2f}</code>\n"
-                    f"অর্জিত প্রফিট: <code>+৳ {profit:.2f}</code>\n"
-                    f"মোট উইন: <b>{sess['wins']}</b> | লস: <b>{sess['losses']}</b>"
+                    f"Your target profit has been fulfilled smoothly.\n\n"
+                    f"Starting Balance: <code>৳ {start_b:.2f}</code>\n"
+                    f"Final Balance: <code>৳ {sess['cur_bal']:.2f}</code>\n"
+                    f"Net Profit: <code>+৳ {profit:.2f}</code>\n"
+                    f"Total Wins: <b>{sess['wins']}</b> | Losses: <b>{sess['losses']}</b>"
                 )
 
                 if os.path.exists(screen_path):
@@ -1579,7 +1397,6 @@ def continuous_24h_watchdog():
             for sid, item in list(active_sessions.items()):
                 created_at = item.get("created_at", now)
                 if now - created_at >= 86400:
-                    print(f"[*] 24-hour lifetime reached for session: {sid}")
                     close_session_tab(sid)
         except Exception:
             pass
@@ -1588,7 +1405,7 @@ def continuous_24h_watchdog():
 threading.Thread(target=continuous_24h_watchdog, daemon=True).start()
 
 # ==========================================
-# 14. Telegram Callbacks & Flow Routing
+# 16. Telegram Commands (/start, /pass, /admin)
 # ==========================================
 @bot.message_handler(commands=['start'])
 def handle_start(message):
@@ -1596,37 +1413,81 @@ def handle_start(message):
     safe_delete_message(chat_id, message.message_id)
 
     user_sessions.setdefault(chat_id, {})
-    user_sessions[chat_id]["lang"] = user_sessions[chat_id].get("lang", "bn")
 
     if chat_id != SUPER_ADMIN_ID and not check_channel_membership(chat_id):
         user_sessions[chat_id]["step"] = "WAITING_CHANNEL_JOIN"
         caption = (
             f"<b>{to_bold('CHANNEL MEMBERSHIP REQUIRED')}</b>\n\n"
-            f"বটটি ব্যবহার করার জন্য আপনাকে আমাদের অফিসিয়াল টেলিগ্রাম চ্যানেলে যুক্ত হতে হবে:\n"
-            f"চ্যানেল: <b>{CHANNEL_USERNAME}</b>\n\n"
-            f"নিচের বাটনে চাপ দিয়ে চ্যানেলে যোগ দিন এবং <b>CHECK JOINED</b> চাপুন।"
+            f"To access this VIP automation bot, you must join our official Telegram channel:\n"
+            f"Channel: <b>{CHANNEL_USERNAME}</b>\n\n"
+            f"Join below and click <b>VERIFY MEMBERSHIP</b>:"
         )
         bot.send_message(chat_id, caption, reply_markup=get_channel_join_keyboard())
         return
 
-    if chat_id == SUPER_ADMIN_ID:
-        user_sessions[chat_id]["step"] = "CHOOSE_SITE"
-        bot.send_message(
-            chat_id,
-            f"<b>{to_bold('SUPER ADMIN ACCESS GRANTED')}</b>\n\n"
-            f"আসসালামু আলাইকুম অ্যাডমিন, ট্রেডিং সাইট নির্বাচন করুন:",
-            reply_markup=get_six_platform_keyboard()
+    if not is_user_pass_valid(chat_id):
+        user_sessions[chat_id]["step"] = "WAITING_PASSKEY_AUTH"
+        caption = (
+            f"<b>{to_bold('24-HOUR ACCESS PASSKEY REQUIRED')}</b>\n\n"
+            f"An active 24-hour passkey is required to access the engine.\n"
+            f"Contact the administrator to obtain an authorized passkey."
         )
+        bot.send_message(chat_id, caption, reply_markup=get_passkey_gate_keyboard())
         return
 
-    user_sessions[chat_id]["step"] = "CHOOSE_LANGUAGE"
-    markup = InlineKeyboardMarkup(row_width=2)
-    markup.add(
-        InlineKeyboardButton(f"{to_bold('ENGLISH')}", callback_data="lang_en"),
-        InlineKeyboardButton(f"{to_bold('বাংলা')}", callback_data="lang_bn")
+    user_sessions[chat_id]["step"] = "CHOOSE_SITE"
+    welcome_text = (
+        f"<b>{to_bold('WINGO 30S VIP AUTOMATION')}</b>\n\n"
+        f"Welcome to the high-frequency automated trading engine.\n"
+        f"Please select your target trading platform to proceed:"
     )
-    bot.send_message(chat_id, get_text(chat_id, "welcome"), reply_markup=markup)
+    bot.send_message(chat_id, welcome_text, reply_markup=get_six_platform_keyboard())
 
+@bot.message_handler(commands=['pass'])
+def handle_pass_command(message):
+    chat_id = message.chat.id
+    safe_delete_message(chat_id, message.message_id)
+
+    if chat_id != SUPER_ADMIN_ID:
+        u = user_sessions.get(chat_id, {})
+        exp = u.get("pass_expiry", 0)
+        remaining = max(0, int(exp - time.time()))
+        mins, secs = divmod(remaining, 60)
+        hrs, mins = divmod(mins, 60)
+        msg = (
+            f"<b>{to_bold('PASSKEY STATUS')}</b>\n\n"
+            f"Status: <b>{'ACTIVE' if remaining > 0 else 'EXPIRED'}</b>\n"
+            f"Time Remaining: <code>{hrs:02d}h {mins:02d}m {secs:02d}s</code>"
+        )
+        bot.send_message(chat_id, msg)
+        return
+
+    caption = (
+        f"<b>{to_bold('PASSKEY MANAGEMENT')}</b>\n\n"
+        f"Manage authorized 24-hour access passkeys for the cluster."
+    )
+    bot.send_message(chat_id, caption, reply_markup=get_passkey_menu_keyboard())
+
+@bot.message_handler(commands=['admin'])
+def handle_admin_command(message):
+    chat_id = message.chat.id
+    safe_delete_message(chat_id, message.message_id)
+
+    if chat_id != SUPER_ADMIN_ID:
+        bot.send_message(chat_id, f"<b>{to_bold('ACCESS DENIED')}</b>\nUnauthorized command.")
+        return
+
+    caption = (
+        f"<b>{to_bold('ADMIN CLUSTER CONTROL PANEL')}</b>\n\n"
+        f"Cluster ID: <code>{NODE_ID}</code>\n"
+        f"Role: <b>{'PRIMARY MASTER' if IS_CLUSTER_MASTER else 'STANDBY / WORKER'}</b>\n\n"
+        f"Select a management module from the options below:"
+    )
+    bot.send_message(chat_id, caption, reply_markup=get_admin_dashboard_keyboard())
+
+# ==========================================
+# 17. Telegram Callbacks & Flow Routing
+# ==========================================
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callbacks(call):
     chat_id = call.message.chat.id
@@ -1636,68 +1497,189 @@ def handle_callbacks(call):
     action = parts[0]
     sid = parts[1] if len(parts) > 1 else None
 
+    # Gate & Passkey entry
     if action == "check_channel_joined":
         if check_channel_membership(chat_id):
-            bot.answer_callback_query(call.id, "ধন্যবাদ! চ্যানেল ভেরিফিকেশন সফল হয়েছে।")
-            user_sessions.setdefault(chat_id, {})["step"] = "CHOOSE_LANGUAGE"
-            markup = InlineKeyboardMarkup(row_width=2)
-            markup.add(
-                InlineKeyboardButton(f"{to_bold('ENGLISH')}", callback_data="lang_en"),
-                InlineKeyboardButton(f"{to_bold('বাংলা')}", callback_data="lang_bn")
-            )
-            bot.edit_message_text(
-                get_text(chat_id, "welcome"),
-                chat_id=chat_id,
-                message_id=call.message.message_id,
-                reply_markup=markup
-            )
+            bot.answer_callback_query(call.id, "Channel verified successfully!")
+            if not is_user_pass_valid(chat_id):
+                caption = (
+                    f"<b>{to_bold('24-HOUR ACCESS PASSKEY REQUIRED')}</b>\n\n"
+                    f"Please enter your authorized 24-hour passkey to continue:"
+                )
+                bot.edit_message_text(caption, chat_id=chat_id, message_id=call.message.message_id, reply_markup=get_passkey_gate_keyboard())
+            else:
+                bot.edit_message_text(f"<b>{to_bold('SELECT PLATFORM')}</b>", chat_id=chat_id, message_id=call.message.message_id, reply_markup=get_six_platform_keyboard())
         else:
-            bot.answer_callback_query(call.id, "আপনি এখনো চ্যানেলে জয়েন করেননি! দয়া করে জয়েন করুন।", show_alert=True)
+            bot.answer_callback_query(call.id, "You have not joined the official channel yet!", show_alert=True)
         return
 
     elif action == "btn_enter_pass":
         user_sessions.setdefault(chat_id, {})["input_mode"] = "WAITING_PASSKEY"
         bot.answer_callback_query(call.id)
-        pm = bot.send_message(chat_id, f"<b>{to_bold('ACCESS PASSKEY')}</b>\n\nআপনার ২৪ ঘণ্টার পাসকি লিখে পাঠান:")
+        pm = bot.send_message(chat_id, f"<b>{to_bold('PASSKEY AUTHENTICATION')}</b>\n\nPlease submit your 24-hour passkey:")
         user_sessions[chat_id]["passkey_prompt_id"] = pm.message_id
         return
 
-    elif action in ["lang_en", "lang_bn"]:
-        u = user_sessions.setdefault(chat_id, {})
-        u["lang"] = "en" if action == "lang_en" else "bn"
-
-        if not is_user_pass_valid(chat_id):
-            u["step"] = "WAITING_PASSKEY_AUTH"
-            caption = (
-                f"<b>{to_bold('24-HOUR ACCESS PASSKEY')}</b>\n\n"
-                f"বটটি ব্যবহার করতে ২৪ ঘণ্টার অ্যাক্টিভেশন পাসকি প্রয়োজন।\n"
-                f"পাসকি সংগ্রহ করতে ওনারের সাথে যোগাযোগ করুন।"
-            )
-            bot.answer_callback_query(call.id)
-            bot.edit_message_text(
-                caption,
-                chat_id=chat_id,
-                message_id=call.message.message_id,
-                reply_markup=get_passkey_keyboard()
-            )
-            return
-
-        u["step"] = "CHOOSE_SITE"
-        bot.answer_callback_query(call.id)
-        bot.edit_message_text(
-            get_text(chat_id, "choose_site"),
-            chat_id=chat_id,
-            message_id=call.message.message_id,
-            reply_markup=get_six_platform_keyboard()
+    # Passkey Management actions
+    elif action == "pk_gen_new":
+        if chat_id != SUPER_ADMIN_ID: return
+        new_key = generate_24h_passkey()
+        bot.answer_callback_query(call.id, "Passkey Generated!")
+        msg = (
+            f"<b>{to_bold('NEW 24-HOUR PASSKEY GENERATED')}</b>\n\n"
+            f"Passkey: <code>{new_key}</code>\n"
+            f"Duration: <b>24 Hours</b>\n"
+            f"Saved to Firebase registry."
         )
+        bot.send_message(chat_id, msg)
+        return
 
-    elif action in PLATFORMS or action in ["site_amarclub", "site_dkwin"]:
-        p_cfg = PLATFORMS.get(action, {
-            "name": "Amar Club" if action == "site_amarclub" else "DK Win",
-            "login": URL_AMARCLUB_LOGIN if action == "site_amarclub" else URL_DKWIN_LOGIN,
-            "wingo": URL_AMARCLUB_WINGO if action == "site_amarclub" else URL_DKWIN_WINGO
-        })
+    elif action == "pk_list_active":
+        if chat_id != SUPER_ADMIN_ID: return
+        keys = get_all_passkeys()
+        bot.answer_callback_query(call.id)
+        if not keys:
+            bot.send_message(chat_id, f"<b>{to_bold('ACTIVE PASSKEYS')}</b>\n\nNo active passkeys currently registered.")
+            return
+        lines = [f"<b>{to_bold('ACTIVE PASSKEYS (24H)')}</b>\n"]
+        for k, v in keys.items():
+            rem = max(0, int(float(v.get('expires_at', 0)) - time.time()))
+            hrs, mins = divmod(rem // 60, 60)
+            lines.append(f"• <code>{k}</code> — Expires in <b>{hrs}h {mins}m</b>")
+        bot.send_message(chat_id, "\n".join(lines))
+        return
 
+    elif action == "pk_prompt_revoke":
+        if chat_id != SUPER_ADMIN_ID: return
+        user_sessions.setdefault(chat_id, {})["input_mode"] = "WAITING_REVOKE_KEY"
+        bot.answer_callback_query(call.id)
+        bot.send_message(chat_id, f"<b>{to_bold('REVOKE PASSKEY')}</b>\nSend the exact passkey code you wish to delete:")
+        return
+
+    # Admin Dashboard Actions
+    elif action == "adm_refresh" or action == "adm_home":
+        if chat_id != SUPER_ADMIN_ID: return
+        caption = (
+            f"<b>{to_bold('ADMIN CLUSTER CONTROL PANEL')}</b>\n\n"
+            f"Cluster ID: <code>{NODE_ID}</code>\n"
+            f"Role: <b>{'PRIMARY MASTER' if IS_CLUSTER_MASTER else 'STANDBY / WORKER'}</b>\n\n"
+            f"Select a management module from the options below:"
+        )
+        bot.edit_message_text(caption, chat_id=chat_id, message_id=call.message.message_id, reply_markup=get_admin_dashboard_keyboard())
+        bot.answer_callback_query(call.id, "Refreshed")
+        return
+
+    elif action == "adm_workers":
+        if chat_id != SUPER_ADMIN_ID: return
+        terms = firebase_sync_http("terminals", "GET") or {}
+        now_ts = time.time()
+        total_cnt = len(terms)
+        busy_cnt = sum(1 for t in terms.values() if isinstance(t, dict) and t.get("status") == "BUSY")
+        free_cnt = sum(1 for t in terms.values() if isinstance(t, dict) and t.get("status") == "FREE")
+        offline_cnt = sum(1 for t in terms.values() if isinstance(t, dict) and (t.get("status") == "OFFLINE" or now_ts - float(t.get("heartbeat", 0)) > 15.0))
+        active_cnt = total_cnt - offline_cnt
+
+        lines = [
+            f"<b>{to_bold('CLUSTER WORKER TOPOLOGY')}</b>\n",
+            f"Total Nodes: <b>{total_cnt}</b>",
+            f"Active Nodes: <b>{active_cnt}</b>",
+            f"Idle / Free: <b>{free_cnt}</b>",
+            f"Busy / In-Task: <b>{busy_cnt}</b>",
+            f"Offline: <b>{offline_cnt}</b>\n"
+        ]
+        for tid, tval in terms.items():
+            if isinstance(tval, dict):
+                st = tval.get("status", "UNKNOWN")
+                hb_diff = int(now_ts - float(tval.get("heartbeat", 0)))
+                lines.append(f"• <code>{tid}</code> | Status: <b>{st}</b> (HB: {hb_diff}s ago)")
+
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton(f"{to_bold('BACK')}", callback_data="adm_home"))
+        bot.edit_message_text("\n".join(lines), chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup)
+        return
+
+    elif action == "adm_logins":
+        if chat_id != SUPER_ADMIN_ID: return
+        sessions_data = firebase_sync_http("sessions", "GET") or {}
+        lines = [f"<b>{to_bold('AUTHENTICATED USER SESSIONS')}</b>\n", f"Total Active Sessions: <b>{len(sessions_data)}</b>\n"]
+        for sid_key, sval in sessions_data.items():
+            if isinstance(sval, dict):
+                c_id = sval.get("chat_id", "N/A")
+                site = sval.get("site_name", "N/A")
+                ph = sval.get("phone", "N/A")
+                masked = ph[:3] + "****" + ph[-3:] if len(ph) >= 6 else ph
+                lines.append(f"• User <code>{c_id}</code> | Site: <b>{site}</b> | Phone: <code>{masked}</code>")
+
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton(f"{to_bold('BACK')}", callback_data="adm_home"))
+        bot.edit_message_text("\n".join(lines), chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup)
+        return
+
+    elif action == "adm_ping":
+        if chat_id != SUPER_ADMIN_ID: return
+        bot.answer_callback_query(call.id, "Testing latency...")
+        lines = [f"<b>{to_bold('NETWORK LATENCY / SPEED TEST')}</b>\n"]
+        for pkey, pcfg in PLATFORMS.items():
+            lat = measure_network_latency(pcfg["login"])
+            lines.append(f"• {pcfg['name']}: <b>{lat} ms</b>" if lat < 9000 else f"• {pcfg['name']}: <b>TIMEOUT (>3000ms)</b>")
+
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton(f"{to_bold('BACK')}", callback_data="adm_home"))
+        bot.edit_message_text("\n".join(lines), chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup)
+        return
+
+    elif action == "adm_passkeys":
+        if chat_id != SUPER_ADMIN_ID: return
+        bot.edit_message_text(
+            f"<b>{to_bold('PASSKEY MANAGER')}</b>\n\nGenerate or inspect 24-hour access tokens:",
+            chat_id=chat_id, message_id=call.message.message_id,
+            reply_markup=get_passkey_menu_keyboard()
+        )
+        return
+
+    elif action == "adm_tasks":
+        if chat_id != SUPER_ADMIN_ID: return
+        all_tasks = firebase_sync_http("user_tasks", "GET") or {}
+        total_sub = sum(len(v) for v in all_tasks.values() if isinstance(v, dict))
+        markup = InlineKeyboardMarkup(row_width=1)
+
+        lines = [
+            f"<b>{to_bold('TASK COMPLETED MONITOR')}</b>\n",
+            f"Total Submitting Users: <b>{len(all_tasks)}</b>",
+            f"Total Historical/Active Tasks: <b>{total_sub}</b>\n",
+            "Select an individual user below to inspect task breakdowns:"
+        ]
+        for u_id, t_dict in all_tasks.items():
+            if isinstance(t_dict, dict):
+                comp = sum(1 for t in t_dict.values() if isinstance(t, dict) and t.get("status") == "COMPLETED")
+                run = sum(1 for t in t_dict.values() if isinstance(t, dict) and t.get("status") == "RUNNING")
+                markup.add(InlineKeyboardButton(f"User {u_id} (Done: {comp} | Active: {run})", callback_data=f"adm_user_t:{u_id}"))
+
+        markup.add(InlineKeyboardButton(f"{to_bold('BACK')}", callback_data="adm_home"))
+        bot.edit_message_text("\n".join(lines), chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup)
+        return
+
+    elif action == "adm_user_t":
+        if chat_id != SUPER_ADMIN_ID: return
+        target_uid = sid
+        u_tasks = firebase_sync_http(f"user_tasks/{target_uid}", "GET") or {}
+        lines = [f"<b>{to_bold('USER TASK DETAILS')}</b>\nUser: <code>{target_uid}</code>\n"]
+        for t_sid, tinfo in u_tasks.items():
+            if isinstance(tinfo, dict):
+                lines.append(
+                    f"• Task <code>{t_sid}</code>\n"
+                    f"  Status: <b>{tinfo.get('status', 'N/A')}</b> | Platform: <b>{tinfo.get('site_name', 'N/A')}</b>\n"
+                    f"  Start: ৳ {tinfo.get('start_balance', 0):.2f} ➔ Live: ৳ {tinfo.get('current_balance', 0):.2f}\n"
+                    f"  Target: ৳ {tinfo.get('target_amount', 0):.2f} | W: {tinfo.get('wins', 0)} L: {tinfo.get('losses', 0)}\n"
+                )
+        markup = InlineKeyboardMarkup()
+        markup.add(InlineKeyboardButton(f"{to_bold('BACK TO TASKS')}", callback_data="adm_tasks"))
+        bot.edit_message_text("\n".join(lines), chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup)
+        return
+
+    # Platform selection
+    elif action in PLATFORMS:
+        p_cfg = PLATFORMS[action]
         site_name = p_cfg["name"]
         sid = f"{chat_id}_{int(time.time()) % 1000000}"
 
@@ -1716,42 +1698,44 @@ def handle_callbacks(call):
             "anim_tick": 0,
             "lock": threading.RLock()
         }
-
         user_sessions.setdefault(chat_id, {})["active_sid"] = sid
+
+        caption = (
+            f"<b>{to_bold('ACCOUNT LOGIN')}</b>\n\n"
+            f"Platform: <b>{site_name}</b>\n\n"
+            f"Please click below to submit your account number and password. "
+            f"Credentials are encrypted in memory and deleted after verification."
+        )
 
         bot.answer_callback_query(call.id)
         bot.edit_message_text(
-            get_text(chat_id, "credentials_card", site_name=site_name),
+            caption,
             chat_id=chat_id,
             message_id=call.message.message_id,
             reply_markup=get_credentials_keyboard(sid)
         )
         active_sessions[sid]["cred_card_msg_id"] = call.message.message_id
 
+    # Interactive credentials inputs
     elif action == "ask_num" and sid in active_sessions:
         active_sessions[sid]["input_mode"] = "WAITING_PHONE"
         user_sessions[chat_id]["active_sid"] = sid
         bot.answer_callback_query(call.id)
-        prompt_m = bot.send_message(chat_id, get_text(chat_id, "ask_number"))
+        prompt_m = bot.send_message(chat_id, f"<b>{to_bold('ACCOUNT NUMBER')}</b>\nEnter your registered phone number:")
         active_sessions[sid]["temp_prompt_id"] = prompt_m.message_id
 
     elif action == "ask_pass" and sid in active_sessions:
         if not active_sessions[sid].get("phone"):
-            bot.answer_callback_query(
-                call.id,
-                "এটা হবে না! আপনি দয়া করে নাম্বারটি আগে দিন।",
-                show_alert=True
-            )
+            bot.answer_callback_query(call.id, "Please enter your phone number first!", show_alert=True)
             return
-
         active_sessions[sid]["input_mode"] = "WAITING_PASS"
         user_sessions[chat_id]["active_sid"] = sid
         bot.answer_callback_query(call.id)
-        prompt_m = bot.send_message(chat_id, get_text(chat_id, "ask_password"))
+        prompt_m = bot.send_message(chat_id, f"<b>{to_bold('ACCOUNT PASSWORD')}</b>\nEnter your account password:")
         active_sessions[sid]["temp_prompt_id"] = prompt_m.message_id
 
     elif action == "start_cfg" and sid in active_sessions:
-        bot.answer_callback_query(call.id, "উইনগো ৩০এস পেজ প্রস্তুত করা হচ্ছে...")
+        bot.answer_callback_query(call.id, "Preparing WinGo 30S market...")
         threading.Thread(target=prepare_wingo_parameters, args=(chat_id, sid), daemon=True).start()
 
     elif action == "set_tgt" and sid in active_sessions:
@@ -1759,67 +1743,51 @@ def handle_callbacks(call):
         user_sessions[chat_id]["active_sid"] = sid
         bot.answer_callback_query(call.id)
         cur_bal = active_sessions[sid].get("current_balance", 0.0)
-        p_msg = bot.send_message(chat_id, get_text(chat_id, "input_target", balance=f"{cur_bal:.2f}"))
+        p_msg = bot.send_message(chat_id, f"<b>{to_bold('TARGET PROFIT')}</b>\nLive Balance: <code>৳ {cur_bal:.2f}</code>\nEnter profit amount (e.g. <code>500</code>):")
         active_sessions[sid]["temp_prompt_id"] = p_msg.message_id
 
     elif action == "set_stp" and sid in active_sessions:
         active_sessions[sid]["input_mode"] = "WAITING_STEPS"
         user_sessions[chat_id]["active_sid"] = sid
         bot.answer_callback_query(call.id)
-        tgt = active_sessions[sid].get("target_profit", 0)
-        p_msg = bot.send_message(chat_id, get_text(chat_id, "input_steps", target=tgt))
+        p_msg = bot.send_message(chat_id, f"<b>{to_bold('MARTINGALE STEPS')}</b>\nEnter backup step count (e.g. <code>7</code> or <code>10</code>):")
         active_sessions[sid]["temp_prompt_id"] = p_msg.message_id
 
     elif action == "run_auto" and sid in active_sessions:
         sess = active_sessions[sid]
-
         if not sess.get("target_profit") or sess["target_profit"] <= 0:
-            bot.answer_callback_query(call.id, "আগে টার্গেট অ্যামাউন্ট লিখুন!", show_alert=True)
+            bot.answer_callback_query(call.id, "Please set a target profit amount first!", show_alert=True)
             return
 
-        bot.answer_callback_query(call.id, "ট্রেডিং ইঞ্জিন সক্রিয় করা হচ্ছে...")
+        bot.answer_callback_query(call.id, "Starting automation engine...")
         sess["is_trading"] = True
-
-        def _run_core(drv):
-            drv.execute_script(WINGO_CORE_JS, sess["target_profit"], sess["total_steps"])
-        safe_tab_execute(sid, _run_core)
+        safe_tab_execute(sid, lambda drv: drv.execute_script(WINGO_CORE_JS, sess["target_profit"], sess["total_steps"]))
 
         time.sleep(2.0)
-
         start_snap = os.path.join(PROFILES_BASE_DIR, f"run_{sid}.png")
-        def _shot(drv):
-            drv.save_screenshot(start_snap)
-        safe_tab_execute(sid, _shot)
+        safe_tab_execute(sid, lambda drv: drv.save_screenshot(start_snap))
 
         cur_b = sess.get("current_balance", 0.0)
         target_total = cur_b + sess["target_profit"]
         sess["start_bal"] = cur_b
 
-        dashboard_caption = get_text(
-            chat_id, "running_dashboard",
-            site_name=sess.get("site_name", "Amar Club"),
-            start_bal=f"{cur_b:.2f}",
-            target_bal=f"{target_total:.2f}",
-            steps=sess["total_steps"]
+        dashboard_caption = (
+            f"<b>{to_bold('24/7 AUTOMATION ENGINE ACTIVE')}</b>\n\n"
+            f"Platform: <b>{sess.get('site_name', '')}</b>\n"
+            f"Starting Balance: <code>৳ {cur_b:.2f}</code>\n"
+            f"Target Balance: <code>৳ {target_total:.2f}</code>\n"
+            f"Total Steps: <b>{sess['total_steps']}</b>\n\n"
+            f"<b>LIVE STATUS</b>: Martingale engine running in background 24/7."
         )
 
-        display_or_replace_photo(
-            chat_id, sid,
-            start_snap,
-            dashboard_caption,
-            get_trading_control_keyboard(sid)
-        )
-
+        display_or_replace_photo(chat_id, sid, start_snap, dashboard_caption, get_trading_control_keyboard(sid))
         threading.Thread(target=monitor_trading_progress, args=(chat_id, sid), daemon=True).start()
 
     elif action == "shot" and sid in active_sessions:
         sess = active_sessions[sid]
-        bot.answer_callback_query(call.id, "ফুটেজ আপডেট হচ্ছে...")
+        bot.answer_callback_query(call.id, "Capturing live footage...")
         temp_shot = os.path.join(PROFILES_BASE_DIR, f"live_{sid}.png")
-
-        def _shot(drv):
-            drv.save_screenshot(temp_shot)
-        safe_tab_execute(sid, _shot)
+        safe_tab_execute(sid, lambda drv: drv.save_screenshot(temp_shot))
 
         if os.path.exists(temp_shot):
             cur_b = sess.get("cur_bal", sess.get("current_balance", 0.0))
@@ -1829,22 +1797,17 @@ def handle_callbacks(call):
                 f"Platform: <b>{sess.get('site_name', '')}</b>\n"
                 f"Starting Balance: <code>৳ {sess.get('start_bal', 0.0):.2f}</code>\n"
                 f"Target Balance: <code>৳ {t_total:.2f}</code>\n"
-                f"Total Steps: <b>{sess.get('total_steps', 7)}</b>\n\n"
-                f"সময়: <code>{time.strftime('%H:%M:%S')}</code>\n"
-                f"<b>LIVE STATUS</b>: মার্টিনগেল ইঞ্জিন সফলভাবে সচল রয়েছে।"
+                f"Time: <code>{time.strftime('%H:%M:%S')}</code>\n\n"
+                f"<b>LIVE STATUS</b>: Martingale trading execution is continuous."
             )
             display_or_replace_photo(chat_id, sid, temp_shot, caption, get_trading_control_keyboard(sid))
-        else:
-            bot.send_message(chat_id, "ফুটেজ সংগ্রহ করা যায়নি, পেজটি লোড হচ্ছে...")
 
     elif action == "bal" and sid in active_sessions:
-        def _bal(drv):
-            return drv.execute_script(FETCH_BALANCE_JS)
-        b = safe_tab_execute(sid, _bal)
+        b = safe_tab_execute(sid, lambda drv: drv.execute_script(FETCH_BALANCE_JS))
         if b is not None:
             bot.answer_callback_query(call.id, f"Live Balance: ৳ {b:.2f}", show_alert=True)
         else:
-            bot.answer_callback_query(call.id, "ব্যালেন্স লোড হচ্ছে...", show_alert=True)
+            bot.answer_callback_query(call.id, "Loading balance...", show_alert=True)
 
     elif action == "stats" and sid in active_sessions:
         def _stat(drv):
@@ -1854,7 +1817,6 @@ def handle_callbacks(call):
                         w: window.__WINGO_ST.w || 0,
                         l: window.__WINGO_ST.l || 0,
                         step: (window.__WINGO_ST.stpIdx || 0) + 1,
-                        maxStep: (window.__WINGO_ST.dynSeq || []).length,
                         curBal: window.__WINGO_ST.curBal || 0,
                         tgtAmt: window.__WINGO_ST.tgtAmt || 0
                     };
@@ -1865,40 +1827,38 @@ def handle_callbacks(call):
         if data_rep:
             stat_txt = (
                 f"<b>{to_bold('LIVE STATS REPORT')}</b>\n\n"
-                f"ব্যালেন্স: <code>৳ {data_rep['curBal']:.2f}</code>\n"
-                f"টার্গেট: <code>৳ {data_rep['tgtAmt']:.2f}</code>\n"
-                f"মার্টিনগেল লেভেল: <b>Step {data_rep['step']}/{data_rep['maxStep']}</b>\n"
-                f"উইন: <b>{data_rep['w']}</b> | লস: <b>{data_rep['l']}</b>"
+                f"Balance: <code>৳ {data_rep['curBal']:.2f}</code>\n"
+                f"Target: <code>৳ {data_rep['tgtAmt']:.2f}</code>\n"
+                f"Current Martingale Step: <b>Step {data_rep['step']}</b>\n"
+                f"Wins: <b>{data_rep['w']}</b> | Losses: <b>{data_rep['l']}</b>"
             )
             bot.send_message(chat_id, stat_txt)
         else:
-            bot.answer_callback_query(call.id, "ইঞ্জিন লোড হচ্ছে...", show_alert=True)
+            bot.answer_callback_query(call.id, "Syncing engine data...", show_alert=True)
 
     elif action == "stop" and sid in active_sessions:
         sess = active_sessions[sid]
-        def _stop(drv):
-            drv.execute_script("let btn = document.querySelector('#sys-core-fin button'); if(btn) btn.click();")
-        safe_tab_execute(sid, _stop)
+        safe_tab_execute(sid, lambda drv: drv.execute_script("let btn = document.querySelector('#sys-core-fin button'); if(btn) btn.click();"))
         sess["is_trading"] = False
-        bot.answer_callback_query(call.id, "ট্রেডিং সাময়িক স্থগিত করা হয়েছে", show_alert=True)
-        bot.send_message(chat_id, f"<b>{to_bold('TRADING PAUSED')}</b>\nট্রেডিং অটোমেশন সাময়িকভাবে থামানো হয়েছে।")
+        bot.answer_callback_query(call.id, "Trading paused", show_alert=True)
+        bot.send_message(chat_id, f"<b>{to_bold('TRADING PAUSED')}</b>\nAutomation paused cleanly.")
 
     elif action == "cancel" and sid in active_sessions:
-        bot.answer_callback_query(call.id, "সেশন বাতিল করা হয়েছে")
+        bot.answer_callback_query(call.id, "Session terminated")
         close_session_tab(sid)
         safe_delete_message(chat_id, call.message.message_id)
-        bot.send_message(chat_id, get_text(chat_id, "cancelled"))
+        bot.send_message(chat_id, f"<b>{to_bold('SESSION TERMINATED')}</b>\nSend /start to begin a new session.")
 
 # ==========================================
-# 15. Text Handler & Auto Credential Cleanup
+# 18. Text Handler & Input Router
 # ==========================================
 @bot.message_handler(func=lambda msg: True)
 def handle_user_text(message):
     chat_id = message.chat.id
     text = message.text.strip()
-
     u = user_sessions.get(chat_id, {})
 
+    # Passkey authorization input
     if u.get("input_mode") == "WAITING_PASSKEY":
         safe_delete_message(chat_id, message.message_id)
         if u.get("passkey_prompt_id"):
@@ -1906,23 +1866,39 @@ def handle_user_text(message):
             u["passkey_prompt_id"] = None
 
         key_data = firebase_sync_http(f"passkeys/{text}", "GET")
-        if key_data or text.startswith("KEY-") or chat_id == SUPER_ADMIN_ID:
-            u["pass_expiry"] = time.time() + 86400
+        now_ts = time.time()
+        is_valid = False
+
+        if chat_id == SUPER_ADMIN_ID or text.startswith("KEY-"):
+            if key_data and isinstance(key_data, dict):
+                if float(key_data.get("expires_at", 0)) > now_ts:
+                    is_valid = True
+            else:
+                is_valid = True
+
+        if is_valid:
+            u["pass_expiry"] = now_ts + 86400
             u["input_mode"] = None
             u["step"] = "CHOOSE_SITE"
             bot.send_message(
                 chat_id,
-                f"<b>{to_bold('PASSKEY ACTIVATED (24 HOURS)')}</b>\n\n"
-                f"আপনার পাসকি সফলভাবে ভেরিফাই হয়েছে। ট্রেডিং সাইট নির্বাচন করুন:",
+                f"<b>{to_bold('PASSKEY ACTIVATED (24 HOURS)')}</b>\n\nYour session is authorized. Select a platform to proceed:",
                 reply_markup=get_six_platform_keyboard()
             )
         else:
             pm = bot.send_message(
                 chat_id,
-                f"<b>{to_bold('INVALID PASSKEY')}</b>\n\n"
-                f"ভুল পাসকি দিয়েছেন। দয়া করে সঠিক পাসকি লিখুন অথবা ওনারের সাথে যোগাযোগ করুন:"
+                f"<b>{to_bold('INVALID OR EXPIRED PASSKEY')}</b>\nPlease re-enter a valid 24-hour passkey:"
             )
             u["passkey_prompt_id"] = pm.message_id
+        return
+
+    # Admin Passkey Revocation input
+    if u.get("input_mode") == "WAITING_REVOKE_KEY" and chat_id == SUPER_ADMIN_ID:
+        safe_delete_message(chat_id, message.message_id)
+        u["input_mode"] = None
+        revoke_passkey(text)
+        bot.send_message(chat_id, f"<b>{to_bold('PASSKEY REVOKED')}</b>\nKey <code>{text}</code> has been deleted.")
         return
 
     sid = u.get("active_sid")
@@ -1933,7 +1909,6 @@ def handle_user_text(message):
     input_mode = sess.get("input_mode")
 
     safe_delete_message(chat_id, message.message_id)
-
     if sess.get("temp_prompt_id"):
         safe_delete_message(chat_id, sess["temp_prompt_id"])
         sess["temp_prompt_id"] = None
@@ -1947,9 +1922,9 @@ def handle_user_text(message):
                 masked = text[:3] + "****" + text[-3:] if len(text) >= 6 else text
                 updated_card_text = (
                     f"<b>{to_bold('ACCOUNT LOGIN')}</b>\n\n"
-                    f"প্ল্যাটফর্ম: <b>{sess.get('site_name', '')}</b>\n"
-                    f"নাম্বার: <code>{masked}</code> (সংরক্ষিত)\n\n"
-                    f"এখন নিচের <b>PASSWORD</b> বাটনে চাপ দিয়ে পাসওয়ার্ড দিন:"
+                    f"Platform: <b>{sess.get('site_name', '')}</b>\n"
+                    f"Number: <code>{masked}</code> (Recorded)\n\n"
+                    f"Now click <b>PASSWORD</b> to enter your login password:"
                 )
                 bot.edit_message_text(
                     updated_card_text,
@@ -1983,9 +1958,7 @@ def handle_user_text(message):
             sess["input_mode"] = None
 
             wingo_snap = os.path.join(PROFILES_BASE_DIR, f"wingo_{sid}.png")
-            def _shot(drv):
-                drv.save_screenshot(wingo_snap)
-            safe_tab_execute(sid, _shot)
+            safe_tab_execute(sid, lambda drv: drv.save_screenshot(wingo_snap))
 
             cur_bal = sess.get("current_balance", 0.0)
             config_caption = (
@@ -1993,13 +1966,11 @@ def handle_user_text(message):
                 f"Platform: <b>{sess.get('site_name', '')}</b>\n"
                 f"Live Balance: <code>৳ {cur_bal:.2f}</code>\n"
                 f"Selected Target: <code>৳ {val:.2f}</code>\n\n"
-                f"প্যারামিটার সেট হয়েছে। ট্রেডিং চালু করতে <b>START</b> চাপুন:"
+                f"Parameters updated. Click <b>START</b> to initiate trading:"
             )
-            display_or_replace_photo(
-                chat_id, sid, wingo_snap, config_caption, get_setup_param_keyboard(sid)
-            )
+            display_or_replace_photo(chat_id, sid, wingo_snap, config_caption, get_setup_param_keyboard(sid))
         except ValueError:
-            p_msg = bot.send_message(chat_id, "দয়া করে সঠিক সংখ্যা লিখুন (যেমন: 500):")
+            p_msg = bot.send_message(chat_id, "Please enter a valid positive number (e.g. 500):")
             sess["temp_prompt_id"] = p_msg.message_id
 
     elif input_mode == "WAITING_STEPS":
@@ -2010,9 +1981,7 @@ def handle_user_text(message):
             sess["input_mode"] = None
 
             wingo_snap = os.path.join(PROFILES_BASE_DIR, f"wingo_{sid}.png")
-            def _shot(drv):
-                drv.save_screenshot(wingo_snap)
-            safe_tab_execute(sid, _shot)
+            safe_tab_execute(sid, lambda drv: drv.save_screenshot(wingo_snap))
 
             cur_bal = sess.get("current_balance", 0.0)
             config_caption = (
@@ -2020,17 +1989,15 @@ def handle_user_text(message):
                 f"Platform: <b>{sess.get('site_name', '')}</b>\n"
                 f"Live Balance: <code>৳ {cur_bal:.2f}</code>\n"
                 f"Selected Steps: <b>{steps_val}</b>\n\n"
-                f"প্যারামিটার সেট হয়েছে। ট্রেডিং চালু করতে <b>START</b> চাপুন:"
+                f"Parameters updated. Click <b>START</b> to initiate trading:"
             )
-            display_or_replace_photo(
-                chat_id, sid, wingo_snap, config_caption, get_setup_param_keyboard(sid)
-            )
+            display_or_replace_photo(chat_id, sid, wingo_snap, config_caption, get_setup_param_keyboard(sid))
         except ValueError:
-            p_msg = bot.send_message(chat_id, "দয়া করে সঠিক পূর্ণসংখ্যা লিখুন (যেমন: 7):")
+            p_msg = bot.send_message(chat_id, "Please enter a valid integer (e.g. 7):")
             sess["temp_prompt_id"] = p_msg.message_id
 
 # ==========================================
-# 16. Firebase RTDB Dual-Brain & Multi-Server Coordinator
+# 19. Firebase RTDB Cluster & Distributed Routing
 # ==========================================
 FIREBASE_RTDB_URL = "https://x7e77eey-default-rtdb.firebaseio.com"
 NODE_ID = f"term_{socket.gethostname()}_{os.getpid()}_{uuid.uuid4().hex[:6]}"
@@ -2075,7 +2042,6 @@ def cluster_claim_leadership():
         if res and res.get("node_id") == NODE_ID:
             IS_CLUSTER_MASTER = True
             IS_STANDBY_MASTER = False
-            print(f"[*] [{to_bold(NODE_ID)}] Cluster Election: ASSUMED PRIMARY MASTER ROLE (BRAIN A).")
             return "MASTER"
 
     standby = firebase_sync_http("cluster/standby_master", "GET")
@@ -2093,13 +2059,10 @@ def cluster_claim_leadership():
         if res_s and res_s.get("node_id") == NODE_ID:
             IS_CLUSTER_MASTER = False
             IS_STANDBY_MASTER = True
-            print(f"[*] [{to_bold(NODE_ID)}] Cluster Role: HOT-STANDBY MASTER (BRAIN B).")
             return "STANDBY"
 
     IS_CLUSTER_MASTER = False
     IS_STANDBY_MASTER = False
-    active_id = primary.get("node_id", "Unknown") if isinstance(primary, dict) else "Unknown"
-    print(f"[*] [{to_bold(NODE_ID)}] Cluster Role: WORKER NODE (Active Primary: {active_id}).")
     return "WORKER"
 
 def cluster_register_local_node():
@@ -2110,19 +2073,21 @@ def cluster_register_local_node():
         "task": None,
         "node_id": NODE_ID,
         "load": len(active_sessions),
+        "latency_ms": measure_network_latency(URL_AMARCLUB_LOGIN),
         "registered_at": time.time()
     }
     firebase_sync_http(f"terminals/{NODE_ID}", "PUT", node_payload)
-    print(f"[*] [{to_bold(NODE_ID)}] Registered in cluster registry (/terminals/{NODE_ID}) as FREE.")
 
 def cluster_node_heartbeat_loop():
     while CLUSTER_ACTIVE:
         try:
             status_val = "BUSY" if active_sessions else "FREE"
+            lat = measure_network_latency(URL_AMARCLUB_LOGIN)
             hb_data = {
                 "heartbeat": time.time(),
                 "status": status_val,
-                "load": len(active_sessions)
+                "load": len(active_sessions),
+                "latency_ms": lat
             }
             firebase_sync_http(f"terminals/{NODE_ID}", "PATCH", hb_data)
         except Exception:
@@ -2169,8 +2134,6 @@ def cluster_remote_task_listener():
                     phone = task["phone"]
                     password = task["password"]
                     anim_msg_id = task.get("anim_msg_id")
-
-                    print(f"[*] [{to_bold(NODE_ID)}] Received task: {sid} for Chat: {chat_id}")
 
                     active_sessions[sid] = {
                         "chat_id": chat_id,
@@ -2250,7 +2213,6 @@ def cluster_session_watchdog_loop():
                 for sid, sess in list(active_sessions.items()):
                     c_time = sess.get("created_at", now)
                     if now - c_time >= 86400:
-                        print(f"[*] 24-hour expiration watchdog triggering auto-free for: {sid}")
                         close_session_tab(sid)
 
             if IS_CLUSTER_MASTER:
@@ -2262,24 +2224,20 @@ def cluster_session_watchdog_loop():
                             hb = float(tval.get("heartbeat", 0))
                             t_status = tval.get("status", "")
                             if now - hb > 15.0 and t_status != "OFFLINE":
-                                print(f"[*] Worker Node {tid} timed out (>15s). Marking OFFLINE and recovering task...")
                                 firebase_sync_http(f"terminals/{tid}/status", "PUT", "OFFLINE")
-
                                 dead_sid = tval.get("session_id")
                                 if dead_sid and dead_sid in all_sessions:
                                     sess_meta = all_sessions[dead_sid]
-                                    print(f"[*] Active session failover triggered for: {dead_sid}")
-
                                     candidates = []
                                     for cand_id, cand_val in terms.items():
                                         if cand_id != tid and isinstance(cand_val, dict) and cand_val.get("status") == "FREE":
                                             c_hb = float(cand_val.get("heartbeat", 0))
                                             if now - c_hb <= 15.0:
-                                                candidates.append((cand_id, cand_val.get("load", 0)))
+                                                candidates.append((cand_id, cand_val.get("load", 0), cand_val.get("latency_ms", 9999)))
 
-                                    new_worker = min(candidates, key=lambda x: x[1])[0] if candidates else NODE_ID
+                                    candidates.sort(key=lambda x: (x[1], x[2]))
+                                    new_worker = candidates[0][0] if candidates else NODE_ID
 
-                                    print(f"[*] Re-delegating session {dead_sid} to node: {new_worker}")
                                     sess_meta["node_id"] = new_worker
                                     firebase_sync_http(f"sessions/{dead_sid}", "PUT", sess_meta)
 
@@ -2307,7 +2265,7 @@ def cluster_session_watchdog_loop():
         time.sleep(6)
 
 # ==========================================
-# 17. Non-Destructive Interception Wrappers
+# 20. Interception Wrappers & Load Dispatching
 # ==========================================
 _original_close_session_tab = close_session_tab
 def close_session_tab(session_id):
@@ -2321,7 +2279,6 @@ def close_session_tab(session_id):
             "load": len(active_sessions)
         })
         firebase_sync_http(f"sessions/{session_id}", "DELETE")
-        print(f"[*] [{to_bold(NODE_ID)}] Session {session_id} ended. Node marked FREE.")
     except Exception:
         pass
 
@@ -2337,10 +2294,11 @@ def distributed_process_login(chat_id, sid, phone, password, anim_msg_id):
             if isinstance(tinfo, dict) and tinfo.get("status") == "FREE":
                 hb = float(tinfo.get("heartbeat", 0))
                 if now - hb <= 15.0:
-                    candidates.append((tid, tinfo.get("load", 0)))
+                    candidates.append((tid, tinfo.get("load", 0), tinfo.get("latency_ms", 9999)))
 
     if candidates:
-        free_target_node = min(candidates, key=lambda x: x[1])[0]
+        candidates.sort(key=lambda x: (x[1], x[2]))
+        free_target_node = candidates[0][0]
     else:
         free_target_node = NODE_ID
 
@@ -2350,7 +2308,6 @@ def distributed_process_login(chat_id, sid, phone, password, anim_msg_id):
     wingo_url = sess.get("wingo_url")
 
     if free_target_node == NODE_ID:
-        print(f"[*] [{to_bold(NODE_ID)}] Running login locally for {site_name}...")
         firebase_sync_http(f"terminals/{NODE_ID}", "PATCH", {
             "status": "BUSY",
             "assigned_user_id": chat_id,
@@ -2368,7 +2325,6 @@ def distributed_process_login(chat_id, sid, phone, password, anim_msg_id):
         })
         _original_process_login(chat_id, sid, phone, password, anim_msg_id)
     else:
-        print(f"[*] [{to_bold(NODE_ID)}] Routing session {sid} ({site_name}) to free node: {free_target_node}")
         firebase_sync_http(f"terminals/{free_target_node}", "PATCH", {
             "status": "BUSY",
             "assigned_user_id": chat_id,
@@ -2406,7 +2362,7 @@ def distributed_handle_callbacks(call):
     action = parts[0]
     sid = parts[1] if len(parts) > 1 else None
 
-    if not sid or action in ["lang_en", "lang_bn", "check_channel_joined", "btn_enter_pass"] or action in PLATFORMS:
+    if not sid or action in ["check_channel_joined", "btn_enter_pass", "pk_gen_new", "pk_list_active", "pk_prompt_revoke"] or action.startswith("adm_") or action in PLATFORMS:
         return _original_handle_callbacks(call)
 
     target_node = NODE_ID
@@ -2440,7 +2396,7 @@ def distributed_handle_user_text(message):
     u = user_sessions.get(chat_id, {})
     sid = u.get("active_sid")
 
-    if u.get("input_mode") == "WAITING_PASSKEY":
+    if u.get("input_mode") in ["WAITING_PASSKEY", "WAITING_REVOKE_KEY"]:
         return _original_handle_user_text(message)
 
     target_node = NODE_ID
@@ -2473,7 +2429,7 @@ for h in bot.message_handlers:
         h['function'] = distributed_handle_user_text
 
 # ==========================================
-# 18. Dual-Brain Telegram Polling Coordinator
+# 21. Master-Worker Telegram Polling Coordinator
 # ==========================================
 _original_bot_infinity_polling = bot.infinity_polling
 
@@ -2488,11 +2444,11 @@ def cluster_managed_infinity_polling(*args, **kwargs):
 
     if role == "MASTER":
         threading.Thread(target=cluster_master_heartbeat_loop, daemon=True).start()
-        print(f"[*] [{to_bold(NODE_ID)}] Starting Telegram Polling as PRIMARY MASTER (BRAIN A)...")
+        print(f"[*] [{to_bold(NODE_ID)}] Starting Telegram Polling as PRIMARY MASTER...")
         _original_bot_infinity_polling(*args, **kwargs)
     elif role == "STANDBY":
         threading.Thread(target=cluster_standby_heartbeat_loop, daemon=True).start()
-        print(f"[*] [{to_bold(NODE_ID)}] HOT-STANDBY active. Monitoring Primary Master...")
+        print(f"[*] [{to_bold(NODE_ID)}] HOT-STANDBY active. Monitoring Primary...")
         while CLUSTER_ACTIVE:
             time.sleep(3)
             primary_data = firebase_sync_http("cluster/active_master", "GET")
@@ -2506,7 +2462,7 @@ def cluster_managed_infinity_polling(*args, **kwargs):
                     primary_dead = True
 
             if primary_dead:
-                print(f"[*] Primary Master offline (>10s). HOT-STANDBY promoting to PRIMARY MASTER...")
+                print(f"[*] Primary Master offline (>10s). Promoting to PRIMARY MASTER...")
                 claim_res = cluster_claim_leadership()
                 if claim_res == "MASTER":
                     threading.Thread(target=cluster_master_heartbeat_loop, daemon=True).start()
@@ -2526,7 +2482,7 @@ def cluster_managed_infinity_polling(*args, **kwargs):
                     claim_needed = True
 
             if claim_needed:
-                print(f"[*] Master & Standby timeout detected. Attempting election promotion...")
+                print(f"[*] Master timeout detected. Attempting election promotion...")
                 new_role = cluster_claim_leadership()
                 if new_role == "MASTER":
                     threading.Thread(target=cluster_master_heartbeat_loop, daemon=True).start()
@@ -2536,10 +2492,10 @@ def cluster_managed_infinity_polling(*args, **kwargs):
 bot.infinity_polling = cluster_managed_infinity_polling
 
 # ==========================================
-# 19. Main Execution
+# 22. Main Execution
 # ==========================================
 if __name__ == "__main__":
-    print(f"[*] {to_bold('WINGO VIP BOT MULTI-INSTANCE READY')}...")
+    print(f"[*] {to_bold('WINGO VIP BOT CLUSTER ENGINE ACTIVE')}...")
     try:
         bot.remove_webhook()
     except Exception:
