@@ -60,7 +60,7 @@ def safe_delete_message(chat_id, message_id):
         pass
 
 # ==========================================
-# 3. Aggressive Process Hygiene & Zombie Killer
+# 3. Process Hygiene & Zombie Killer
 # ==========================================
 def kill_process_tree(pid):
     try:
@@ -114,7 +114,6 @@ HEADLESS_MODE = os.environ.get("HEADLESS", "false").lower() == "true"
 
 URL_AMARCLUB_LOGIN = "https://amarclub1.com/#/login"
 URL_DKWIN_LOGIN = "https://dkwin6.com/#/login"
-
 URL_AMARCLUB_WINGO = "https://amarclub1.com/#/saasLottery/WinGo?gameCode=WinGo_30S&lottery=WinGo"
 URL_DKWIN_WINGO = "https://dkwin6.com/#/saasLottery/WinGo?gameCode=WinGo_30S&lottery=WinGo"
 
@@ -132,8 +131,8 @@ SUPER_ADMIN_ID = 8707571669
 OWNER_USERNAME = "@MD_NAYEEM_DRX_TM"
 
 # Master Rotation Thresholds (Seconds)
-MASTER_ROTATION_INTERVAL = 1800  # Rotate Master every 30 minutes
-MASTER_IDLE_WINDOW = 300         # Or step down if idle for 5 minutes
+MASTER_MAX_ROTATION_CYCLE = 1800  # 30 Minutes maximum active Master term
+MASTER_IDLE_STEPDOWN_TIMEOUT = 300  # Step down after 5 minutes of total idle activity
 
 PLATFORMS = {
     "site_amarclub": {
@@ -169,7 +168,7 @@ PLATFORMS = {
 }
 
 # ==========================================
-# 5. Direct Network Speed Check (No VPN)
+# 5. Network Speed Check Helper
 # ==========================================
 def measure_network_latency(url: str, timeout: float = 3.0) -> float:
     try:
@@ -182,8 +181,34 @@ def measure_network_latency(url: str, timeout: float = 3.0) -> float:
         return 9999.0
 
 # ==========================================
-# 6. Session Allocation & Zero-Freeze Engine
+# 6. Session Allocation & In-Memory Hygiene
 # ==========================================
+DOM_MEMORY_SWEEP_JS = """
+(function(){
+    try {
+        if (window.performance && window.performance.clearResourceTimings) {
+            window.performance.clearResourceTimings();
+        }
+        const staleDialogs = document.querySelectorAll('.van-toast, .van-overlay, .van-dialog--bounce-leave-active');
+        staleDialogs.forEach(el => {
+            if (!el.closest('#sys-core-fin') && !el.closest('#_run_box')) {
+                el.remove();
+            }
+        });
+        if (window.caches && caches.keys) {
+            caches.keys().then(keys => {
+                keys.forEach(k => caches.delete(k));
+            });
+        }
+    } catch(e) {}
+    return true;
+})();
+"""
+
+def purge_browser_memory_hygiene(sid):
+    safe_tab_execute(sid, lambda drv: drv.execute_script(DOM_MEMORY_SWEEP_JS))
+    gc.collect()
+
 def allocate_session_tab(session_id, target_url):
     sess = active_sessions.get(session_id)
     if not sess:
@@ -201,33 +226,32 @@ def allocate_session_tab(session_id, target_url):
     options.add_argument("-profile")
     options.add_argument(profile_dir)
 
-    # Low-footprint & Zero-leak performance configurations
+    # Direct VPS Routing: Explicitly bypass proxies & system tunnels
+    options.set_preference("network.proxy.type", 0)
+    options.set_preference("network.proxy.http", "")
+    options.set_preference("network.proxy.http_port", 0)
+    options.set_preference("network.proxy.ssl", "")
+    options.set_preference("network.proxy.ssl_port", 0)
+    options.set_preference("network.proxy.socks", "")
+    options.set_preference("network.proxy.socks_port", 0)
+    options.set_preference("network.proxy.no_proxies_on", "localhost, 127.0.0.1")
+
+    # In-memory Resource Optimization
     options.set_preference("browser.sessionhistory.max_entries", 1)
     options.set_preference("browser.sessionhistory.max_total_viewers", 0)
-    options.set_preference("image.mem.surfacecache.max_size_kb", 512)
-    options.set_preference("javascript.options.mem.max", 16384)
+    options.set_preference("image.mem.surfacecache.max_size_kb", 1024)
+    options.set_preference("javascript.options.mem.max", 25600)
     options.set_preference("network.http.pipelining", False)
     options.set_preference("browser.cache.disk.enable", False)
-    options.set_preference("browser.cache.memory.enable", False)
+    options.set_preference("browser.cache.memory.enable", True)
     options.set_preference("network.http.use-cache", False)
-    options.set_preference("toolkit.telemetry.enabled", False)
-    options.set_preference("toolkit.telemetry.unified", False)
-    options.set_preference("experiments.supported", False)
-    options.set_preference("datareporting.healthreport.uploadEnabled", False)
-    options.set_preference("datareporting.policy.dataSubmissionEnabled", False)
-    options.set_preference("app.shield.optoutstudies.enabled", False)
-    options.set_preference("browser.discovery.enabled", False)
-    options.set_preference("extensions.pocket.enabled", False)
-    options.set_preference("network.prefetch-next", False)
-    options.set_preference("network.dns.disablePrefetch", True)
 
     service = FirefoxService(log_output=os.devnull)
     driver = webdriver.Firefox(service=service, options=options)
 
-    # Enforce strict 6-8 second timeouts to prevent thread hanging
-    driver.set_page_load_timeout(10)
-    driver.set_script_timeout(8)
-    driver.implicitly_wait(2)
+    driver.set_page_load_timeout(25)
+    driver.set_script_timeout(15)
+    driver.implicitly_wait(3)
     driver.set_window_size(412, 915)
 
     driver.get(target_url)
@@ -236,7 +260,7 @@ def allocate_session_tab(session_id, target_url):
     sess["window_handle"] = driver.current_window_handle
     return driver, sess["window_handle"]
 
-def safe_tab_execute(sid, task_fn, timeout=8.0):
+def safe_tab_execute(sid, task_fn, timeout=20.0):
     sess = active_sessions.get(sid)
     if not sess:
         return None
@@ -247,7 +271,7 @@ def safe_tab_execute(sid, task_fn, timeout=8.0):
     if not driver or not lock:
         return None
 
-    acquired = lock.acquire(timeout=3.0)
+    acquired = lock.acquire(timeout=5.0)
     if not acquired:
         return None
 
@@ -350,7 +374,7 @@ def display_or_replace_photo(chat_id, session_id, image_path, caption_text, repl
     gc.collect()
 
 # ==========================================
-# 8. In-Browser JavaScript Automation & Dynamic Progression
+# 8. In-Browser JavaScript Automation Engine
 # ==========================================
 MODAL_AUTO_DISMISSER_JS = """
 (function(){
@@ -422,8 +446,8 @@ setTimeout(() => {
   clearAndSet(elP, pass);
   setTimeout(() => {
     elL.click();
-  }, 500);
-}, 500);
+  }, 700);
+}, 700);
 
 return "SUCCESS";
 """
@@ -489,7 +513,7 @@ if (toast && toast.innerText && toast.innerText.trim().length > 0) {
 return { status: "PENDING" };
 """
 
-NEW_WINGO_RUNBOX_JS = """
+WINGO_RUNBOX_AND_CLICK_JS = """
 (function(){
     if(document.getElementById('_run_box')) return "ALREADY_PRESENT";
     var s = [
@@ -529,8 +553,6 @@ NEW_WINGO_RUNBOX_JS = """
 })();
 """
 
-WINGO_RUNBOX_AND_CLICK_JS = NEW_WINGO_RUNBOX_JS
-
 CHECK_WINGO_READY_JS = """
 const hash = window.location.hash || '';
 const href = window.location.href || '';
@@ -564,7 +586,6 @@ for (let i = 0; i < els.length; i++) {
 return 0;
 """
 
-# Dynamic Loss Recovery Engine & 1-Second Non-Blocking Signal Poller
 WINGO_CORE_JS = """
 const autoTargetProfit = arguments[0];
 const autoTotalSteps = arguments[1];
@@ -609,7 +630,7 @@ const autoTotalSteps = arguments[1];
 
     window.__WINGO_ST = st;
 
-    let curApiIdx=0, isFetchingApi=false;
+    let curApiIdx=0,isFetchingApi=false;
     let dTimeLeft=30;
     setInterval(()=>{
         let uClk=document.getElementById('ui-clk');
@@ -650,51 +671,32 @@ const autoTotalSteps = arguments[1];
         return st.curBal;
     }
 
-    // Dynamic Multi-Step Loss Recovery Array Generator
-    function generateSmartSequence(balance, steps){
-        steps = Math.max(1, parseInt(steps) || 7);
-        let b = Math.max(10, Math.floor(balance) || 100);
-
-        // Predefined base-to-peak system scales for exact 7-step standard balances
-        const standardScales = {
-            100: [2, 3, 6, 14, 20, 25, 30],
-            200: [3, 6, 12, 25, 45, 55, 54],
-            320: [4, 9, 20, 44, 75, 84, 84],
-            500: [6, 14, 32, 68, 120, 130, 130],
-            1000: [12, 28, 64, 136, 240, 260, 260],
-            5000: [60, 140, 320, 680, 1200, 1300, 1300],
-            10000: [120, 280, 640, 1360, 2400, 2600, 2600]
-        };
-
-        if (steps === 7 && standardScales[b]) {
-            return standardScales[b];
+    function generateSmartSequence(balance,steps){
+        steps=Math.max(1,parseInt(steps)||1);
+        let b=Math.max(1,Math.floor(balance)||1);
+        let units=Math.pow(2,steps)-1;
+        if(units>0&&units<=b){
+            let base=Math.floor(b/units);
+            let seq=[],val=Math.max(1,base);
+            for(let i=0;i<steps;i++){
+                seq.push(val);
+                val*=2;
+            }
+            return seq;
         }
-
-        // Dynamic Mathematical Loss Recovery Calculation (WinGo 0.96 Payout Logic)
-        let seq = [];
-        let cumLoss = 0;
-        let baseBet = Math.max(1, Math.floor(b * 0.015));
-
-        for (let i = 0; i < steps; i++) {
-            if (i === 0) {
-                seq.push(baseBet);
-                cumLoss += baseBet;
-            } else {
-                // Bet required to recover cumulative loss + net profit margin:
-                // nextBet * 0.96 > cumLoss + baseBet => nextBet = ceil((cumLoss + baseBet) / 0.96)
-                let reqBet = Math.ceil((cumLoss + baseBet * 0.5) / 0.96);
-                if (cumLoss + reqBet > b) {
-                    let remaining = Math.max(1, b - cumLoss);
-                    seq.push(remaining);
-                    cumLoss += remaining;
-                    break;
-                } else {
-                    seq.push(reqBet);
-                    cumLoss += reqBet;
-                }
+        let seq=[],val=1,sum=0;
+        for(let i=0;i<steps;i++){
+            if(sum+val<=b){
+                seq.push(val);
+                sum+=val;
+                val*=2;
+            }else{
+                let rem=b-sum;
+                if(rem>0)seq.push(rem);
+                break;
             }
         }
-        return seq.length > 0 ? seq : [1];
+        return seq.length>0?seq:[1];
     }
 
     let p=document.createElement('div');
@@ -753,7 +755,7 @@ const autoTotalSteps = arguments[1];
     const infBx=document.createElement('div');
     infBx.style.cssText='padding:6px;font-size:10px;line-height:2;background:transparent;border-radius:6px;border:2px solid #000;';
     infBx.innerHTML='<div style="display:flex;justify-content:space-between;"><span style="color:#ccc;">TGT:</span><span id="ui-tgt" style="color:#fff;">0</span></div>' +
-                    '<div style="display:flex;justify-content:space-between;"><span style="color:#ccc;">STP:</span><span id="ui-bet" style="color:#ffcc00;">1</span></div>' +
+                    '<div style="display:flex;justify-content:space-between;"><span style="color:#ccc;">STP:</span><span id="ui-bet" style="color:#ffcc00;">5</span></div>' +
                     '<div style="display:flex;justify-content:space-between;"><span style="color:#ccc;">CLK:</span><span id="ui-clk" style="color:#fff;">00:30</span></div>' +
                     '<div style="display:flex;justify-content:space-between;"><span style="color:#ccc;">STS:</span><span id="ui-sts" style="color:#00ff00;">' + uF('WAIT') + '</span></div>';
 
@@ -805,7 +807,7 @@ const autoTotalSteps = arguments[1];
             let attempts=0,valInt=setInterval(()=>{
                 attempts++;
                 let inpEl=document.querySelector("input[type='number'], input.van-field__control");
-                if(inpEl||attempts>12){
+                if(inpEl||attempts>15){
                     clearInterval(valInt);
                     if(inpEl){
                         inpEl.focus();
@@ -821,10 +823,10 @@ const autoTotalSteps = arguments[1];
                                 if((b.innerText||'').includes('Total amount')&&b.offsetParent) drx_simClick(b);
                             });
                         }
-                        setTimeout(()=>{if(cb)cb(true);},1200);
-                    },600);
+                        setTimeout(()=>{if(cb)cb(true);},1800);
+                    },800);
                 }
-            },150);
+            },200);
         }catch(e){
             if(cb)cb(false);
         }
@@ -842,12 +844,11 @@ const autoTotalSteps = arguments[1];
         return '1'+chars.join('');
     };
 
-    // Non-Blocking 1-Second Signal Poller with AbortController
     const apiLoopTask=async()=>{
         if(!st.isRun||st.isTrd||isFetchingApi)return;
         isFetchingApi=true;
         try{
-            let nBal = chkBal();
+            chkBal();
             const uBal=document.getElementById('ui-bal'),uSts=document.getElementById('ui-sts'),uBet=document.getElementById('ui-bet');
             if(st.curBal>=st.tgtAmt&&st.curBal>0){
                 uBal.innerText=uF(st.curBal.toFixed(2) + ' (DONE)');
@@ -856,7 +857,6 @@ const autoTotalSteps = arguments[1];
                 st.isRun=false;
                 clearInterval(st.autoInt);
                 lkOvl.style.display='none';
-                isFetchingApi=false;
                 return;
             }else{
                 uBal.innerText=uF(st.curBal>0?st.curBal.toFixed(2):'--');
@@ -866,7 +866,7 @@ const autoTotalSteps = arguments[1];
             let dataArray = null;
             try {
                 const controller = new AbortController();
-                const tid = setTimeout(() => controller.abort(), 2000);
+                const tid = setTimeout(() => controller.abort(), 3500);
                 let res = await fetch("https://data-vip-247-hack.ai.studio/apipid.json?ts=" + ts, { signal: controller.signal });
                 clearTimeout(tid);
                 dataArray = await res.json();
@@ -878,36 +878,30 @@ const autoTotalSteps = arguments[1];
             if(dataArray&&dataArray.length>0){
                 if(curApiIdx>=dataArray.length)curApiIdx=0;
                 let activeLogic=dataArray[curApiIdx],tempHist=activeLogic.history,cSig=getNextLivePeriod(String(tempHist[0].pid)),sSig=sessionStorage.getItem('drx_sig');
-                
                 if(cSig!==sSig){
-                    // Strict State Preservation: Win/Loss Settlement
                     if(st.lastPred&&st.lastPeriod){
                         let actualData=tempHist[0],actualR=actualData.actual==='BIG'?'BIG':'SMALL';
                         if(st.lastPred===actualR){
                             st.w++;
-                            st.stpIdx=0; // Confirmed WIN: Reset strictly to base step 1
+                            st.stpIdx=0;
                         }else{
                             st.l++;
-                            st.stpIdx=Math.min(st.stpIdx+1,st.dynSeq.length-1); // Strict advance on LOSS
+                            st.stpIdx=Math.min(st.stpIdx+1,st.dynSeq.length-1);
                         }
                     }
                     st.lastPeriod=cSig;
                     st.isTrd=true;
                     uSts.innerText=uF('CHK...');
-                    nBal=chkBal();
+                    let nBal=chkBal();
                     uBal.innerText=uF(nBal.toFixed(2));
-
                     if(nBal>=st.tgtAmt&&nBal>0){
                         st.isTrd=false;
                         isFetchingApi=false;
                         return;
                     }
-
                     if(st.stpIdx>=st.dynSeq.length)st.stpIdx=st.dynSeq.length-1;
                     let tAmt=st.dynSeq[st.stpIdx];
                     uBet.innerText=uF(tAmt + ' (S' + (st.stpIdx+1) + ')');
-
-                    // Real-Time Balance Synchronization: Pre-Bet verification
                     if(nBal<tAmt){
                         uSts.innerText=uF('LOW');
                         st.stpIdx=0;
@@ -915,42 +909,30 @@ const autoTotalSteps = arguments[1];
                         isFetchingApi=false;
                         return;
                     }
-
                     uSts.innerText=uF('DB...');
                     setTimeout(()=>{
                         let activeLogicNew=dataArray[curApiIdx],prediction=(activeLogicNew.pred||'BIG').toUpperCase();
-                        
-                        // Strict SKIP Signal Handling
-                        if(prediction==='SKIP'){
-                            uSts.innerText=uF('SKIP');
-                            sessionStorage.setItem('drx_sig',cSig); // Mark round as skipped
-                            st.lastPred=null; // Do not calculate win/loss on next period
-                            let ghC=document.getElementById('gh-content');
-                            if(ghC)ghC.textContent='Signal SKIP: Preserving Step ' + (st.stpIdx+1) + ' | Waiting Next...';
-                            setTimeout(()=>{st.isTrd=false;},1000);
-                            return;
-                        }
-
                         st.lastPred=prediction;
                         let ghC=document.getElementById('gh-content');
                         if(ghC)ghC.textContent='Step: ' + (st.stpIdx+1) + '/' + st.dynSeq.length + ' (Amt: ' + tAmt + ')\\nPred: ' + prediction + ' | W:' + st.w + ' L:' + st.l;
-                        
-                        uSts.innerText=uF('EXC...');
-                        exeTrd(prediction,tAmt,(suc)=>{
-                            if(suc){
-                                uSts.innerText=uF('OK');
-                                sessionStorage.setItem('drx_sig',cSig);
-                                st.tradesDone++;
-                            }else{
-                                uSts.innerText=uF('ERR');
-                            }
-                            // Post-Bet Balance Verification
-                            setTimeout(()=>{
-                                chkBal();
-                                st.isTrd=false;
-                            },1000);
-                        });
-                    },1200);
+                        if(prediction==='SKIP'){
+                            uSts.innerText=uF('SKIP');
+                            sessionStorage.setItem('drx_sig',cSig);
+                            setTimeout(()=>{st.isTrd=false;},1000);
+                        }else{
+                            uSts.innerText=uF('EXC...');
+                            exeTrd(prediction,tAmt,(suc)=>{
+                                if(suc){
+                                    uSts.innerText=uF('OK');
+                                    sessionStorage.setItem('drx_sig',cSig);
+                                    st.tradesDone++;
+                                }else{
+                                    uSts.innerText=uF('ERR');
+                                }
+                                setTimeout(()=>{st.isTrd=false;},1000);
+                            });
+                        }
+                    },1800);
                 }else if(!st.isTrd){
                     uSts.innerText=uF('SCAN');
                 }
@@ -965,7 +947,7 @@ const autoTotalSteps = arguments[1];
     setInterval(() => {
         if (st.isTrd) {
             if (!tradeStartTs) tradeStartTs = Date.now();
-            else if (Date.now() - tradeStartTs > 10000) {
+            else if (Date.now() - tradeStartTs > 12000) {
                 st.isTrd = false;
                 isFetchingApi = false;
                 tradeStartTs = 0;
@@ -975,7 +957,7 @@ const autoTotalSteps = arguments[1];
         } else {
             tradeStartTs = 0;
         }
-    }, 2000);
+    }, 3000);
 
     goBtn.onclick=()=>{
         let inputTarget=parseFloat(tgtInp.value);
@@ -1017,7 +999,7 @@ const autoTotalSteps = arguments[1];
     };
 
     if (autoTargetProfit && autoTotalSteps) {
-        setTimeout(() => { goBtn.click(); }, 1000);
+        setTimeout(() => { goBtn.click(); }, 1200);
     }
 
     return "INJECTED_SUCCESSFULLY";
@@ -1025,7 +1007,7 @@ const autoTotalSteps = arguments[1];
 """
 
 # ==========================================
-# 9. Clean English Interactive Keyboards
+# 9. Clean Keyboards
 # ==========================================
 def get_credentials_keyboard(sid):
     sess = active_sessions.get(sid, {})
@@ -1119,6 +1101,31 @@ def get_six_platform_keyboard():
     )
     return markup
 
+def get_passkey_menu_keyboard():
+    markup = InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        InlineKeyboardButton(f"{to_bold('GENERATE NEW 24H PASSKEY')}", callback_data="pk_gen_new"),
+        InlineKeyboardButton(f"{to_bold('VIEW ACTIVE PASSKEYS')}", callback_data="pk_list_active"),
+        InlineKeyboardButton(f"{to_bold('REVOKE PASSKEY')}", callback_data="pk_prompt_revoke")
+    )
+    return markup
+
+def get_admin_dashboard_keyboard():
+    markup = InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        InlineKeyboardButton(f"{to_bold('WORKER STATUS')}", callback_data="adm_workers"),
+        InlineKeyboardButton(f"{to_bold('ACTIVE LOGINS')}", callback_data="adm_logins")
+    )
+    markup.add(
+        InlineKeyboardButton(f"{to_bold('SPEED TEST / PING')}", callback_data="adm_ping"),
+        InlineKeyboardButton(f"{to_bold('PASSKEY MANAGER')}", callback_data="adm_passkeys")
+    )
+    markup.add(
+        InlineKeyboardButton(f"{to_bold('TASK COMPLETED MONITOR')}", callback_data="adm_tasks"),
+        InlineKeyboardButton(f"{to_bold('ROTATE MASTER NODE')}", callback_data="adm_rotate")
+    )
+    return markup
+
 # ==========================================
 # 10. Passkey Storage & Management Helpers
 # ==========================================
@@ -1152,39 +1159,8 @@ def get_all_passkeys() -> dict:
                 revoke_passkey(k)
     return valid_keys
 
-def get_passkey_menu_keyboard():
-    markup = InlineKeyboardMarkup(row_width=1)
-    markup.add(
-        InlineKeyboardButton(f"{to_bold('GENERATE NEW 24H PASSKEY')}", callback_data="pk_gen_new"),
-        InlineKeyboardButton(f"{to_bold('VIEW ACTIVE PASSKEYS')}", callback_data="pk_list_active"),
-        InlineKeyboardButton(f"{to_bold('REVOKE PASSKEY')}", callback_data="pk_prompt_revoke")
-    )
-    return markup
-
 # ==========================================
-# 11. Admin Control Dashboard Keyboards
-# ==========================================
-def get_admin_dashboard_keyboard():
-    markup = InlineKeyboardMarkup(row_width=2)
-    markup.add(
-        InlineKeyboardButton(f"{to_bold('WORKER STATUS')}", callback_data="adm_workers"),
-        InlineKeyboardButton(f"{to_bold('ACTIVE LOGINS')}", callback_data="adm_logins")
-    )
-    markup.add(
-        InlineKeyboardButton(f"{to_bold('SPEED TEST / PING')}", callback_data="adm_ping"),
-        InlineKeyboardButton(f"{to_bold('PASSKEY MANAGER')}", callback_data="adm_passkeys")
-    )
-    markup.add(
-        InlineKeyboardButton(f"{to_bold('TASK COMPLETED MONITOR')}", callback_data="adm_tasks"),
-        InlineKeyboardButton(f"{to_bold('TRIGGER ROTATION')}", callback_data="adm_rotate_now")
-    )
-    markup.add(
-        InlineKeyboardButton(f"{to_bold('REFRESH')}", callback_data="adm_refresh")
-    )
-    return markup
-
-# ==========================================
-# 12. Authentication Helpers
+# 11. Authentication Helpers
 # ==========================================
 def check_channel_membership(user_id):
     if user_id == SUPER_ADMIN_ID:
@@ -1202,14 +1178,14 @@ def is_user_pass_valid(chat_id):
     return time.time() < u.get("pass_expiry", 0)
 
 # ==========================================
-# 13. Clean Login Animation & Engine Auth
+# 12. Login Animation & Engine Execution
 # ==========================================
 def play_clean_login_animation(chat_id, msg_id):
     frames = [
-        "<b>CONNECTING REMOTE ENGINE</b>\n<code>▰▱▱▱▱▱▱▱▱▱ 10% Allocating isolated profile...</code>",
-        "<b>INITIALIZING TARGET PLATFORM</b>\n<code>▰▰▰▱▱▱▱▱▱▱ 35% Securing connection instance...</code>",
-        "<b>INJECTING AUTHENTICATION DATA</b>\n<code>▰▰▰▰▰▰▱▱▱▱ 65% Auto-filling credentials...</code>",
-        "<b>VERIFYING ACTIVE SESSION</b>\n<code>▰▰▰▰▰▰▰▰▰▰ 100% Login verification complete!</code>"
+        "<b>CONNECTING REMOTE ENGINE</b>\n<code>▰▱▱▱▱▱▱▱▱▱ 10% Direct VPS socket allocated...</code>",
+        "<b>INITIALIZING TARGET PLATFORM</b>\n<code>▰▰▰▱▱▱▱▱▱▱ 35% Isolated environment secured...</code>",
+        "<b>INJECTING AUTHENTICATION DATA</b>\n<code>▰▰▰▰▰▰▱▱▱▱ 65% Credentials verified...</code>",
+        "<b>VERIFYING ACTIVE SESSION</b>\n<code>▰▰▰▰▰▰▰▰▰▰ 100% Authentication accepted!</code>"
     ]
     for frame in frames:
         try:
@@ -1235,13 +1211,13 @@ def process_login(chat_id, sid, phone, password, anim_msg_id):
         return
 
     fill_ok = False
-    for _ in range(50):
+    for _ in range(70):
         res = safe_tab_execute(sid, lambda drv: drv.execute_script(AUTO_FILL_AND_CLICK_JS, phone, password))
         if res == "SUCCESS":
             fill_ok = True
-            time.sleep(1.5)
+            time.sleep(2.0)
             break
-        time.sleep(0.3)
+        time.sleep(0.4)
 
     if not fill_ok:
         safe_delete_message(chat_id, anim_msg_id)
@@ -1251,20 +1227,20 @@ def process_login(chat_id, sid, phone, password, anim_msg_id):
 
     login_status = "PENDING"
     err_detail = ""
-    for _ in range(35):
+    for _ in range(40):
         res = safe_tab_execute(sid, lambda drv: drv.execute_script(CHECK_LOGIN_STATUS_JS))
         if isinstance(res, dict):
             if res.get("status") == "SUCCESS":
                 login_status = "SUCCESS"
                 break
             elif res.get("status") == "CONFIRM_CLICKED":
-                time.sleep(1.0)
+                time.sleep(1.5)
                 continue
             elif res.get("status") == "ERROR":
                 login_status = "ERROR"
                 err_detail = res.get("message", "Invalid credentials")
                 break
-        time.sleep(0.4)
+        time.sleep(0.5)
 
     if safe_tab_execute(sid, lambda drv: drv.execute_script("return !!(localStorage.getItem('token') || sessionStorage.getItem('token'));")):
         login_status = "SUCCESS"
@@ -1276,8 +1252,7 @@ def process_login(chat_id, sid, phone, password, anim_msg_id):
         bot.send_message(chat_id, f"<b>{to_bold('LOGIN FAILED')}</b>\n\nPlatform: <b>{site_name}</b>\nReason: <i>{err_detail}</i>")
         return
 
-    time.sleep(1.2)
-
+    time.sleep(1.5)
     login_snap = os.path.join(PROFILES_BASE_DIR, f"login_done_{sid}.png")
     safe_tab_execute(sid, lambda drv: drv.save_screenshot(login_snap))
 
@@ -1297,7 +1272,7 @@ def process_login(chat_id, sid, phone, password, anim_msg_id):
     )
 
 # ==========================================
-# 14. WinGo Navigation & Configuration Flow
+# 13. WinGo Navigation & Configuration Flow
 # ==========================================
 def prepare_wingo_parameters(chat_id, sid):
     sess = active_sessions.get(sid, {})
@@ -1321,12 +1296,12 @@ def prepare_wingo_parameters(chat_id, sid):
             pass
 
     safe_tab_execute(sid, _nav)
-    time.sleep(1.2)
+    time.sleep(1.5)
 
-    for _ in range(25):
+    for _ in range(30):
         if safe_tab_execute(sid, lambda drv: drv.execute_script(CHECK_WINGO_READY_JS)):
             break
-        time.sleep(0.6)
+        time.sleep(0.8)
 
     current_bal = 0.0
     for _ in range(12):
@@ -1334,7 +1309,7 @@ def prepare_wingo_parameters(chat_id, sid):
         if bal and float(bal) > 0:
             current_bal = float(bal)
             break
-        time.sleep(0.4)
+        time.sleep(0.5)
 
     sess["current_balance"] = current_bal
 
@@ -1356,9 +1331,9 @@ def prepare_wingo_parameters(chat_id, sid):
     )
 
 # ==========================================
-# 15. Background Monitoring & Lifetime Watchdog
+# 14. Background Monitoring & Lifetime Watchdog
 # ==========================================
-def record_task_status(chat_id, sid, status, start_bal, cur_bal, target_amt, wins, losses, site_name, current_step=1):
+def record_task_status(chat_id, sid, status, start_bal, cur_bal, target_amt, wins, losses, site_name):
     task_payload = {
         "chat_id": chat_id,
         "session_id": sid,
@@ -1367,15 +1342,14 @@ def record_task_status(chat_id, sid, status, start_bal, cur_bal, target_amt, win
         "start_balance": start_bal,
         "current_balance": cur_bal,
         "target_amount": target_amt,
-        "current_step": current_step,
         "wins": wins,
         "losses": losses,
-        "node_id": NODE_ID,
         "updated_at": time.time()
     }
     firebase_sync_http(f"user_tasks/{chat_id}/{sid}", "PUT", task_payload)
 
 def monitor_trading_progress(chat_id, sid):
+    last_trades_count = 0
     while True:
         sess = active_sessions.get(sid)
         if not sess or not sess.get("is_trading"):
@@ -1389,9 +1363,9 @@ def monitor_trading_progress(chat_id, sid):
                         curBal: window.__WINGO_ST.curBal || 0,
                         tgtAmt: window.__WINGO_ST.tgtAmt || 0,
                         startBal: window.__WINGO_ST.startBal || 0,
-                        stpIdx: window.__WINGO_ST.stpIdx || 0,
                         w: window.__WINGO_ST.w || 0,
-                        l: window.__WINGO_ST.l || 0
+                        l: window.__WINGO_ST.l || 0,
+                        tradesDone: window.__WINGO_ST.tradesDone || 0
                     };
                 }
                 return null;
@@ -1403,16 +1377,20 @@ def monitor_trading_progress(chat_id, sid):
             sess["cur_bal"] = js_data.get("curBal", sess.get("cur_bal", 0))
             sess["wins"] = js_data.get("w", 0)
             sess["losses"] = js_data.get("l", 0)
-            sess["current_step"] = js_data.get("stpIdx", 0) + 1
+            trades_done = js_data.get("tradesDone", 0)
             tgt_amt = js_data.get("tgtAmt", 0)
             start_b = sess.get("start_bal", 0)
+
+            # Trigger Aggressive DOM & Resource Hygiene after completed trading rounds
+            if trades_done > last_trades_count:
+                last_trades_count = trades_done
+                purge_browser_memory_hygiene(sid)
 
             record_task_status(
                 chat_id, sid, "RUNNING",
                 start_b, sess["cur_bal"], tgt_amt,
                 sess["wins"], sess["losses"],
-                sess.get("site_name", "Amar Club"),
-                sess["current_step"]
+                sess.get("site_name", "Amar Club")
             )
 
             if sess["cur_bal"] >= tgt_amt and tgt_amt > 0 and sess["cur_bal"] > 0:
@@ -1423,8 +1401,7 @@ def monitor_trading_progress(chat_id, sid):
                     chat_id, sid, "COMPLETED",
                     start_b, sess["cur_bal"], tgt_amt,
                     sess["wins"], sess["losses"],
-                    sess.get("site_name", "Amar Club"),
-                    sess["current_step"]
+                    sess.get("site_name", "Amar Club")
                 )
 
                 screen_path = os.path.join(PROFILES_BASE_DIR, f"win_{sid}.png")
@@ -1432,7 +1409,7 @@ def monitor_trading_progress(chat_id, sid):
 
                 msg = (
                     f"<b>{to_bold('TARGET ACHIEVED SUCCESSFULLY')}</b>\n\n"
-                    f"Your target profit has been fulfilled smoothly.\n\n"
+                    f"Target profit reached with zero memory leaks.\n\n"
                     f"Starting Balance: <code>৳ {start_b:.2f}</code>\n"
                     f"Final Balance: <code>৳ {sess['cur_bal']:.2f}</code>\n"
                     f"Net Profit: <code>+৳ {profit:.2f}</code>\n"
@@ -1445,7 +1422,7 @@ def monitor_trading_progress(chat_id, sid):
                     bot.send_message(chat_id, msg)
                 break
 
-        time.sleep(3)
+        time.sleep(4)
 
 def continuous_24h_watchdog():
     while True:
@@ -1462,10 +1439,11 @@ def continuous_24h_watchdog():
 threading.Thread(target=continuous_24h_watchdog, daemon=True).start()
 
 # ==========================================
-# 16. Telegram Commands (/start, /pass, /admin)
+# 15. Telegram Command Handlers
 # ==========================================
 @bot.message_handler(commands=['start'])
 def handle_start(message):
+    update_traffic_activity()
     chat_id = message.chat.id
     safe_delete_message(chat_id, message.message_id)
 
@@ -1475,7 +1453,7 @@ def handle_start(message):
         user_sessions[chat_id]["step"] = "WAITING_CHANNEL_JOIN"
         caption = (
             f"<b>{to_bold('CHANNEL MEMBERSHIP REQUIRED')}</b>\n\n"
-            f"To access this VIP automation bot, you must join our official Telegram channel:\n"
+            f"Official channel membership required:\n"
             f"Channel: <b>{CHANNEL_USERNAME}</b>\n\n"
             f"Join below and click <b>VERIFY MEMBERSHIP</b>:"
         )
@@ -1486,8 +1464,8 @@ def handle_start(message):
         user_sessions[chat_id]["step"] = "WAITING_PASSKEY_AUTH"
         caption = (
             f"<b>{to_bold('24-HOUR ACCESS PASSKEY REQUIRED')}</b>\n\n"
-            f"An active 24-hour passkey is required to access the engine.\n"
-            f"Contact the administrator to obtain an authorized passkey."
+            f"An authorized passkey is required to access cluster services.\n"
+            f"Contact administrator to obtain access."
         )
         bot.send_message(chat_id, caption, reply_markup=get_passkey_gate_keyboard())
         return
@@ -1495,13 +1473,14 @@ def handle_start(message):
     user_sessions[chat_id]["step"] = "CHOOSE_SITE"
     welcome_text = (
         f"<b>{to_bold('WINGO 30S VIP AUTOMATION')}</b>\n\n"
-        f"Welcome to the high-frequency automated trading engine.\n"
-        f"Please select your target trading platform to proceed:"
+        f"High-frequency cluster trading engine initialized.\n"
+        f"Select your trading platform below:"
     )
     bot.send_message(chat_id, welcome_text, reply_markup=get_six_platform_keyboard())
 
 @bot.message_handler(commands=['pass'])
 def handle_pass_command(message):
+    update_traffic_activity()
     chat_id = message.chat.id
     safe_delete_message(chat_id, message.message_id)
 
@@ -1527,6 +1506,7 @@ def handle_pass_command(message):
 
 @bot.message_handler(commands=['admin'])
 def handle_admin_command(message):
+    update_traffic_activity()
     chat_id = message.chat.id
     safe_delete_message(chat_id, message.message_id)
 
@@ -1536,18 +1516,18 @@ def handle_admin_command(message):
 
     caption = (
         f"<b>{to_bold('ADMIN CLUSTER CONTROL PANEL')}</b>\n\n"
-        f"Cluster Node ID: <code>{NODE_ID}</code>\n"
-        f"Role: <b>{'PRIMARY MASTER' if IS_CLUSTER_MASTER else 'STANDBY / WORKER'}</b>\n"
-        f"Master Uptime: <code>{int(time.time() - MASTER_START_TIME)}s</code>\n\n"
-        f"Select a management module from the options below:"
+        f"Cluster ID: <code>{NODE_ID}</code>\n"
+        f"Role: <b>{'PRIMARY MASTER' if IS_CLUSTER_MASTER else 'STANDBY / WORKER'}</b>\n\n"
+        f"Select a management module:"
     )
     bot.send_message(chat_id, caption, reply_markup=get_admin_dashboard_keyboard())
 
 # ==========================================
-# 17. Telegram Callbacks & Flow Routing
+# 16. Callback Handlers
 # ==========================================
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callbacks(call):
+    update_traffic_activity()
     chat_id = call.message.chat.id
     data = call.data
 
@@ -1555,20 +1535,19 @@ def handle_callbacks(call):
     action = parts[0]
     sid = parts[1] if len(parts) > 1 else None
 
-    # Gate & Passkey entry
     if action == "check_channel_joined":
         if check_channel_membership(chat_id):
-            bot.answer_callback_query(call.id, "Channel verified successfully!")
+            bot.answer_callback_query(call.id, "Channel verified!")
             if not is_user_pass_valid(chat_id):
                 caption = (
                     f"<b>{to_bold('24-HOUR ACCESS PASSKEY REQUIRED')}</b>\n\n"
-                    f"Please enter your authorized 24-hour passkey to continue:"
+                    f"Submit your 24-hour passkey to continue:"
                 )
                 bot.edit_message_text(caption, chat_id=chat_id, message_id=call.message.message_id, reply_markup=get_passkey_gate_keyboard())
             else:
                 bot.edit_message_text(f"<b>{to_bold('SELECT PLATFORM')}</b>", chat_id=chat_id, message_id=call.message.message_id, reply_markup=get_six_platform_keyboard())
         else:
-            bot.answer_callback_query(call.id, "You have not joined the official channel yet!", show_alert=True)
+            bot.answer_callback_query(call.id, "Please join the official channel first!", show_alert=True)
         return
 
     elif action == "btn_enter_pass":
@@ -1578,7 +1557,6 @@ def handle_callbacks(call):
         user_sessions[chat_id]["passkey_prompt_id"] = pm.message_id
         return
 
-    # Passkey Management actions
     elif action == "pk_gen_new":
         if chat_id != SUPER_ADMIN_ID: return
         new_key = generate_24h_passkey()
@@ -1611,27 +1589,25 @@ def handle_callbacks(call):
         if chat_id != SUPER_ADMIN_ID: return
         user_sessions.setdefault(chat_id, {})["input_mode"] = "WAITING_REVOKE_KEY"
         bot.answer_callback_query(call.id)
-        bot.send_message(chat_id, f"<b>{to_bold('REVOKE PASSKEY')}</b>\nSend the exact passkey code you wish to delete:")
+        bot.send_message(chat_id, f"<b>{to_bold('REVOKE PASSKEY')}</b>\nSend the exact passkey code to revoke:")
         return
 
-    # Admin Dashboard Actions
     elif action in ["adm_refresh", "adm_home"]:
         if chat_id != SUPER_ADMIN_ID: return
         caption = (
             f"<b>{to_bold('ADMIN CLUSTER CONTROL PANEL')}</b>\n\n"
-            f"Cluster Node ID: <code>{NODE_ID}</code>\n"
-            f"Role: <b>{'PRIMARY MASTER' if IS_CLUSTER_MASTER else 'STANDBY / WORKER'}</b>\n"
-            f"Master Uptime: <code>{int(time.time() - MASTER_START_TIME)}s</code>\n\n"
-            f"Select a management module from the options below:"
+            f"Cluster ID: <code>{NODE_ID}</code>\n"
+            f"Role: <b>{'PRIMARY MASTER' if IS_CLUSTER_MASTER else 'STANDBY / WORKER'}</b>\n\n"
+            f"Select a management module:"
         )
         bot.edit_message_text(caption, chat_id=chat_id, message_id=call.message.message_id, reply_markup=get_admin_dashboard_keyboard())
         bot.answer_callback_query(call.id, "Refreshed")
         return
 
-    elif action == "adm_rotate_now":
+    elif action == "adm_rotate":
         if chat_id != SUPER_ADMIN_ID: return
-        bot.answer_callback_query(call.id, "Executing immediate master handover...", show_alert=True)
-        initiate_dynamic_master_handover()
+        bot.answer_callback_query(call.id, "Initiating Master rotation handover...")
+        trigger_manual_master_rotation()
         return
 
     elif action == "adm_workers":
@@ -1645,7 +1621,7 @@ def handle_callbacks(call):
         active_cnt = total_cnt - offline_cnt
 
         lines = [
-            f"<b>{to_bold('CLUSTER WORKER TOPOLOGY (100+ READY)')}</b>\n",
+            f"<b>{to_bold('CLUSTER WORKER TOPOLOGY')}</b>\n",
             f"Total Nodes: <b>{total_cnt}</b>",
             f"Active Nodes: <b>{active_cnt}</b>",
             f"Idle / Free: <b>{free_cnt}</b>",
@@ -1672,9 +1648,8 @@ def handle_callbacks(call):
                 c_id = sval.get("chat_id", "N/A")
                 site = sval.get("site_name", "N/A")
                 ph = sval.get("phone", "N/A")
-                step_idx = sval.get("current_step", 1)
                 masked = ph[:3] + "****" + ph[-3:] if len(ph) >= 6 else ph
-                lines.append(f"• User <code>{c_id}</code> | Site: <b>{site}</b> | Phone: <code>{masked}</code> | Step: <b>{step_idx}</b>")
+                lines.append(f"• User <code>{c_id}</code> | Site: <b>{site}</b> | Phone: <code>{masked}</code>")
 
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton(f"{to_bold('BACK')}", callback_data="adm_home"))
@@ -1684,7 +1659,7 @@ def handle_callbacks(call):
     elif action == "adm_ping":
         if chat_id != SUPER_ADMIN_ID: return
         bot.answer_callback_query(call.id, "Testing latency...")
-        lines = [f"<b>{to_bold('DIRECT NETWORK LATENCY (NO VPN)')}</b>\n"]
+        lines = [f"<b>{to_bold('DIRECT NETWORK LATENCY TEST')}</b>\n"]
         for pkey, pcfg in PLATFORMS.items():
             lat = measure_network_latency(pcfg["login"])
             lines.append(f"• {pcfg['name']}: <b>{lat} ms</b>" if lat < 9000 else f"• {pcfg['name']}: <b>TIMEOUT (>3000ms)</b>")
@@ -1697,7 +1672,7 @@ def handle_callbacks(call):
     elif action == "adm_passkeys":
         if chat_id != SUPER_ADMIN_ID: return
         bot.edit_message_text(
-            f"<b>{to_bold('PASSKEY MANAGER')}</b>\n\nGenerate or inspect 24-hour access tokens:",
+            f"<b>{to_bold('PASSKEY MANAGER')}</b>\n\nManage authorized 24-hour access tokens:",
             chat_id=chat_id, message_id=call.message.message_id,
             reply_markup=get_passkey_menu_keyboard()
         )
@@ -1711,9 +1686,8 @@ def handle_callbacks(call):
 
         lines = [
             f"<b>{to_bold('TASK COMPLETED MONITOR')}</b>\n",
-            f"Total Users: <b>{len(all_tasks)}</b>",
-            f"Total Tasks: <b>{total_sub}</b>\n",
-            "Select a user below to inspect task breakdowns:"
+            f"Submitting Accounts: <b>{len(all_tasks)}</b>",
+            f"Total Cluster Tasks: <b>{total_sub}</b>\n"
         ]
         for u_id, t_dict in all_tasks.items():
             if isinstance(t_dict, dict):
@@ -1734,7 +1708,7 @@ def handle_callbacks(call):
             if isinstance(tinfo, dict):
                 lines.append(
                     f"• Task <code>{t_sid}</code>\n"
-                    f"  Status: <b>{tinfo.get('status', 'N/A')}</b> | Step: <b>{tinfo.get('current_step', 1)}</b>\n"
+                    f"  Status: <b>{tinfo.get('status', 'N/A')}</b> | Platform: <b>{tinfo.get('site_name', 'N/A')}</b>\n"
                     f"  Start: ৳ {tinfo.get('start_balance', 0):.2f} ➔ Live: ৳ {tinfo.get('current_balance', 0):.2f}\n"
                     f"  Target: ৳ {tinfo.get('target_amount', 0):.2f} | W: {tinfo.get('wins', 0)} L: {tinfo.get('losses', 0)}\n"
                 )
@@ -1743,7 +1717,6 @@ def handle_callbacks(call):
         bot.edit_message_text("\n".join(lines), chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup)
         return
 
-    # Platform selection
     elif action in PLATFORMS:
         p_cfg = PLATFORMS[action]
         site_name = p_cfg["name"]
@@ -1769,8 +1742,7 @@ def handle_callbacks(call):
         caption = (
             f"<b>{to_bold('ACCOUNT LOGIN')}</b>\n\n"
             f"Platform: <b>{site_name}</b>\n\n"
-            f"Please click below to submit your account number and password. "
-            f"Credentials are kept in-memory and cleared after verification."
+            f"Submit your registered credentials below. Isolated VPS execution starts instantly."
         )
 
         bot.answer_callback_query(call.id)
@@ -1782,7 +1754,6 @@ def handle_callbacks(call):
         )
         active_sessions[sid]["cred_card_msg_id"] = call.message.message_id
 
-    # Interactive credentials inputs
     elif action == "ask_num" and sid in active_sessions:
         active_sessions[sid]["input_mode"] = "WAITING_PHONE"
         user_sessions[chat_id]["active_sid"] = sid
@@ -1792,7 +1763,7 @@ def handle_callbacks(call):
 
     elif action == "ask_pass" and sid in active_sessions:
         if not active_sessions[sid].get("phone"):
-            bot.answer_callback_query(call.id, "Please enter your phone number first!", show_alert=True)
+            bot.answer_callback_query(call.id, "Enter your phone number first!", show_alert=True)
             return
         active_sessions[sid]["input_mode"] = "WAITING_PASS"
         user_sessions[chat_id]["active_sid"] = sid
@@ -1801,7 +1772,7 @@ def handle_callbacks(call):
         active_sessions[sid]["temp_prompt_id"] = prompt_m.message_id
 
     elif action == "start_cfg" and sid in active_sessions:
-        bot.answer_callback_query(call.id, "Preparing WinGo 30S market...")
+        bot.answer_callback_query(call.id, "Accessing WinGo 30S market...")
         threading.Thread(target=prepare_wingo_parameters, args=(chat_id, sid), daemon=True).start()
 
     elif action == "set_tgt" and sid in active_sessions:
@@ -1809,27 +1780,27 @@ def handle_callbacks(call):
         user_sessions[chat_id]["active_sid"] = sid
         bot.answer_callback_query(call.id)
         cur_bal = active_sessions[sid].get("current_balance", 0.0)
-        p_msg = bot.send_message(chat_id, f"<b>{to_bold('TARGET PROFIT')}</b>\nLive Balance: <code>৳ {cur_bal:.2f}</code>\nEnter profit amount (e.g. <code>500</code>):")
+        p_msg = bot.send_message(chat_id, f"<b>{to_bold('TARGET PROFIT')}</b>\nLive Balance: <code>৳ {cur_bal:.2f}</code>\nEnter target profit amount (e.g. <code>500</code>):")
         active_sessions[sid]["temp_prompt_id"] = p_msg.message_id
 
     elif action == "set_stp" and sid in active_sessions:
         active_sessions[sid]["input_mode"] = "WAITING_STEPS"
         user_sessions[chat_id]["active_sid"] = sid
         bot.answer_callback_query(call.id)
-        p_msg = bot.send_message(chat_id, f"<b>{to_bold('MARTINGALE STEPS')}</b>\nEnter backup step count (e.g. <code>5</code>, <code>6</code>, <code>7</code>, <code>10</code>):")
+        p_msg = bot.send_message(chat_id, f"<b>{to_bold('MARTINGALE STEPS')}</b>\nEnter backup step count (e.g. <code>7</code> or <code>10</code>):")
         active_sessions[sid]["temp_prompt_id"] = p_msg.message_id
 
     elif action == "run_auto" and sid in active_sessions:
         sess = active_sessions[sid]
         if not sess.get("target_profit") or sess["target_profit"] <= 0:
-            bot.answer_callback_query(call.id, "Please set a target profit amount first!", show_alert=True)
+            bot.answer_callback_query(call.id, "Set target profit amount first!", show_alert=True)
             return
 
-        bot.answer_callback_query(call.id, "Starting automation engine...")
+        bot.answer_callback_query(call.id, "Initiating 24/7 background worker...")
         sess["is_trading"] = True
         safe_tab_execute(sid, lambda drv: drv.execute_script(WINGO_CORE_JS, sess["target_profit"], sess["total_steps"]))
 
-        time.sleep(1.5)
+        time.sleep(2.0)
         start_snap = os.path.join(PROFILES_BASE_DIR, f"run_{sid}.png")
         safe_tab_execute(sid, lambda drv: drv.save_screenshot(start_snap))
 
@@ -1843,7 +1814,7 @@ def handle_callbacks(call):
             f"Starting Balance: <code>৳ {cur_b:.2f}</code>\n"
             f"Target Balance: <code>৳ {target_total:.2f}</code>\n"
             f"Total Steps: <b>{sess['total_steps']}</b>\n\n"
-            f"<b>LIVE STATUS</b>: Martingale engine active. Real-time balance synced."
+            f"<b>LIVE STATUS</b>: Direct VPS session active. In-memory DOM cleaned every round."
         )
 
         display_or_replace_photo(chat_id, sid, start_snap, dashboard_caption, get_trading_control_keyboard(sid))
@@ -1851,12 +1822,11 @@ def handle_callbacks(call):
 
     elif action == "shot" and sid in active_sessions:
         sess = active_sessions[sid]
-        bot.answer_callback_query(call.id, "Capturing live footage...")
+        bot.answer_callback_query(call.id, "Capturing viewport snapshot...")
         temp_shot = os.path.join(PROFILES_BASE_DIR, f"live_{sid}.png")
         safe_tab_execute(sid, lambda drv: drv.save_screenshot(temp_shot))
 
         if os.path.exists(temp_shot):
-            cur_b = sess.get("cur_bal", sess.get("current_balance", 0.0))
             t_total = sess.get("start_bal", 0.0) + sess.get("target_profit", 0.0)
             caption = (
                 f"<b>{to_bold('24/7 AUTOMATION ENGINE ACTIVE')}</b>\n\n"
@@ -1864,7 +1834,7 @@ def handle_callbacks(call):
                 f"Starting Balance: <code>৳ {sess.get('start_bal', 0.0):.2f}</code>\n"
                 f"Target Balance: <code>৳ {t_total:.2f}</code>\n"
                 f"Time: <code>{time.strftime('%H:%M:%S')}</code>\n\n"
-                f"<b>LIVE STATUS</b>: Martingale trading execution continuous."
+                f"<b>LIVE STATUS</b>: Trading actively managed across cluster."
             )
             display_or_replace_photo(chat_id, sid, temp_shot, caption, get_trading_control_keyboard(sid))
 
@@ -1873,7 +1843,7 @@ def handle_callbacks(call):
         if b is not None:
             bot.answer_callback_query(call.id, f"Live Balance: ৳ {b:.2f}", show_alert=True)
         else:
-            bot.answer_callback_query(call.id, "Loading balance...", show_alert=True)
+            bot.answer_callback_query(call.id, "Refreshing balance...", show_alert=True)
 
     elif action == "stats" and sid in active_sessions:
         def _stat(drv):
@@ -1900,31 +1870,31 @@ def handle_callbacks(call):
             )
             bot.send_message(chat_id, stat_txt)
         else:
-            bot.answer_callback_query(call.id, "Syncing engine data...", show_alert=True)
+            bot.answer_callback_query(call.id, "Syncing telemetry...", show_alert=True)
 
     elif action == "stop" and sid in active_sessions:
         sess = active_sessions[sid]
         safe_tab_execute(sid, lambda drv: drv.execute_script("let btn = document.querySelector('#sys-core-fin button'); if(btn) btn.click();"))
         sess["is_trading"] = False
         bot.answer_callback_query(call.id, "Trading paused", show_alert=True)
-        bot.send_message(chat_id, f"<b>{to_bold('TRADING PAUSED')}</b>\nAutomation paused cleanly.")
+        bot.send_message(chat_id, f"<b>{to_bold('TRADING PAUSED')}</b>\nTrading successfully halted.")
 
     elif action == "cancel" and sid in active_sessions:
         bot.answer_callback_query(call.id, "Session terminated")
         close_session_tab(sid)
         safe_delete_message(chat_id, call.message.message_id)
-        bot.send_message(chat_id, f"<b>{to_bold('SESSION TERMINATED')}</b>\nSend /start to begin a new session.")
+        bot.send_message(chat_id, f"<b>{to_bold('SESSION TERMINATED')}</b>\nSend /start to launch a new session.")
 
 # ==========================================
-# 18. Text Handler & Input Router
+# 17. User Input Handler
 # ==========================================
 @bot.message_handler(func=lambda msg: True)
 def handle_user_text(message):
+    update_traffic_activity()
     chat_id = message.chat.id
     text = message.text.strip()
     u = user_sessions.get(chat_id, {})
 
-    # Passkey authorization input
     if u.get("input_mode") == "WAITING_PASSKEY":
         safe_delete_message(chat_id, message.message_id)
         if u.get("passkey_prompt_id"):
@@ -1948,23 +1918,22 @@ def handle_user_text(message):
             u["step"] = "CHOOSE_SITE"
             bot.send_message(
                 chat_id,
-                f"<b>{to_bold('PASSKEY ACTIVATED (24 HOURS)')}</b>\n\nYour session is authorized. Select a platform to proceed:",
+                f"<b>{to_bold('PASSKEY ACTIVATED (24 HOURS)')}</b>\n\nSession authorized across all VPS nodes. Select your platform:",
                 reply_markup=get_six_platform_keyboard()
             )
         else:
             pm = bot.send_message(
                 chat_id,
-                f"<b>{to_bold('INVALID OR EXPIRED PASSKEY')}</b>\nPlease re-enter a valid 24-hour passkey:"
+                f"<b>{to_bold('INVALID OR EXPIRED PASSKEY')}</b>\nPlease submit an authorized 24-hour passkey:"
             )
             u["passkey_prompt_id"] = pm.message_id
         return
 
-    # Admin Passkey Revocation input
     if u.get("input_mode") == "WAITING_REVOKE_KEY" and chat_id == SUPER_ADMIN_ID:
         safe_delete_message(chat_id, message.message_id)
         u["input_mode"] = None
         revoke_passkey(text)
-        bot.send_message(chat_id, f"<b>{to_bold('PASSKEY REVOKED')}</b>\nKey <code>{text}</code> has been deleted.")
+        bot.send_message(chat_id, f"<b>{to_bold('PASSKEY REVOKED')}</b>\nPasskey <code>{text}</code> successfully deleted.")
         return
 
     sid = u.get("active_sid")
@@ -1989,7 +1958,7 @@ def handle_user_text(message):
                 updated_card_text = (
                     f"<b>{to_bold('ACCOUNT LOGIN')}</b>\n\n"
                     f"Platform: <b>{sess.get('site_name', '')}</b>\n"
-                    f"Number: <code>{masked}</code> (Recorded)\n\n"
+                    f"Number: <code>{masked}</code> (Saved)\n\n"
                     f"Now click <b>PASSWORD</b> to enter your login password:"
                 )
                 bot.edit_message_text(
@@ -2032,11 +2001,11 @@ def handle_user_text(message):
                 f"Platform: <b>{sess.get('site_name', '')}</b>\n"
                 f"Live Balance: <code>৳ {cur_bal:.2f}</code>\n"
                 f"Selected Target: <code>৳ {val:.2f}</code>\n\n"
-                f"Parameters updated. Click <b>START</b> to initiate trading:"
+                f"Target updated. Click <b>START</b> to begin trading:"
             )
             display_or_replace_photo(chat_id, sid, wingo_snap, config_caption, get_setup_param_keyboard(sid))
         except ValueError:
-            p_msg = bot.send_message(chat_id, "Please enter a valid positive number (e.g. 500):")
+            p_msg = bot.send_message(chat_id, "Enter a valid positive number (e.g. 500):")
             sess["temp_prompt_id"] = p_msg.message_id
 
     elif input_mode == "WAITING_STEPS":
@@ -2055,26 +2024,32 @@ def handle_user_text(message):
                 f"Platform: <b>{sess.get('site_name', '')}</b>\n"
                 f"Live Balance: <code>৳ {cur_bal:.2f}</code>\n"
                 f"Selected Steps: <b>{steps_val}</b>\n\n"
-                f"Parameters updated. Click <b>START</b> to initiate trading:"
+                f"Steps updated. Click <b>START</b> to begin trading:"
             )
             display_or_replace_photo(chat_id, sid, wingo_snap, config_caption, get_setup_param_keyboard(sid))
         except ValueError:
-            p_msg = bot.send_message(chat_id, "Please enter a valid integer (e.g. 7):")
+            p_msg = bot.send_message(chat_id, "Enter a valid integer (e.g. 7):")
             sess["temp_prompt_id"] = p_msg.message_id
 
 # ==========================================
-# 19. Firebase RTDB Cluster & Distributed Routing
+# 18. Firebase RTDB Cluster & Server Rotation
 # ==========================================
 FIREBASE_RTDB_URL = "https://x7e77eey-default-rtdb.firebaseio.com"
-NODE_ID = f"worker_{socket.gethostname()}_{os.getpid()}_{uuid.uuid4().hex[:4]}"
+NODE_ID = f"term_{socket.gethostname()}_{os.getpid()}_{uuid.uuid4().hex[:6]}"
 
 IS_CLUSTER_MASTER = False
 IS_STANDBY_MASTER = False
 CLUSTER_ACTIVE = True
-MASTER_START_TIME = time.time()
-LAST_USER_TRAFFIC_TIME = time.time()
 
-def firebase_sync_http(path: str, method: str = "GET", payload=None, timeout: float = 3.0):
+LAST_TRAFFIC_ACTIVITY_TS = time.time()
+MASTER_ELECTION_START_TS = 0
+FORCE_MASTER_ROTATION_FLAG = False
+
+def update_traffic_activity():
+    global LAST_TRAFFIC_ACTIVITY_TS
+    LAST_TRAFFIC_ACTIVITY_TS = time.time()
+
+def firebase_sync_http(path: str, method: str = "GET", payload=None, timeout: float = 4.0):
     url = f"{FIREBASE_RTDB_URL.rstrip('/')}/{path.strip('/')}.json"
     raw_data = None
     headers = {"Content-Type": "application/json"}
@@ -2092,7 +2067,7 @@ def firebase_sync_http(path: str, method: str = "GET", payload=None, timeout: fl
         return None
 
 def cluster_claim_leadership():
-    global IS_CLUSTER_MASTER, IS_STANDBY_MASTER, MASTER_START_TIME
+    global IS_CLUSTER_MASTER, IS_STANDBY_MASTER, MASTER_ELECTION_START_TS
     now = time.time()
 
     primary = firebase_sync_http("cluster/active_master", "GET")
@@ -2101,7 +2076,7 @@ def cluster_claim_leadership():
         claim_primary = True
     else:
         last_hb = float(primary.get("heartbeat", 0))
-        if now - last_hb > 8.0 or primary.get("node_id") == NODE_ID:
+        if now - last_hb > 10.0 or primary.get("node_id") == NODE_ID:
             claim_primary = True
 
     if claim_primary:
@@ -2110,7 +2085,7 @@ def cluster_claim_leadership():
         if res and res.get("node_id") == NODE_ID:
             IS_CLUSTER_MASTER = True
             IS_STANDBY_MASTER = False
-            MASTER_START_TIME = now
+            MASTER_ELECTION_START_TS = now
             return "MASTER"
 
     standby = firebase_sync_http("cluster/standby_master", "GET")
@@ -2119,7 +2094,7 @@ def cluster_claim_leadership():
         claim_standby = True
     else:
         last_hb_s = float(standby.get("heartbeat", 0))
-        if now - last_hb_s > 8.0 or standby.get("node_id") == NODE_ID:
+        if now - last_hb_s > 10.0 or standby.get("node_id") == NODE_ID:
             claim_standby = True
 
     if claim_standby:
@@ -2133,6 +2108,10 @@ def cluster_claim_leadership():
     IS_CLUSTER_MASTER = False
     IS_STANDBY_MASTER = False
     return "WORKER"
+
+def trigger_manual_master_rotation():
+    global FORCE_MASTER_ROTATION_FLAG
+    FORCE_MASTER_ROTATION_FLAG = True
 
 def cluster_register_local_node():
     node_payload = {
@@ -2161,16 +2140,37 @@ def cluster_node_heartbeat_loop():
             firebase_sync_http(f"terminals/{NODE_ID}", "PATCH", hb_data)
         except Exception:
             pass
-        time.sleep(3)
+        time.sleep(5)
 
 def cluster_master_heartbeat_loop():
+    global IS_CLUSTER_MASTER, FORCE_MASTER_ROTATION_FLAG
     while CLUSTER_ACTIVE and IS_CLUSTER_MASTER:
         try:
-            m_data = {"heartbeat": time.time()}
+            now = time.time()
+            m_data = {"heartbeat": now}
             firebase_sync_http("cluster/active_master", "PATCH", m_data)
+
+            # Master Rotation Verification (Uptime threshold, idle timeout, or manual trigger)
+            term_duration = now - MASTER_ELECTION_START_TS
+            idle_duration = now - LAST_TRAFFIC_ACTIVITY_TS
+            is_idle = (idle_duration >= MASTER_IDLE_STEPDOWN_TIMEOUT and len(active_sessions) == 0)
+            is_expired = (term_duration >= MASTER_MAX_ROTATION_CYCLE)
+
+            if FORCE_MASTER_ROTATION_FLAG or is_idle or is_expired:
+                print(f"[*] [{NODE_ID}] Rotating Master Role (Expired={is_expired}, Idle={is_idle}, Manual={FORCE_MASTER_ROTATION_FLAG}). Handing over...")
+                FORCE_MASTER_ROTATION_FLAG = False
+                IS_CLUSTER_MASTER = False
+
+                # Release primary lock in Firebase to let Standby/Worker promote
+                firebase_sync_http("cluster/active_master", "DELETE")
+                try:
+                    bot.stop_polling()
+                except Exception:
+                    pass
+                break
         except Exception:
             pass
-        time.sleep(2)
+        time.sleep(4)
 
 def cluster_standby_heartbeat_loop():
     while CLUSTER_ACTIVE and IS_STANDBY_MASTER:
@@ -2179,84 +2179,15 @@ def cluster_standby_heartbeat_loop():
             firebase_sync_http("cluster/standby_master", "PATCH", s_data)
         except Exception:
             pass
-        time.sleep(3)
+        time.sleep(4)
 
-# ==========================================
-# 20. Dynamic Master Rotation & Safe Handover
-# ==========================================
-def initiate_dynamic_master_handover():
-    global IS_CLUSTER_MASTER
-    if not IS_CLUSTER_MASTER:
-        return
-
-    print(f"[*] [{to_bold(NODE_ID)}] Initiating Dynamic Master Handover to next healthy Worker...")
-    now = time.time()
-    terms = firebase_sync_http("terminals", "GET") or {}
-    candidates = []
-
-    for tid, tinfo in terms.items():
-        if tid != NODE_ID and isinstance(tinfo, dict):
-            hb = float(tinfo.get("heartbeat", 0))
-            if now - hb <= 8.0 and tinfo.get("status") in ["FREE", "BUSY"]:
-                candidates.append((tid, tinfo.get("load", 0), tinfo.get("latency_ms", 9999)))
-
-    candidates.sort(key=lambda x: (x[1], x[2]))
-    promoted_worker = candidates[0][0] if candidates else None
-
-    if promoted_worker:
-        print(f"[*] Next Master Node Elected: {promoted_worker}")
-        # Handover signal
-        firebase_sync_http("cluster/designated_master", "PUT", {"target_node": promoted_worker, "ts": now})
-    
-    # Step down role
-    IS_CLUSTER_MASTER = False
-    firebase_sync_http("cluster/active_master", "DELETE")
-    
-    # Stop telegram polling loop cleanly
-    try:
-        bot.stop_polling()
-    except Exception:
-        pass
-
-def master_rotation_watchdog_loop():
-    global LAST_USER_TRAFFIC_TIME
-    while CLUSTER_ACTIVE and IS_CLUSTER_MASTER:
-        time.sleep(10)
-        now = time.time()
-        has_active_traffic = bool(active_sessions)
-        if has_active_traffic:
-            LAST_USER_TRAFFIC_TIME = now
-
-        # Condition 1: Completed 30-min operational interval
-        uptime = now - MASTER_START_TIME
-        # Condition 2: Idle window of 5 minutes with zero traffic
-        idle_duration = now - LAST_USER_TRAFFIC_TIME
-
-        if (uptime >= MASTER_ROTATION_INTERVAL) or (idle_duration >= MASTER_IDLE_WINDOW and uptime > 60):
-            print(f"[*] Rotation criteria met (Uptime: {int(uptime)}s, Idle: {int(idle_duration)}s). Stepping down.")
-            initiate_dynamic_master_handover()
-            break
-
-# ==========================================
-# 21. Distributed IPC & Interception
-# ==========================================
 def cluster_remote_task_listener():
     while CLUSTER_ACTIVE:
         try:
-            time.sleep(0.5 if active_sessions else 1.5)
-
-            # Check if this node was directly designated as the new Master
-            designated = firebase_sync_http("cluster/designated_master", "GET")
-            if designated and isinstance(designated, dict):
-                if designated.get("target_node") == NODE_ID:
-                    firebase_sync_http("cluster/designated_master", "DELETE")
-                    print(f"[*] [{to_bold(NODE_ID)}] Received Master Promotion handover. Claiming Primary Master...")
-                    claim_res = cluster_claim_leadership()
-                    if claim_res == "MASTER":
-                        threading.Thread(target=cluster_master_heartbeat_loop, daemon=True).start()
-                        threading.Thread(target=master_rotation_watchdog_loop, daemon=True).start()
-                        _original_bot_infinity_polling(skip_pending=True)
-                        break
+            if not active_sessions:
+                time.sleep(2.0)
+            else:
+                time.sleep(0.8)
 
             task = firebase_sync_http(f"terminals/{NODE_ID}/task", "GET")
             if task and isinstance(task, dict):
@@ -2347,6 +2278,11 @@ def cluster_session_watchdog_loop():
                         "session_id": None,
                         "load": 0
                     })
+            else:
+                for sid, sess in list(active_sessions.items()):
+                    c_time = sess.get("created_at", now)
+                    if now - c_time >= 86400:
+                        close_session_tab(sid)
 
             if IS_CLUSTER_MASTER:
                 terms = firebase_sync_http("terminals", "GET")
@@ -2356,7 +2292,7 @@ def cluster_session_watchdog_loop():
                         if isinstance(tval, dict):
                             hb = float(tval.get("heartbeat", 0))
                             t_status = tval.get("status", "")
-                            if now - hb > 12.0 and t_status != "OFFLINE":
+                            if now - hb > 15.0 and t_status != "OFFLINE":
                                 firebase_sync_http(f"terminals/{tid}/status", "PUT", "OFFLINE")
                                 dead_sid = tval.get("session_id")
                                 if dead_sid and dead_sid in all_sessions:
@@ -2365,7 +2301,7 @@ def cluster_session_watchdog_loop():
                                     for cand_id, cand_val in terms.items():
                                         if cand_id != tid and isinstance(cand_val, dict) and cand_val.get("status") == "FREE":
                                             c_hb = float(cand_val.get("heartbeat", 0))
-                                            if now - c_hb <= 8.0:
+                                            if now - c_hb <= 15.0:
                                                 candidates.append((cand_id, cand_val.get("load", 0), cand_val.get("latency_ms", 9999)))
 
                                     candidates.sort(key=lambda x: (x[1], x[2]))
@@ -2395,10 +2331,10 @@ def cluster_session_watchdog_loop():
                                     firebase_sync_http(f"terminals/{new_worker}/task", "PUT", re_task)
         except Exception:
             pass
-        time.sleep(5)
+        time.sleep(6)
 
 # ==========================================
-# 22. Interception Wrappers & Load Dispatching
+# 19. Interception Wrappers & Load Dispatching
 # ==========================================
 _original_close_session_tab = close_session_tab
 def close_session_tab(session_id):
@@ -2419,14 +2355,13 @@ _original_process_login = process_login
 def distributed_process_login(chat_id, sid, phone, password, anim_msg_id):
     all_terminals = firebase_sync_http("terminals", "GET")
     now = time.time()
-    free_target_node = None
-
     candidates = []
+
     if all_terminals and isinstance(all_terminals, dict):
         for tid, tinfo in all_terminals.items():
             if isinstance(tinfo, dict) and tinfo.get("status") == "FREE":
                 hb = float(tinfo.get("heartbeat", 0))
-                if now - hb <= 8.0:
+                if now - hb <= 15.0:
                     candidates.append((tid, tinfo.get("load", 0), tinfo.get("latency_ms", 9999)))
 
     if candidates:
@@ -2562,7 +2497,7 @@ for h in bot.message_handlers:
         h['function'] = distributed_handle_user_text
 
 # ==========================================
-# 23. Master-Worker Telegram Polling Coordinator
+# 20. Dynamic Polling & Server Rotation Loop
 # ==========================================
 _original_bot_infinity_polling = bot.infinity_polling
 
@@ -2577,16 +2512,18 @@ def cluster_managed_infinity_polling(*args, **kwargs):
         role = cluster_claim_leadership()
 
         if role == "MASTER":
-            threading.Thread(target=cluster_master_heartbeat_loop, daemon=True).start()
-            threading.Thread(target=master_rotation_watchdog_loop, daemon=True).start()
-            print(f"[*] [{to_bold(NODE_ID)}] Active as PRIMARY MASTER. Handling Telegram polling...")
-            _original_bot_infinity_polling(skip_pending=True)
-            print(f"[*] [{to_bold(NODE_ID)}] Primary Master polling ended. Re-entering cluster loop...")
-            time.sleep(3)
+            m_thread = threading.Thread(target=cluster_master_heartbeat_loop, daemon=True)
+            m_thread.start()
+            print(f"[*] [{to_bold(NODE_ID)}] PRIMARY MASTER active. Telegram polling initiated...")
+            try:
+                _original_bot_infinity_polling(*args, **kwargs)
+            except Exception as e:
+                print(f"[*] Polling stopped: {e}")
+            print(f"[*] [{to_bold(NODE_ID)}] Master stepped down to Worker role.")
 
         elif role == "STANDBY":
             threading.Thread(target=cluster_standby_heartbeat_loop, daemon=True).start()
-            print(f"[*] [{to_bold(NODE_ID)}] HOT-STANDBY active. Monitoring Primary...")
+            print(f"[*] [{to_bold(NODE_ID)}] HOT-STANDBY active. Monitoring Primary Master...")
             while CLUSTER_ACTIVE and not IS_CLUSTER_MASTER:
                 time.sleep(3)
                 primary_data = firebase_sync_http("cluster/active_master", "GET")
@@ -2596,38 +2533,34 @@ def cluster_managed_infinity_polling(*args, **kwargs):
                     primary_dead = True
                 else:
                     last_hb = float(primary_data.get("heartbeat", 0))
-                    if now - last_hb > 8.0:
+                    if now - last_hb > 10.0:
                         primary_dead = True
 
                 if primary_dead:
-                    print(f"[*] Primary Master offline (>8s). Promoting to PRIMARY MASTER...")
-                    claim_res = cluster_claim_leadership()
-                    if claim_res == "MASTER":
-                        break
+                    print(f"[*] Primary Master offline or rotated. Promoting to MASTER...")
+                    break
 
         else:
-            print(f"[*] [{to_bold(NODE_ID)}] WORKER Active (Load balanced across 100+ instances).")
+            print(f"[*] [{to_bold(NODE_ID)}] WORKER Active: Managing browser instances without polling.")
             while CLUSTER_ACTIVE and not IS_CLUSTER_MASTER:
-                time.sleep(4)
+                time.sleep(5)
                 primary = firebase_sync_http("cluster/active_master", "GET")
                 standby = firebase_sync_http("cluster/standby_master", "GET")
                 now = time.time()
 
                 claim_needed = False
-                if not primary or not isinstance(primary, dict) or (now - float(primary.get("heartbeat", 0)) > 10.0):
-                    if not standby or not isinstance(standby, dict) or (now - float(standby.get("heartbeat", 0)) > 10.0):
+                if not primary or not isinstance(primary, dict) or (now - float(primary.get("heartbeat", 0)) > 12.0):
+                    if not standby or not isinstance(standby, dict) or (now - float(standby.get("heartbeat", 0)) > 12.0):
                         claim_needed = True
 
                 if claim_needed:
-                    print(f"[*] Master vacancy detected. Attempting leader election...")
-                    new_role = cluster_claim_leadership()
-                    if new_role == "MASTER":
-                        break
+                    print(f"[*] Master vacancy detected. Competing for leadership...")
+                    break
 
 bot.infinity_polling = cluster_managed_infinity_polling
 
 # ==========================================
-# 24. Main Execution
+# 21. Main Cluster Execution
 # ==========================================
 if __name__ == "__main__":
     print(f"[*] {to_bold('WINGO VIP BOT CLUSTER ENGINE ACTIVE')}...")
