@@ -107,7 +107,7 @@ def cleanup_zombie_browsers():
 # ==========================================
 # 4. Configuration & State Management
 # ==========================================
-TOKEN = "8808949150:AAGSpz9tmSWxOiEHc6C7TjEmHikgO8bZR-A"
+TOKEN = "8808949150:AAGJXBVM_18xxAHPFMtH-TnGQbtaXAcb9p8"
 bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
 
 # Set HEADLESS=true via environment to enable headless; defaults to visible VPS Desktop GUI
