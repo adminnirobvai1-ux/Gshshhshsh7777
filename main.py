@@ -201,7 +201,7 @@ def allocate_session_tab(session_id, target_url):
     options.add_argument("-profile")
     options.add_argument(profile_dir)
 
-    # Lightweight Firefox flags & anti-freeze background optimization
+    # Lightweight Firefox performance flags & background anti-freeze profile
     options.set_preference("browser.sessionhistory.max_entries", 1)
     options.set_preference("browser.sessionhistory.max_total_viewers", 0)
     options.set_preference("image.mem.surfacecache.max_size_kb", 1024)
@@ -559,7 +559,7 @@ for (let i = 0; i < els.length; i++) {
 return 0;
 """
 
-# Upgraded Trading Engine JavaScript Injection
+# Upgraded Background Trading Engine JavaScript Injection
 WINGO_ENGINE_INJECTION_JS = r"""
 (function(){
   if(document.getElementById('sys-core-fin'))return;
@@ -875,7 +875,7 @@ WINGO_ENGINE_INJECTION_JS = r"""
                 st.stpIdx=Math.min(st.stpIdx+1,st.dynSeq.length-1);
                 st.pattern.push('L');
               }
-              if(st.pattern.length > 20) st.pattern.shift();
+              if(st.pattern.length > 25) st.pattern.shift();
             }
             st.lastPred=null;
             st.lastPeriod=cSig;
