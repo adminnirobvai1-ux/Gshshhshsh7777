@@ -12,7 +12,7 @@ import urllib.error
 import uuid
 
 # ==========================================
-# 1. Automatic Package Installer
+# 1. Automatic Package Installer & Imports
 # ==========================================
 def install_and_import(package_name, import_name=None):
     if import_name is None:
@@ -60,7 +60,7 @@ def safe_delete_message(chat_id, message_id):
         pass
 
 # ==========================================
-# 3. Aggressive Process Hygiene & Zombie Killer
+# 3. Process Hygiene & Zombie Killer
 # ==========================================
 def kill_process_tree(pid):
     try:
@@ -110,7 +110,6 @@ def cleanup_zombie_browsers():
 TOKEN = "8808949150:AAFwAIsPbB2XZdKdizPIc8k42yVKvQJkH-s"
 bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
 
-# Set HEADLESS=true via environment to enable headless; defaults to visible VPS Desktop GUI
 HEADLESS_MODE = os.environ.get("HEADLESS", "false").lower() == "true"
 
 URL_AMARCLUB_LOGIN = "https://amarclub1.com/#/login"
@@ -166,12 +165,15 @@ PLATFORMS = {
 }
 
 # ==========================================
-# 5. Network Speed Check Helper
+# 5. Network Latency & Ping Polling Helper
 # ==========================================
-def measure_network_latency(url: str, timeout: float = 3.0) -> float:
+def measure_network_latency(url: str, timeout: float = 2.5) -> float:
     try:
         start_ts = time.time()
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+        req = urllib.request.Request(
+            url,
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0"}
+        )
         with urllib.request.urlopen(req, timeout=timeout) as response:
             response.read(256)
         return round((time.time() - start_ts) * 1000, 2)
@@ -179,7 +181,7 @@ def measure_network_latency(url: str, timeout: float = 3.0) -> float:
         return 9999.0
 
 # ==========================================
-# 6. Session Allocation & Isolation Engine
+# 6. Real Firefox Session Allocation Engine
 # ==========================================
 def allocate_session_tab(session_id, target_url):
     sess = active_sessions.get(session_id)
@@ -192,7 +194,7 @@ def allocate_session_tab(session_id, target_url):
     os.makedirs(profile_dir, exist_ok=True)
 
     options = Options()
-    # Hardened page load strategy: Eager avoids indefinite blocking by asset requests
+    # Non-blocking page load strategy: sockets & analytics won't stall driver.get()
     options.page_load_strategy = 'eager'
 
     if HEADLESS_MODE:
@@ -201,20 +203,33 @@ def allocate_session_tab(session_id, target_url):
     options.add_argument("-profile")
     options.add_argument(profile_dir)
 
-    options.set_preference("browser.sessionhistory.max_entries", 1)
-    options.set_preference("browser.sessionhistory.max_total_viewers", 0)
-    options.set_preference("image.mem.surfacecache.max_size_kb", 1024)
-    options.set_preference("javascript.options.mem.max", 25600)
-    options.set_preference("network.http.pipelining", False)
-    options.set_preference("browser.cache.disk.enable", False)
+    # Genuine Desktop User-Agent
+    options.set_preference("general.useragent.override", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:128.0) Gecko/20100101 Firefox/128.0")
+
+    # Native Caching: Essential for Vue.js chunk caching and asset hydration
+    options.set_preference("browser.cache.disk.enable", True)
     options.set_preference("browser.cache.memory.enable", True)
-    options.set_preference("network.http.use-cache", False)
+    options.set_preference("network.http.use-cache", True)
+    options.set_preference("browser.cache.offline.enable", True)
+
+    # Full DOM & Graphics Rendering (No image surface clipping)
+    options.set_preference("gfx.webrender.all", True)
+    options.set_preference("layers.acceleration.force-enabled", True)
+    options.set_preference("webgl.disabled", False)
+
+    # Anti-Detection & Unrestricted JS Execution
+    options.set_preference("dom.webdriver.enabled", False)
+    options.set_preference("useAutomationExtension", False)
+    options.set_preference("media.volume_scale", "0.0")
+    options.set_preference("dom.webnotifications.enabled", False)
+    options.set_preference("browser.sessionhistory.max_entries", 5)
+    options.set_preference("browser.sessionhistory.max_total_viewers", 1)
 
     service = FirefoxService(log_output=os.devnull)
     driver = webdriver.Firefox(service=service, options=options)
 
-    driver.set_page_load_timeout(25)
-    driver.set_script_timeout(15)
+    driver.set_page_load_timeout(30)
+    driver.set_script_timeout(20)
     driver.implicitly_wait(3)
     driver.set_window_size(412, 915)
 
@@ -235,8 +250,7 @@ def safe_tab_execute(sid, task_fn, timeout=20.0):
     if not driver or not lock:
         return None
 
-    # Elevated lock timeout to 15.0s to withstand distributed network jitter safely
-    acquired = lock.acquire(timeout=15.0)
+    acquired = lock.acquire(timeout=5.0)
     if not acquired:
         return None
 
@@ -354,13 +368,13 @@ MODAL_AUTO_DISMISSER_JS = """
         ];
         selectors.forEach(sel => {
             document.querySelectorAll(sel).forEach(el => {
-                if (el && el.offsetParent !== null && !el.closest('#sys-core-fin')) {
+                if (el && el.offsetParent !== null && !el.closest('#sys-core-fin') && !el.closest('#_run_box')) {
                     try { el.click(); } catch(e){}
                 }
             });
         });
     };
-    setInterval(sweepModals, 1500);
+    setInterval(sweepModals, 1200);
     const obs = new MutationObserver(() => sweepModals());
     obs.observe(document.body, { childList: true, subtree: true });
 })();
@@ -479,99 +493,107 @@ return { status: "PENDING" };
 """
 
 # ==============================================================================
-# PERSISTENT DUAL-ENTRANCE DISPATCH & VALIDATION JAVASCRIPT
+# RESILIENT 3-LAYER WINGO NAVIGATION ENGINE (NO STRICT IMG DEPENDENCE)
 # ==============================================================================
-PERSISTENT_WINGO_DISPATCH_JS = """
+WINGO_MULTI_STRATEGY_NAV_JS = """
 const targetUrl = arguments[0];
-const targetHash = arguments[1] || '#/saasLottery/WinGo?gameCode=WinGo_30S&lottery=WinGo';
+const strategy = arguments[1];
 
-// Step A: Sweep overlays, popup wrappers, recharge banners, dialog buttons
-const sweepSelectors = [
-    '.van-dialog__confirm', '.dialog-confirm', '.van-popup__close-icon',
-    'button[class*="close"]', 'button[class*="confirm"]', '.van-button--primary',
-    '.van-overlay', '.dialog-close', '.close-btn'
-];
-sweepSelectors.forEach(sel => {
-    document.querySelectorAll(sel).forEach(el => {
-        if (el && el.offsetParent !== null && !el.closest('#sys-core-fin')) {
-            try { el.click(); } catch(e){}
-        }
-    });
-});
+(function(){
+    const clearModals = () => {
+        const sel = [
+            '.van-dialog__confirm', '.dialog-confirm',
+            '.van-popup__close-icon', 'button[class*="close"]',
+            '.van-overlay', '.dialog-close', '.close-btn'
+        ];
+        sel.forEach(s => {
+            document.querySelectorAll(s).forEach(el => {
+                if (el && el.offsetParent !== null) {
+                    try { el.click(); } catch(e){}
+                }
+            });
+        });
+    };
+    clearModals();
 
-// Step B1: Vue Router direct hash navigation
-try {
-    if (window.location.hash !== targetHash) {
-        window.location.hash = targetHash;
+    const hash = window.location.hash || '';
+    const href = window.location.href || '';
+    if (hash.includes('WinGo') || href.includes('WinGo')) {
+        return "ALREADY_ON_WINGO";
     }
-} catch(e) {}
 
-// Step B2: Simulated synthetic pointer clicks on WinGo banners/cards
-const selectors = [
-    'body > div > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(7) > div:nth-of-type(3) > div > div:nth-of-type(2) > div > div > div > img',
-    'body > div > div:nth-of-type(3) > div:nth-of-type(5) > div:nth-of-type(2) > div:nth-of-type(3) > div > div > div > img',
-    'body > div > div:nth-of-type(2) > div:nth-of-type(5) > div:nth-of-type(2) > div > div',
-    'body > div > div:nth-of-type(3) > div:nth-of-type(5) > div:nth-of-type(4) > div:nth-of-type(2) > img',
-    'img[src*="wingo" i]',
-    'img[alt*="wingo" i]'
-];
-
-let targetEl = null;
-for (let i = 0; i < selectors.length; i++) {
-    let el = document.querySelector(selectors[i]);
-    if (el && el.offsetParent !== null) { targetEl = el; break; }
-}
-
-if (!targetEl) {
-    let imgs = document.getElementsByTagName('img');
-    for (let j = 0; j < imgs.length; j++) {
-        if (/wingo/i.test((imgs[j].src || '') + (imgs[j].alt || '')) && imgs[j].offsetParent !== null) {
-            targetEl = imgs[j];
-            break;
+    // Strategy 1: SPA Hash Switch (Fastest & direct Vue router change)
+    if (strategy === 1) {
+        try {
+            window.location.hash = '#/saasLottery/WinGo?gameCode=WinGo_30S&lottery=WinGo';
+            return "STRATEGY_1_HASH_TRIGGERED";
+        } catch(e) {
+            return "STRATEGY_1_FAILED";
         }
     }
-}
 
-if (!targetEl) {
-    let all = document.querySelectorAll('div,span,button,a');
-    for (let k = 0; k < all.length; k++) {
-        if (all[k].children.length < 3 && /wingo/i.test(all[k].textContent || '') && all[k].offsetParent !== null) {
-            targetEl = all[k];
-            break;
+    // Strategy 2: Text-content, Attribute & Class-based DOM Click
+    if (strategy === 2) {
+        const trigger = (el) => {
+            if (!el) return false;
+            ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach(evt => {
+                try { el.dispatchEvent(new MouseEvent(evt, { bubbles: true, cancelable: true, view: window })); } catch(e){}
+            });
+            if (typeof el.click === 'function') {
+                try { el.click(); } catch(e){}
+            }
+            return true;
+        };
+
+        const allNodes = Array.from(document.querySelectorAll('div, button, a, span, p, img'));
+
+        // Primary Match: text match for Win Go / WinGo 30S
+        let targetEl = allNodes.find(el => {
+            let t = (el.innerText || el.getAttribute('alt') || el.getAttribute('title') || '').trim();
+            return (/^Win\\s*Go/i.test(t) || t.includes('WinGo 30S') || t === 'Win Go') && el.offsetParent !== null;
+        });
+
+        // Secondary Match: lottery category card or class/src match
+        if (!targetEl) {
+            targetEl = allNodes.find(el => {
+                let cls = (el.className || '').toString().toLowerCase();
+                let src = (el.src || '').toString().toLowerCase();
+                return (cls.includes('wingo') || src.includes('wingo')) && el.offsetParent !== null;
+            });
+        }
+
+        if (targetEl) {
+            trigger(targetEl);
+            return "STRATEGY_2_DOM_CLICKED";
+        }
+        return "STRATEGY_2_NO_MATCH";
+    }
+
+    // Strategy 3: Direct URL Dispatch Fallback
+    if (strategy === 3) {
+        try {
+            window.location.href = targetUrl;
+            return "STRATEGY_3_HREF_DISPATCHED";
+        } catch(e) {
+            return "STRATEGY_3_FAILED";
         }
     }
-}
 
-if (targetEl) {
-    ['pointerdown','mousedown','pointerup','mouseup','click'].forEach(ev => {
-        try { targetEl.dispatchEvent(new MouseEvent(ev, { bubbles: true, cancelable: true, view: window })); } catch(e){}
-    });
-    if (typeof targetEl.click === 'function') {
-        try { targetEl.click(); } catch(e){}
-    }
-}
-
-return true;
+    return "INVALID_STRATEGY";
+})();
 """
 
-VERIFY_WINGO_READY_JS = """
+CHECK_WINGO_READY_JS = """
 const hash = window.location.hash || '';
 const href = window.location.href || '';
 const bodyText = document.body ? document.body.innerText : '';
 
-const dismissBtns = document.querySelectorAll('.van-dialog__confirm, .dialog-close, .van-popup__close-icon, button[class*="close"]');
+const dismissBtns = document.querySelectorAll('.van-dialog__confirm, .dialog-close, .van-popup__close-icon, button[class*="close"], .van-dialog button');
 dismissBtns.forEach(btn => { try { btn.click(); } catch(e){} });
 
-// Marker 1: URL/Hash alignment
-const isUrlMatch = hash.includes('WinGo') || href.includes('WinGo') || hash.includes('saasLottery');
-
-// Marker 2: Text presence
-const isTextMatch = bodyText.includes('Win Go') || bodyText.includes('30S') || bodyText.includes('Time remaining');
-
-// Marker 3: Interactive Betting DOM elements
-const hasBetControls = !!document.querySelector('.Betting__C-foot-b, .Betting__C-foot-s, .bet-btn-big, .bet-btn-small, button[class*="big" i], .van-count-down, [class*="countdown" i], [class*="time" i]');
-
-if (isUrlMatch && (isTextMatch || hasBetControls)) {
+if (hash.includes('WinGo') || href.includes('WinGo') || 
+    bodyText.includes('Win Go') || bodyText.includes('30S') || 
+    bodyText.includes('Time remaining') || document.querySelector('.TimeLeft__C-time')) {
     return true;
 }
 return false;
@@ -597,14 +619,13 @@ return 0;
 """
 
 # ==============================================================================
-# UPGRADED 100% INVISIBLE GHOST TRADING PAYLOAD (WINGO_CORE_JS)
+# 100% INVISIBLE GHOST TRADING ENGINE (ZERO UI / DOM OVERHEAD)
 # ==============================================================================
 WINGO_CORE_JS = r"""
 const autoTargetProfit = arguments[0];
 const autoTotalSteps = arguments[1];
 
 (function(){
-    // Ensure 100% Invisible Ghost Root Container with Zero RAM Leak & No Layout Overhead
     let ghostContainer = document.getElementById('sys-core-fin');
     if (!ghostContainer) {
         ghostContainer = document.createElement('div');
@@ -673,9 +694,6 @@ const autoTotalSteps = arguments[1];
         return st.curBal || 0;
     }
 
-    // Dynamic Martingale Math:
-    // s1 = floor(Balance / (2^n - 1))
-    // Step(k) = floor(s1 * 2^(k-1))
     function calculateMartingaleSequence(balance, steps) {
         steps = Math.max(1, parseInt(steps) || 7);
         let b = Math.max(1, Math.floor(balance) || 1);
@@ -716,7 +734,6 @@ const autoTotalSteps = arguments[1];
         }
     }
 
-    // Automated Bet Dispatch Sequence
     function executeBetTrade(pred, amt, cb) {
         try {
             let target = String(pred).trim().toUpperCase();
@@ -812,7 +829,6 @@ const autoTotalSteps = arguments[1];
 
     let isFetchingApi = false;
 
-    // API-Driven Prediction Polling Engine
     const ghostExecutionLoop = async () => {
         if (!st.isRun || st.isTrd || isFetchingApi) return;
         isFetchingApi = true;
@@ -851,11 +867,10 @@ const autoTotalSteps = arguments[1];
                 let cSig = getNextLivePeriod(String(history[0].pid));
                 let sSig = sessionStorage.getItem('drx_sig');
 
-                // Synchronous Period Lock: Prevent duplicate bets by locking period immediately
+                // Synchronous Period Lock: strictly prevents duplicate bets on identical period
                 if (cSig !== sSig) {
                     sessionStorage.setItem('drx_sig', cSig);
 
-                    // Result Auditing & Step Multiplier Adjustment
                     if (st.lastPred && st.lastPeriod) {
                         let actualOutcome = String(history[0].actual || '').trim().toUpperCase();
                         if (actualOutcome === 'BIG' || actualOutcome === 'SMALL') {
@@ -864,13 +879,13 @@ const autoTotalSteps = arguments[1];
                                 st.cur_w_streak++;
                                 st.cur_l_streak = 0;
                                 if (st.cur_w_streak > st.max_w_streak) st.max_w_streak = st.cur_w_streak;
-                                st.stpIdx = 0; // WIN: Reset step index to 0
+                                st.stpIdx = 0;
                             } else {
                                 st.l++;
                                 st.cur_l_streak++;
                                 st.cur_w_streak = 0;
                                 if (st.cur_l_streak > st.max_l_streak) st.max_l_streak = st.cur_l_streak;
-                                st.stpIdx = Math.min(st.stpIdx + 1, st.dynSeq.length - 1); // LOSS: Advance step
+                                st.stpIdx = Math.min(st.stpIdx + 1, st.dynSeq.length - 1);
                             }
                         }
                     }
@@ -890,7 +905,6 @@ const autoTotalSteps = arguments[1];
                     if (st.stpIdx >= st.dynSeq.length) st.stpIdx = 0;
                     let targetStake = st.dynSeq[st.stpIdx] || 1;
 
-                    // Dynamic Fallback: If balance is low or step index exceeds, reset to step 0
                     if (liveB < targetStake) {
                         st.stpIdx = 0;
                         st.isTrd = false;
@@ -939,7 +953,7 @@ const autoTotalSteps = arguments[1];
 """
 
 # ==========================================
-# 9. Clean English Interactive Keyboards
+# 9. Clean English Keyboards
 # ==========================================
 def get_credentials_keyboard(sid):
     sess = active_sessions.get(sid, {})
@@ -1033,6 +1047,31 @@ def get_six_platform_keyboard():
     )
     return markup
 
+def get_passkey_menu_keyboard():
+    markup = InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        InlineKeyboardButton(f"{to_bold('GENERATE NEW 24H PASSKEY')}", callback_data="pk_gen_new"),
+        InlineKeyboardButton(f"{to_bold('VIEW ACTIVE PASSKEYS')}", callback_data="pk_list_active"),
+        InlineKeyboardButton(f"{to_bold('REVOKE PASSKEY')}", callback_data="pk_prompt_revoke")
+    )
+    return markup
+
+def get_admin_dashboard_keyboard():
+    markup = InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        InlineKeyboardButton(f"{to_bold('WORKER STATUS')}", callback_data="adm_workers"),
+        InlineKeyboardButton(f"{to_bold('ACTIVE LOGINS')}", callback_data="adm_logins")
+    )
+    markup.add(
+        InlineKeyboardButton(f"{to_bold('SPEED TEST / PING')}", callback_data="adm_ping"),
+        InlineKeyboardButton(f"{to_bold('PASSKEY MANAGER')}", callback_data="adm_passkeys")
+    )
+    markup.add(
+        InlineKeyboardButton(f"{to_bold('TASK COMPLETED MONITOR')}", callback_data="adm_tasks"),
+        InlineKeyboardButton(f"{to_bold('REFRESH')}", callback_data="adm_refresh")
+    )
+    return markup
+
 # ==========================================
 # 10. Passkey Storage & Management Helpers
 # ==========================================
@@ -1066,36 +1105,8 @@ def get_all_passkeys() -> dict:
                 revoke_passkey(k)
     return valid_keys
 
-def get_passkey_menu_keyboard():
-    markup = InlineKeyboardMarkup(row_width=1)
-    markup.add(
-        InlineKeyboardButton(f"{to_bold('GENERATE NEW 24H PASSKEY')}", callback_data="pk_gen_new"),
-        InlineKeyboardButton(f"{to_bold('VIEW ACTIVE PASSKEYS')}", callback_data="pk_list_active"),
-        InlineKeyboardButton(f"{to_bold('REVOKE PASSKEY')}", callback_data="pk_prompt_revoke")
-    )
-    return markup
-
 # ==========================================
-# 11. Admin Control Dashboard Keyboards
-# ==========================================
-def get_admin_dashboard_keyboard():
-    markup = InlineKeyboardMarkup(row_width=2)
-    markup.add(
-        InlineKeyboardButton(f"{to_bold('WORKER STATUS')}", callback_data="adm_workers"),
-        InlineKeyboardButton(f"{to_bold('ACTIVE LOGINS')}", callback_data="adm_logins")
-    )
-    markup.add(
-        InlineKeyboardButton(f"{to_bold('SPEED TEST / PING')}", callback_data="adm_ping"),
-        InlineKeyboardButton(f"{to_bold('PASSKEY MANAGER')}", callback_data="adm_passkeys")
-    )
-    markup.add(
-        InlineKeyboardButton(f"{to_bold('TASK COMPLETED MONITOR')}", callback_data="adm_tasks"),
-        InlineKeyboardButton(f"{to_bold('REFRESH')}", callback_data="adm_refresh")
-    )
-    return markup
-
-# ==========================================
-# 12. Authentication Helpers
+# 11. Authentication Helpers
 # ==========================================
 def check_channel_membership(user_id):
     if user_id == SUPER_ADMIN_ID:
@@ -1113,14 +1124,14 @@ def is_user_pass_valid(chat_id):
     return time.time() < u.get("pass_expiry", 0)
 
 # ==========================================
-# 13. Clean Login Animation & Engine Auth
+# 12. Clean Login Animation & Engine Auth
 # ==========================================
 def play_clean_login_animation(chat_id, msg_id):
     frames = [
-        "<b>CONNECTING REMOTE ENGINE</b>\n<code>▰▱▱▱▱▱▱▱▱▱ 10% Allocating isolated profile...</code>",
-        "<b>INITIALIZING TARGET PLATFORM</b>\n<code>▰▰▰▱▱▱▱▱▱▱ 35% Securing connection instance...</code>",
-        "<b>INJECTING AUTHENTICATION DATA</b>\n<code>▰▰▰▰▰▰▱▱▱▱ 65% Auto-filling credentials...</code>",
-        "<b>VERIFYING ACTIVE SESSION</b>\n<code>▰▰▰▰▰▰▰▰▰▰ 100% Login verification complete!</code>"
+        "<b>CONNECTING REMOTE ENGINE</b>\n<code>▰▱▱▱▱▱▱▱▱▱ 10% Allocating profile...</code>",
+        "<b>INITIALIZING TARGET PLATFORM</b>\n<code>▰▰▰▱▱▱▱▱▱▱ 35% Establishing connection...</code>",
+        "<b>INJECTING AUTHENTICATION DATA</b>\n<code>▰▰▰▰▰▰▱▱▱▱ 65% Submitting credentials...</code>",
+        "<b>VERIFYING ACTIVE SESSION</b>\n<code>▰▰▰▰▰▰▰▰▰▰ 100% Authentication successful!</code>"
     ]
     for frame in frames:
         try:
@@ -1150,7 +1161,7 @@ def process_login(chat_id, sid, phone, password, anim_msg_id):
         res = safe_tab_execute(sid, lambda drv: drv.execute_script(AUTO_FILL_AND_CLICK_JS, phone, password))
         if res == "SUCCESS":
             fill_ok = True
-            time.sleep(2.0)
+            time.sleep(1.8)
             break
         time.sleep(0.4)
 
@@ -1187,9 +1198,9 @@ def process_login(chat_id, sid, phone, password, anim_msg_id):
         bot.send_message(chat_id, f"<b>{to_bold('LOGIN FAILED')}</b>\n\nPlatform: <b>{site_name}</b>\nReason: <i>{err_detail}</i>")
         return
 
-    time.sleep(1.5)
+    time.sleep(1.2)
 
-    # Screenshot #1 (Strict Policy): Captured strictly upon successful login
+    # STRICT SCREENSHOT #1: Captured strictly upon successful login
     login_snap = os.path.join(PROFILES_BASE_DIR, f"login_done_{sid}.png")
     safe_tab_execute(sid, lambda drv: drv.save_screenshot(login_snap))
 
@@ -1209,44 +1220,41 @@ def process_login(chat_id, sid, phone, password, anim_msg_id):
     )
 
 # ==============================================================================
-# 14. WinGo Navigation: Adaptive Auto-Retry Loop (Zero Freeze, Resilient Polling)
+# 13. Bulletproof Multi-Strategy WinGo Navigation & Auto-Retry Loop
 # ==============================================================================
 def prepare_wingo_parameters(chat_id, sid):
     sess = active_sessions.get(sid, {})
     site_name = sess.get("site_name", "Amar Club")
     wingo_url = sess.get("wingo_url") or (URL_AMARCLUB_WINGO if "AMAR" in site_name.upper() else URL_DKWIN_WINGO)
-    wingo_hash = "#/saasLottery/WinGo?gameCode=WinGo_30S&lottery=WinGo"
 
-    # Execution Routine: Persistent Auto-Retry Loop (Step A -> Step E)
-    is_verified = False
-    nav_attempts = 0
+    wingo_ready = False
+    start_ts = time.time()
+    strategy_step = 1
 
-    while not is_verified:
-        nav_attempts += 1
-
-        # Step A & Step B: Sweep modals and trigger dual hash navigation & synthetic clicks
-        safe_tab_execute(
-            sid,
-            lambda drv: drv.execute_script(PERSISTENT_WINGO_DISPATCH_JS, wingo_url, wingo_hash)
-        )
-
-        # Step C & Step D: 3-Second tight verification poll without locking/stalling
-        check_start = time.time()
-        while time.time() - check_start < 3.0:
-            ready = safe_tab_execute(sid, lambda drv: drv.execute_script(VERIFY_WINGO_READY_JS))
-            if ready:
-                is_verified = True
-                break
-            time.sleep(0.3)
-
-        if is_verified:
+    # Resilient auto-retry navigation loop
+    while time.time() - start_ts < 28.0:
+        if safe_tab_execute(sid, lambda drv: drv.execute_script(CHECK_WINGO_READY_JS)):
+            wingo_ready = True
             break
 
-        # Immediate clearing of blocking dialogs before immediate cycle re-attempt
-        safe_tab_execute(sid, lambda drv: drv.execute_script(MODAL_AUTO_DISMISSER_JS))
-        time.sleep(0.2)
+        # Execute current strategy (1: Hash -> 2: DOM Match -> 3: Href Dispatch)
+        safe_tab_execute(sid, lambda drv: drv.execute_script(WINGO_MULTI_STRATEGY_NAV_JS, wingo_url, strategy_step))
 
-    # Step E: Exit Condition reached - WinGo 30S market is 100% verified
+        # Verification polling: check every 500ms up to 4 seconds
+        poll_start = time.time()
+        while time.time() - poll_start < 4.0:
+            time.sleep(0.5)
+            if safe_tab_execute(sid, lambda drv: drv.execute_script(CHECK_WINGO_READY_JS)):
+                wingo_ready = True
+                break
+
+        if wingo_ready:
+            break
+
+        # Dismiss any overlapping popups and advance strategy
+        safe_tab_execute(sid, lambda drv: drv.execute_script(MODAL_AUTO_DISMISSER_JS))
+        strategy_step = (strategy_step % 3) + 1
+
     current_bal = 0.0
     for _ in range(15):
         bal = safe_tab_execute(sid, lambda drv: drv.execute_script(FETCH_BALANCE_JS))
@@ -1257,7 +1265,7 @@ def prepare_wingo_parameters(chat_id, sid):
 
     sess["current_balance"] = current_bal
 
-    # Screenshot #2 (Strict Policy): Captured strictly upon arrival on WinGo market
+    # STRICT SCREENSHOT #2: Captured strictly upon arriving at WinGo screen
     wingo_snap = os.path.join(PROFILES_BASE_DIR, f"wingo_{sid}.png")
     safe_tab_execute(sid, lambda drv: drv.save_screenshot(wingo_snap))
 
@@ -1276,7 +1284,7 @@ def prepare_wingo_parameters(chat_id, sid):
     )
 
 # ==========================================
-# 15. Background Monitoring & Lifetime Watchdog
+# 14. Background Monitoring & Lifetime Watchdog
 # ==========================================
 def record_task_status(chat_id, sid, status, start_bal, cur_bal, target_amt, wins, losses, site_name):
     task_payload = {
@@ -1333,7 +1341,6 @@ def monitor_trading_progress(chat_id, sid):
                 sess.get("site_name", "Amar Club")
             )
 
-            # Target Cap: Disengage when current balance reaches target
             if not is_run or (sess["cur_bal"] >= tgt_amt and tgt_amt > 0 and sess["cur_bal"] > 0):
                 if sess["cur_bal"] >= tgt_amt and tgt_amt > 0 and sess["cur_bal"] > 0:
                     sess["is_trading"] = False
@@ -1377,7 +1384,7 @@ def continuous_24h_watchdog():
 threading.Thread(target=continuous_24h_watchdog, daemon=True).start()
 
 # ==========================================
-# 16. Telegram Commands (/start, /pass, /admin)
+# 15. Telegram Command Handlers
 # ==========================================
 @bot.message_handler(commands=['start'])
 def handle_start(message):
@@ -1458,7 +1465,7 @@ def handle_admin_command(message):
     bot.send_message(chat_id, caption, reply_markup=get_admin_dashboard_keyboard())
 
 # ==========================================
-# 17. Telegram Callbacks & Flow Routing
+# 16. Telegram Callbacks & Control Routing
 # ==========================================
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callbacks(call):
@@ -1469,7 +1476,6 @@ def handle_callbacks(call):
     action = parts[0]
     sid = parts[1] if len(parts) > 1 else None
 
-    # Gate & Passkey entry
     if action == "check_channel_joined":
         if check_channel_membership(chat_id):
             bot.answer_callback_query(call.id, "Channel verified successfully!")
@@ -1492,7 +1498,6 @@ def handle_callbacks(call):
         user_sessions[chat_id]["passkey_prompt_id"] = pm.message_id
         return
 
-    # Passkey Management actions
     elif action == "pk_gen_new":
         if chat_id != SUPER_ADMIN_ID: return
         new_key = generate_24h_passkey()
@@ -1528,7 +1533,6 @@ def handle_callbacks(call):
         bot.send_message(chat_id, f"<b>{to_bold('REVOKE PASSKEY')}</b>\nSend the exact passkey code you wish to delete:")
         return
 
-    # Admin Dashboard Actions
     elif action == "adm_refresh" or action == "adm_home":
         if chat_id != SUPER_ADMIN_ID: return
         caption = (
@@ -1594,7 +1598,7 @@ def handle_callbacks(call):
         lines = [f"<b>{to_bold('NETWORK LATENCY / SPEED TEST')}</b>\n"]
         for pkey, pcfg in PLATFORMS.items():
             lat = measure_network_latency(pcfg["login"])
-            lines.append(f"• {pcfg['name']}: <b>{lat} ms</b>" if lat < 9000 else f"• {pcfg['name']}: <b>TIMEOUT (>3000ms)</b>")
+            lines.append(f"• {pcfg['name']}: <b>{lat} ms</b>" if lat < 9000 else f"• {pcfg['name']}: <b>TIMEOUT (>2500ms)</b>")
 
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton(f"{to_bold('BACK')}", callback_data="adm_home"))
@@ -1650,7 +1654,6 @@ def handle_callbacks(call):
         bot.edit_message_text("\n".join(lines), chat_id=chat_id, message_id=call.message.message_id, reply_markup=markup)
         return
 
-    # Platform selection
     elif action in PLATFORMS:
         p_cfg = PLATFORMS[action]
         site_name = p_cfg["name"]
@@ -1689,7 +1692,6 @@ def handle_callbacks(call):
         )
         active_sessions[sid]["cred_card_msg_id"] = call.message.message_id
 
-    # Interactive credentials inputs
     elif action == "ask_num" and sid in active_sessions:
         active_sessions[sid]["input_mode"] = "WAITING_PHONE"
         user_sessions[chat_id]["active_sid"] = sid
@@ -1765,7 +1767,7 @@ def handle_callbacks(call):
 
         threading.Thread(target=monitor_trading_progress, args=(chat_id, sid), daemon=True).start()
 
-    # Manual Override: User explicitly clicks SHOT
+    # MANUAL FOOTAGE REQUEST: User explicitly clicks SHOT
     elif action == "shot" and sid in active_sessions:
         sess = active_sessions[sid]
         bot.answer_callback_query(call.id, "Capturing live footage...")
@@ -1844,7 +1846,7 @@ def handle_callbacks(call):
         bot.send_message(chat_id, f"<b>{to_bold('SESSION TERMINATED')}</b>\nSend /start to begin a new session.")
 
 # ==========================================
-# 18. Text Handler & Input Router
+# 17. User Text Input Handler
 # ==========================================
 @bot.message_handler(func=lambda msg: True)
 def handle_user_text(message):
@@ -1852,7 +1854,6 @@ def handle_user_text(message):
     text = message.text.strip()
     u = user_sessions.get(chat_id, {})
 
-    # Passkey authorization input
     if u.get("input_mode") == "WAITING_PASSKEY":
         safe_delete_message(chat_id, message.message_id)
         if u.get("passkey_prompt_id"):
@@ -1887,7 +1888,6 @@ def handle_user_text(message):
             u["passkey_prompt_id"] = pm.message_id
         return
 
-    # Admin Passkey Revocation input
     if u.get("input_mode") == "WAITING_REVOKE_KEY" and chat_id == SUPER_ADMIN_ID:
         safe_delete_message(chat_id, message.message_id)
         u["input_mode"] = None
@@ -2011,7 +2011,7 @@ def handle_user_text(message):
             sess["temp_prompt_id"] = p_msg.message_id
 
 # ==============================================================================
-# 19. Firebase RTDB Cluster & Distributed Routing (Fastest-Node Dispatcher)
+# 18. Firebase RTDB Cluster & Dynamic Fastest-Node Routing
 # ==============================================================================
 FIREBASE_RTDB_URL = "https://x7e77eey-default-rtdb.firebaseio.com"
 NODE_ID = f"term_{socket.gethostname()}_{os.getpid()}_{uuid.uuid4().hex[:6]}"
@@ -2096,7 +2096,6 @@ def cluster_node_heartbeat_loop():
     while CLUSTER_ACTIVE:
         try:
             status_val = "BUSY" if active_sessions else "FREE"
-            # Periodic network health & ping polling against active trading gateways
             lat = measure_network_latency(URL_AMARCLUB_LOGIN)
             hb_data = {
                 "heartbeat": time.time(),
@@ -2107,7 +2106,7 @@ def cluster_node_heartbeat_loop():
             firebase_sync_http(f"terminals/{NODE_ID}", "PATCH", hb_data)
         except Exception:
             pass
-        time.sleep(5)
+        time.sleep(4)
 
 def cluster_master_heartbeat_loop():
     while CLUSTER_ACTIVE and IS_CLUSTER_MASTER:
@@ -2116,7 +2115,7 @@ def cluster_master_heartbeat_loop():
             firebase_sync_http("cluster/active_master", "PATCH", m_data)
         except Exception:
             pass
-        time.sleep(4)
+        time.sleep(3)
 
 def cluster_standby_heartbeat_loop():
     while CLUSTER_ACTIVE and IS_STANDBY_MASTER:
@@ -2125,15 +2124,15 @@ def cluster_standby_heartbeat_loop():
             firebase_sync_http("cluster/standby_master", "PATCH", s_data)
         except Exception:
             pass
-        time.sleep(4)
+        time.sleep(3)
 
 def cluster_remote_task_listener():
     while CLUSTER_ACTIVE:
         try:
             if not active_sessions:
-                time.sleep(2.0)
+                time.sleep(1.8)
             else:
-                time.sleep(0.8)
+                time.sleep(0.7)
 
             task = firebase_sync_http(f"terminals/{NODE_ID}/task", "GET")
             if task and isinstance(task, dict):
@@ -2247,10 +2246,10 @@ def cluster_session_watchdog_loop():
                                     for cand_id, cand_val in terms.items():
                                         if cand_id != tid and isinstance(cand_val, dict) and cand_val.get("status") == "FREE":
                                             c_hb = float(cand_val.get("heartbeat", 0))
-                                            if now - c_hb < 10.0:
-                                                candidates.append((cand_id, cand_val.get("latency_ms", 9999.0), cand_val.get("load", 0)))
+                                            if now - c_hb <= 10.0:
+                                                candidates.append((cand_id, cand_val.get("latency_ms", 9999), cand_val.get("load", 0)))
 
-                                    # Prioritize lowest network latency
+                                    # Sort strictly by lowest latency
                                     candidates.sort(key=lambda x: (x[1], x[2]))
                                     new_worker = candidates[0][0] if candidates else NODE_ID
 
@@ -2278,10 +2277,10 @@ def cluster_session_watchdog_loop():
                                     firebase_sync_http(f"terminals/{new_worker}/task", "PUT", re_task)
         except Exception:
             pass
-        time.sleep(6)
+        time.sleep(5)
 
 # ==============================================================================
-# 20. Interception Wrappers & Fastest-Node Load Dispatching
+# 19. Interception Wrappers & Dynamic Fastest-Node Dispatching
 # ==============================================================================
 _original_close_session_tab = close_session_tab
 def close_session_tab(session_id):
@@ -2302,31 +2301,32 @@ _original_process_login = process_login
 def distributed_process_login(chat_id, sid, phone, password, anim_msg_id):
     all_terminals = firebase_sync_http("terminals", "GET")
     now = time.time()
-    candidates = []
+    free_target_node = None
 
-    # Dynamic Fastest-Node Routing: Filter status == "FREE" and heartbeat < 10.0s old
+    candidates = []
     if all_terminals and isinstance(all_terminals, dict):
         for tid, tinfo in all_terminals.items():
             if isinstance(tinfo, dict) and tinfo.get("status") == "FREE":
                 hb = float(tinfo.get("heartbeat", 0))
+                # Active heartbeats (< 10s old)
                 if now - hb < 10.0:
                     lat = float(tinfo.get("latency_ms", 9999.0))
-                    candidates.append((tid, lat, tinfo.get("load", 0)))
+                    load = int(tinfo.get("load", 0))
+                    candidates.append((tid, lat, load))
 
-    # Smart Allocation: Route immediately to node with lowest latency (fastest network speed)
+    # Sort strictly by lowest latency (fastest network speed)
     if candidates:
         candidates.sort(key=lambda x: (x[1], x[2]))
-        fastest_target_node = candidates[0][0]
+        free_target_node = candidates[0][0]
     else:
-        # Fallback: Assign to local node safely without crashing
-        fastest_target_node = NODE_ID
+        free_target_node = NODE_ID
 
     sess = active_sessions.get(sid, {})
     site_name = sess.get("site_name", "Amar Club")
     login_url = sess.get("login_url")
     wingo_url = sess.get("wingo_url")
 
-    if fastest_target_node == NODE_ID:
+    if free_target_node == NODE_ID:
         firebase_sync_http(f"terminals/{NODE_ID}", "PATCH", {
             "status": "BUSY",
             "assigned_user_id": chat_id,
@@ -2344,13 +2344,13 @@ def distributed_process_login(chat_id, sid, phone, password, anim_msg_id):
         })
         _original_process_login(chat_id, sid, phone, password, anim_msg_id)
     else:
-        firebase_sync_http(f"terminals/{fastest_target_node}", "PATCH", {
+        firebase_sync_http(f"terminals/{free_target_node}", "PATCH", {
             "status": "BUSY",
             "assigned_user_id": chat_id,
             "session_id": sid
         })
         firebase_sync_http(f"sessions/{sid}", "PUT", {
-            "node_id": fastest_target_node,
+            "node_id": free_target_node,
             "chat_id": chat_id,
             "site_name": site_name,
             "login_url": login_url,
@@ -2370,7 +2370,7 @@ def distributed_process_login(chat_id, sid, phone, password, anim_msg_id):
             "anim_msg_id": anim_msg_id,
             "dispatched_at": time.time()
         }
-        firebase_sync_http(f"terminals/{fastest_target_node}/task", "PUT", task_payload)
+        firebase_sync_http(f"terminals/{free_target_node}/task", "PUT", task_payload)
 
 process_login = distributed_process_login
 
@@ -2447,9 +2447,9 @@ for h in bot.message_handlers:
     if h.get('function') == _original_handle_user_text:
         h['function'] = distributed_handle_user_text
 
-# ==========================================
-# 21. Master-Worker Telegram Polling Coordinator
-# ==========================================
+# ==============================================================================
+# 20. Master-Worker Telegram Polling Coordinator (Conflict 409 Isolation)
+# ==============================================================================
 _original_bot_infinity_polling = bot.infinity_polling
 
 def cluster_managed_infinity_polling(*args, **kwargs):
@@ -2511,7 +2511,7 @@ def cluster_managed_infinity_polling(*args, **kwargs):
 bot.infinity_polling = cluster_managed_infinity_polling
 
 # ==========================================
-# 22. Main Execution
+# 21. Main Cluster Entry Point
 # ==========================================
 if __name__ == "__main__":
     print(f"[*] {to_bold('WINGO VIP BOT CLUSTER ENGINE ACTIVE')}...")
