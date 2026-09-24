@@ -32,7 +32,6 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, InputMedia
 from selenium import webdriver
 from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.firefox.service import Service as FirefoxService
-from selenium.common.exceptions import WebDriverException, JavascriptException
 import psutil
 
 # ==========================================
@@ -61,7 +60,7 @@ def safe_delete_message(chat_id, message_id):
         pass
 
 # ==========================================
-# 3. Aggressive Process Hygiene & Memory Watchdog
+# 3. Aggressive Process Hygiene & Zombie Killer
 # ==========================================
 def kill_process_tree(pid):
     try:
@@ -108,7 +107,7 @@ def cleanup_zombie_browsers():
 # ==========================================
 # 4. Configuration & State Management
 # ==========================================
-TOKEN = "8808949150:AAF1UV13IL5k95eGfBq47RGp-j5D86xzU2Q"
+TOKEN = "8808949150:AAGJXBVM_18xxAHPFMtH-TnGQbtaXAcb9p8"
 bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
 
 HEADLESS_MODE = os.environ.get("HEADLESS", "true").lower() == "true"
@@ -198,23 +197,15 @@ def allocate_session_tab(session_id, target_url):
     options.add_argument("-profile")
     options.add_argument(profile_dir)
 
-    # Strictly direct routing (No VPN or proxy)
-    options.set_preference("network.proxy.type", 0)
-    options.set_preference("network.proxy.http", "")
-    options.set_preference("network.proxy.ssl", "")
-    options.set_preference("network.proxy.socks", "")
-
-    # Extreme Performance & Anti-Freeze Preferences
     options.set_preference("browser.sessionhistory.max_entries", 1)
     options.set_preference("browser.sessionhistory.max_total_viewers", 0)
-    options.set_preference("image.mem.surfacecache.max_size_kb", 512)
-    options.set_preference("javascript.options.mem.max", 16384)
+    options.set_preference("image.mem.surfacecache.max_size_kb", 1024)
+    options.set_preference("javascript.options.mem.max", 32768)
+    options.set_preference("network.http.pipelining", False)
     options.set_preference("browser.cache.disk.enable", False)
     options.set_preference("browser.cache.memory.enable", False)
     options.set_preference("network.http.use-cache", False)
-    options.set_preference("media.autoplay.default", 5)
-    options.set_preference("media.volume_scale", "0.0")
-    options.set_preference("dom.webnotifications.enabled", False)
+    options.set_preference("dom.ipc.processCount", 1)
 
     service = FirefoxService(log_output=os.devnull)
     driver = webdriver.Firefox(service=service, options=options)
@@ -241,7 +232,7 @@ def safe_tab_execute(sid, task_fn, timeout=12.0):
     if not driver or not lock:
         return None
 
-    acquired = lock.acquire(timeout=4.0)
+    acquired = lock.acquire(timeout=3.0)
     if not acquired:
         return None
 
@@ -263,12 +254,15 @@ def safe_tab_execute(sid, task_fn, timeout=12.0):
             lock.release()
         except RuntimeError:
             pass
+        threading.Thread(target=close_session_tab, args=(sid,), daemon=True).start()
         return None
 
     try:
         lock.release()
     except RuntimeError:
         pass
+
+    gc.collect()
 
     if result_container["error"]:
         return None
@@ -341,7 +335,7 @@ def display_or_replace_photo(chat_id, session_id, image_path, caption_text, repl
     gc.collect()
 
 # ==========================================
-# 8. In-Browser JavaScript Automation Engine (100% Invisible / Zero DOM UI)
+# 8. In-Browser JavaScript Automation Engine
 # ==========================================
 MODAL_AUTO_DISMISSER_JS = """
 (function(){
@@ -363,6 +357,8 @@ MODAL_AUTO_DISMISSER_JS = """
         });
     };
     setInterval(sweepModals, 1500);
+    const obs = new MutationObserver(() => sweepModals());
+    obs.observe(document.body, { childList: true, subtree: true });
 })();
 """
 
@@ -411,8 +407,8 @@ setTimeout(() => {
   clearAndSet(elP, pass);
   setTimeout(() => {
     elL.click();
-  }, 400);
-}, 400);
+  }, 500);
+}, 500);
 
 return "SUCCESS";
 """
@@ -481,15 +477,21 @@ return { status: "PENDING" };
 WINGO_RUNBOX_AND_CLICK_JS = """
 (function(){
     var s = [
-        'img[src*="wingo" i]',
-        'img[alt*="wingo" i]',
         'body > div > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(7) > div:nth-of-type(3) > div > div:nth-of-type(2) > div > div > div > img',
-        'body > div > div:nth-of-type(3) > div:nth-of-type(5) > div:nth-of-type(2) > div:nth-of-type(3) > div > div > div > img'
+        'body > div > div:nth-of-type(3) > div:nth-of-type(5) > div:nth-of-type(2) > div:nth-of-type(3) > div > div > div > img',
+        'body > div > div:nth-of-type(2) > div:nth-of-type(5) > div:nth-of-type(2) > div > div',
+        'body > div > div:nth-of-type(3) > div:nth-of-type(5) > div:nth-of-type(4) > div:nth-of-type(2) > img',
+        'img[src*="wingo" i]',
+        'img[alt*="wingo" i]'
     ];
     function findTarget(){
         for(var i = 0; i < s.length; i++){
             var el = document.querySelector(s[i]);
             if(el) return el;
+        }
+        var imgs = document.getElementsByTagName('img');
+        for(var j = 0; j < imgs.length; j++){
+            if(/wingo/i.test((imgs[j].src || '') + (imgs[j].alt || ''))) return imgs[j];
         }
         var all = document.querySelectorAll('div,span,button,a');
         for(var k = 0; k < all.length; k++){
@@ -525,226 +527,226 @@ if (hash.includes('WinGo') || href.includes('WinGo') || bodyText.includes('Win G
 return false;
 """
 
-# Optimized O(1) Fast Balance Extraction
+# Optimized fast balance lookup targeting high-value selectors and wallet classes
 FETCH_BALANCE_JS = """
-const selectors = [
-    '.wallet-user__amount',
-    '.Balance__C-amount',
-    '.wallet-balance',
-    '.balance-amount',
-    '[class*="wallet" i] [class*="amount" i]',
-    '[class*="balance" i]',
-    '.van-nav-bar__text',
-    'header [class*="balance" i]',
-    'header [class*="amount" i]'
-];
-for (let sel of selectors) {
-    let el = document.querySelector(sel);
-    if (el && el.offsetParent !== null) {
-        let txt = (el.innerText || el.textContent || '').trim();
-        let m = txt.match(/[৳₹$€£\\s]*([\\d,]+\\.?\\d*)/);
-        if (m && m[1]) {
-            let val = parseFloat(m[1].replace(/,/g, ''));
-            if (!isNaN(val) && val >= 0) return val;
+(function(){
+    const selectors = [
+        '.wallet-user__info-amount',
+        '.amount',
+        '[class*="balance" i]',
+        '[class*="Balance" i]',
+        '[class*="amount" i]',
+        '[class*="wallet" i]',
+        '.van-nav-bar__text',
+        '.van-ellipsis'
+    ];
+    for (let i = 0; i < selectors.length; i++) {
+        let els = document.querySelectorAll(selectors[i]);
+        for (let j = 0; j < els.length; j++) {
+            let txt = els[j].innerText || els[j].textContent || '';
+            let match = txt.match(/[৳₹$€£]\\s*([\\d,]+\\.?\\d*)/);
+            if (match) {
+                let v = parseFloat(match[1].replace(/,/g, ''));
+                if (!isNaN(v) && v > 0) return v;
+            }
         }
     }
-}
-let containers = document.querySelectorAll('header, nav, .van-nav-bar, .top-bar, .user-info');
-for (let c of containers) {
-    let m = (c.innerText || '').match(/(?:Wallet balance|Balance|Available)[\\s:\\n]*[৳₹$€£]?\\s*([\\d,]+\\.?\\d*)/i);
-    if (m && m[1]) {
-        let val = parseFloat(m[1].replace(/,/g, ''));
-        if (!isNaN(val)) return val;
+    let parents = document.querySelectorAll('header, nav, .van-nav-bar, div[class*="header" i], div[class*="user" i]');
+    for (let i = 0; i < parents.length; i++) {
+        let txt = parents[i].innerText || '';
+        let match = txt.match(/[৳₹$€£]\\s*([\\d,]+\\.?\\d*)/);
+        if (match) {
+            let v = parseFloat(match[1].replace(/,/g, ''));
+            if (!isNaN(v) && v > 0) return v;
+        }
     }
-}
-return 0;
+    return 0;
+})();
 """
 
-# 100% INVISIBLE ZERO-DOM-UI TRADING ENGINE
+# 100% Invisible Background Trading Injection (Zero DOM UI & Audio)
 WINGO_CORE_JS = """
 const autoTargetProfit = arguments[0];
 const autoTotalSteps = arguments[1];
 
 (function(){
-    if (window.__WINGO_ST && window.__WINGO_ST.isRun) {
-        window.__WINGO_ST.targetProfit = autoTargetProfit;
-        window.__WINGO_ST.totalSteps = autoTotalSteps || 7;
+    if (window.__WINGO_ENGINE_ACTIVE && window.__WINGO_ST && window.__WINGO_ST.isRun) {
         return "ALREADY_RUNNING";
     }
+    window.__WINGO_ENGINE_ACTIVE = true;
 
-    if (window.__WINGO_ST && window.__WINGO_ST.autoInt) {
-        clearInterval(window.__WINGO_ST.autoInt);
-    }
+    const cfg = { fRt: 300, syncDly: 2500, minSf: 10 };
 
-    // Fast, targeted balance extraction without DOM saturation
     function chkBal() {
         try {
-            const targetSelectors = [
-                '.wallet-user__amount',
-                '.Balance__C-amount',
-                '.wallet-balance',
-                '.balance-amount',
-                '[class*="wallet" i] [class*="amount" i]',
+            const selectors = [
+                '.wallet-user__info-amount',
+                '.amount',
                 '[class*="balance" i]',
+                '[class*="Balance" i]',
+                '[class*="amount" i]',
+                '[class*="wallet" i]',
                 '.van-nav-bar__text',
-                'header [class*="balance" i]',
-                'header [class*="amount" i]'
+                '.van-ellipsis'
             ];
-            for (let sel of targetSelectors) {
-                let el = document.querySelector(sel);
-                if (el && el.offsetParent !== null) {
-                    let txt = (el.innerText || el.textContent || '').trim();
-                    let m = txt.match(/[৳₹$€£\\s]*([\\d,]+\\.?\\d*)/);
-                    if (m && m[1]) {
-                        let parsed = parseFloat(m[1].replace(/,/g, ''));
-                        if (!isNaN(parsed) && parsed >= 0) {
-                            st.curBal = parsed;
-                            return parsed;
+            for (let i = 0; i < selectors.length; i++) {
+                let elements = document.querySelectorAll(selectors[i]);
+                for (let j = 0; j < elements.length; j++) {
+                    let txt = elements[j].innerText || elements[j].textContent || '';
+                    let match = txt.match(/[৳₹$€£]\\s*([\\d,]+\\.?\\d*)/);
+                    if (match) {
+                        let val = parseFloat(match[1].replace(/,/g, ''));
+                        if (!isNaN(val) && val > 0) {
+                            st.curBal = Math.floor(val);
+                            return st.curBal;
                         }
                     }
                 }
             }
-            const containerSelectors = ['header', 'nav', '.van-nav-bar', '.top-bar', '.user-info', '.wallet-box', '.balance-box'];
-            for (let cSel of containerSelectors) {
-                let container = document.querySelector(cSel);
-                if (container) {
-                    let m = (container.innerText || '').match(/(?:Wallet balance|Balance|Available)[\\s:\\n]*[৳₹$€£]?\\s*([\\d,]+\\.?\\d*)/i);
-                    if (m && m[1]) {
-                        let parsed = parseFloat(m[1].replace(/,/g, ''));
-                        if (!isNaN(parsed)) {
-                            st.curBal = parsed;
-                            return parsed;
-                        }
+            let candidates = document.querySelectorAll('header, nav, .van-nav-bar, div[class*="header" i], div[class*="user" i]');
+            for (let i = 0; i < candidates.length; i++) {
+                let txt = candidates[i].innerText || '';
+                let match = txt.match(/[৳₹$€£]\\s*([\\d,]+\\.?\\d*)/);
+                if (match) {
+                    let val = parseFloat(match[1].replace(/,/g, ''));
+                    if (!isNaN(val) && val > 0) {
+                        st.curBal = Math.floor(val);
+                        return st.curBal;
                     }
                 }
             }
-        } catch(e) {}
-        return st.curBal || 0;
+        } catch(e){}
+        return st.curBal;
     }
 
-    // Retained Sequence Calculation logic
-    function calcSeq(balance, steps) {
-        steps = Math.max(1, parseInt(steps) || 1);
-        let b = Math.max(1, Math.floor(balance) || 1);
-        let units = Math.pow(2, steps) - 1;
-        if (units > 0 && units <= b) {
-            let base = Math.floor(b / units);
-            let seq = [], val = Math.max(1, base);
-            for (let i = 0; i < steps; i++) {
-                seq.push(val);
-                val *= 2;
-            }
-            return seq;
+    const calcSeq = (cBal, nSteps) => {
+        let B = Math.floor(Number(cBal)) || 0;
+        let n = parseInt(nSteps) || 5;
+        if (n < 1) n = 1;
+        let u = Math.pow(2, n) - 1;
+        let s1 = Math.floor(B / u);
+        if (s1 < 1) s1 = 1;
+        let seq = [];
+        let sum = 0;
+        for (let k = 1; k < n; k++) {
+            let sk = Math.floor(s1 * Math.pow(2, k - 1));
+            seq.push(sk);
+            sum += sk;
         }
-        let seq = [], val = 1, sum = 0;
-        for (let i = 0; i < steps; i++) {
-            if (sum + val <= b) {
-                seq.push(val);
-                sum += val;
-                val *= 2;
-            } else {
-                let rem = b - sum;
-                if (rem > 0) seq.push(rem);
-                break;
-            }
-        }
-        return seq.length > 0 ? seq : [1];
-    }
-
-    const drx_simClick = el => {
-        if (!el) return false;
-        ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach(evt => {
-            try {
-                el.dispatchEvent(new MouseEvent(evt, { bubbles: true, cancelable: true, view: window }));
-            } catch(e) {}
-        });
-        try { if (typeof el.click === 'function') el.click(); } catch(e){}
-        return true;
+        let sn = Math.floor(B - sum);
+        seq.push(sn > 0 ? sn : Math.floor(s1 * Math.pow(2, n - 1)));
+        return seq;
     };
 
-    // Native trade execution handling targets (BIG, SMALL, Colors, Numbers)
+    let st = {
+        isRun: true,
+        startBal: 0,
+        tgtAmt: 0,
+        curBal: 0,
+        autoInt: null,
+        isTrd: false,
+        stpIdx: 0,
+        steps: parseInt(autoTotalSteps) || 5,
+        dynSeq: [],
+        mode: 'DEF',
+        extVal: 0,
+        timeLimit: 'NO',
+        tradesDone: 0,
+        maxTrades: 0,
+        lastPred: null,
+        lastPeriod: null,
+        showPred: true,
+        balanceCheckInterval: null,
+        manualOverrideBet: null,
+        w: 0,
+        l: 0
+    };
+
+    window.__WINGO_ST = st;
+    let isFetchingApi = false;
+
+    let liveB = chkBal();
+    st.curBal = liveB;
+    st.startBal = liveB;
+    let requestedTgt = parseFloat(autoTargetProfit) || 500;
+    st.tgtAmt = (requestedTgt <= liveB) ? (liveB + requestedTgt) : requestedTgt;
+    st.dynSeq = calcSeq(liveB > 0 ? liveB : st.tgtAmt, st.steps);
+
+    const drx_triggerEvent = (el, etype) => {
+        let ev = new Event(etype, { bubbles: true, cancelable: true });
+        el.dispatchEvent(ev);
+    };
+
+    const drx_simClick = (el) => {
+        if (!el) return;
+        ['pointerdown', 'mousedown', 'touchstart', 'pointerup', 'mouseup', 'touchend', 'click'].forEach(evt => {
+            try {
+                el.dispatchEvent(new MouseEvent(evt, { bubbles: true, cancelable: true, view: window }));
+            } catch (e) {}
+        });
+    };
+
     const exeTrd = (pred, amt, cb) => {
         try {
             let btn = null;
-            let tText = String(pred).toLowerCase().trim();
-
-            const specialClassMap = {
-                'big': ['.Betting__C-foot-b', '.bet-btn-big', '[data-type="big"]', '.btn-big'],
-                'small': ['.Betting__C-foot-s', '.bet-btn-small', '[data-type="small"]', '.btn-small'],
-                'green': ['.Betting__C-foot-g', '.bet-btn-green', '[data-type="green"]', '.btn-green'],
-                'red': ['.Betting__C-foot-r', '.bet-btn-red', '[data-type="red"]', '.btn-red'],
-                'violet': ['.Betting__C-foot-v', '.bet-btn-violet', '[data-type="violet"]', '.btn-violet']
-            };
-
-            if (specialClassMap[tText]) {
-                for (let sel of specialClassMap[tText]) {
-                    let el = document.querySelector(sel);
-                    if (el && el.offsetParent !== null) {
-                        btn = el;
-                        break;
-                    }
+            let targetText = pred.toLowerCase();
+            let btns = document.querySelectorAll('button, div, span');
+            for (let i = 0; i < btns.length; i++) {
+                let t = (btns[i].innerText || '').trim().toLowerCase();
+                if (t === targetText && btns[i].offsetParent && !btns[i].children.length) {
+                    btn = btns[i];
+                    break;
                 }
             }
-
             if (!btn) {
-                let btns = document.querySelectorAll('button, div[role="button"], .van-button, div, span');
-                for (let i = 0; i < btns.length; i++) {
-                    let t = (btns[i].innerText || '').trim().toLowerCase();
-                    if (t === tText && btns[i].offsetParent && btns[i].children.length <= 1) {
-                        btn = btns[i];
-                        break;
-                    }
-                }
+                if (targetText === 'big') btn = document.querySelector('.Betting__C-foot-b');
+                else if (targetText === 'small') btn = document.querySelector('.Betting__C-foot-s');
+                else if (targetText === 'green') btn = document.querySelector('button[class*="green"], div[class*="green"]');
+                else if (targetText === 'red') btn = document.querySelector('button[class*="red"], div[class*="red"]');
+                else if (targetText === 'violet') btn = document.querySelector('button[class*="violet"], div[class*="violet"]');
             }
-
             if (!btn) {
                 if (cb) cb(false);
                 return;
             }
-
             drx_simClick(btn);
-
-            let attempts = 0;
-            let valInt = setInterval(() => {
-                attempts++;
-                let inpEl = document.querySelector("input[type='number'], input.van-field__control, input[placeholder*='amount' i]");
-                if (inpEl || attempts > 15) {
-                    clearInterval(valInt);
+            let checkAttempts = 0;
+            let valInterval = setInterval(() => {
+                checkAttempts++;
+                let inpEl = document.querySelector("input[type='number'], input.van-field__control");
+                if (inpEl || checkAttempts > 15) {
+                    clearInterval(valInterval);
                     if (inpEl) {
                         inpEl.focus();
-                        inpEl.value = '';
-                        const valSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-                        if (valSetter) {
-                            valSetter.call(inpEl, amt);
-                        } else {
-                            inpEl.value = amt;
-                        }
-                        ['input', 'change'].forEach(ev => inpEl.dispatchEvent(new Event(ev, { bubbles: true })));
+                        let setV = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+                        if (setV) setV.call(inpEl, String(amt));
+                        else inpEl.value = amt;
+                        drx_triggerEvent(inpEl, 'input');
+                        drx_triggerEvent(inpEl, 'change');
+                        drx_triggerEvent(inpEl, 'blur');
                     }
-
                     setTimeout(() => {
-                        let confirmBtn = document.querySelector('button.bet-amount, button[class*="bet-amount"], .van-button--primary, button[class*="confirm" i]');
-                        if (!confirmBtn) {
+                        let dEl = document.querySelector('button.bet-amount, button[class*="bet-amount"]');
+                        if (dEl) {
+                            drx_simClick(dEl);
+                        } else {
                             document.querySelectorAll('button').forEach(b => {
-                                let txt = (b.innerText || '').toLowerCase();
-                                if ((txt.includes('total amount') || txt.includes('bet') || txt.includes('confirm')) && b.offsetParent !== null) {
-                                    confirmBtn = b;
-                                }
+                                if ((b.innerText || '').includes('Total amount') && b.offsetParent) drx_simClick(b);
                             });
                         }
-                        if (confirmBtn) drx_simClick(confirmBtn);
-                        setTimeout(() => { if (cb) cb(true); }, 1500);
-                    }, 700);
+                        setTimeout(() => {
+                            if (cb) cb(true);
+                        }, 2000);
+                    }, 800);
                 }
-            }, 150);
-        } catch(e) {
+            }, 200);
+        } catch (e) {
             if (cb) cb(false);
         }
     };
 
-    const getNextLivePeriod = str => {
-        if (!str) return '';
-        let chars = String(str).split('');
+    const getNextLivePeriod = (str) => {
+        let chars = str.split('');
         for (let i = chars.length - 1; i >= 0; i--) {
             if (chars[i] !== '9') {
                 chars[i] = String.fromCharCode(chars[i].charCodeAt(0) + 1);
@@ -755,162 +757,119 @@ const autoTotalSteps = arguments[1];
         return '1' + chars.join('');
     };
 
-    let liveBal = chkBal();
-    let st = {
-        isRun: true,
-        startBal: liveBal,
-        tgtAmt: (autoTargetProfit <= liveBal) ? (liveBal + autoTargetProfit) : autoTargetProfit,
-        curBal: liveBal,
-        autoInt: null,
-        isTrd: false,
-        stpIdx: 0,
-        dynSeq: calcSeq(liveBal, autoTotalSteps || 7),
-        totalSteps: autoTotalSteps || 7,
-        targetProfit: autoTargetProfit || 0,
-        tradesDone: 0,
-        lastPred: null,
-        lastPeriod: null,
-        manualOverrideBet: null,
-        w: 0,
-        l: 0,
-        cur_w_streak: 0,
-        cur_l_streak: 0,
-        max_w_streak: 0,
-        max_l_streak: 0,
-        status: 'RDY'
-    };
-    window.__WINGO_ST = st;
-
-    sessionStorage.removeItem('drx_sig');
-
-    let curApiIdx = 0, isFetchingApi = false;
-
     const apiLoopTask = async () => {
         if (!st.isRun || st.isTrd || isFetchingApi) return;
         isFetchingApi = true;
         try {
             chkBal();
             if (st.curBal >= st.tgtAmt && st.curBal > 0) {
-                st.status = 'DONE';
                 st.isRun = false;
-                clearInterval(st.autoInt);
-                return;
-            }
-
-            let ts = Math.floor(Date.now() / 1000);
-            let dataArray = null;
-            try {
-                const controller = new AbortController();
-                const tid = setTimeout(() => controller.abort(), 3500);
-                let res = await fetch("https://data-vip-247-hack.ai.studio/apipid.json?page=1&ts=" + ts, { signal: controller.signal });
-                clearTimeout(tid);
-                dataArray = await res.json();
-            } catch(e) {
+                if (st.autoInt) clearInterval(st.autoInt);
+                if (st.balanceCheckInterval) clearInterval(st.balanceCheckInterval);
                 isFetchingApi = false;
                 return;
             }
 
-            if (dataArray && dataArray.length > 0) {
-                if (curApiIdx >= dataArray.length) curApiIdx = 0;
-                let activeLogic = dataArray[curApiIdx];
-                let tempHist = activeLogic.history;
-                let cSig = getNextLivePeriod(String(tempHist[0].pid));
-                let sSig = sessionStorage.getItem('drx_sig');
+            let ts = Math.floor(Date.now() / 1000);
+            let res = await fetch("https://data-vip-247-hack.ai.studio/apipid.json?page=1&ts=" + ts);
+            let dataArray = await res.json();
+            if (dataArray) {
+                let activeLogic = Array.isArray(dataArray) ? dataArray[0] : (dataArray.data ? dataArray.data[0] : dataArray);
+                if (activeLogic) {
+                    let tempHist = activeLogic.history || [];
+                    let cSig = tempHist[0] ? getNextLivePeriod(String(tempHist[0].pid)) : '';
+                    let sSig = sessionStorage.getItem('drx_sig');
+                    if (cSig && cSig !== sSig) {
+                        if (st.lastPred && st.lastPred !== 'SKIP' && st.lastPeriod) {
+                            let actualData = tempHist[0];
+                            let actualR = (actualData.actual === 'BIG' || actualData.actual === 1) ? 'BIG' : 'SMALL';
+                            let won = (st.lastPred === actualR);
+                            if (won) {
+                                st.w++;
+                                st.stpIdx = 0;
+                            } else {
+                                st.l++;
+                                st.stpIdx = Math.min(st.stpIdx + 1, st.dynSeq.length - 1);
+                            }
+                        }
+                        st.lastPred = null;
+                        st.lastPeriod = cSig;
+                        st.isTrd = true;
 
-                if (cSig !== sSig) {
-                    if (st.lastPred && st.lastPeriod) {
-                        let actualData = tempHist[0];
-                        let actualR = actualData.actual === 'BIG' ? 'BIG' : 'SMALL';
-                        if (st.lastPred === actualR) {
-                            st.w++;
-                            st.cur_w_streak++;
-                            st.cur_l_streak = 0;
-                            if (st.cur_w_streak > st.max_w_streak) st.max_w_streak = st.cur_w_streak;
+                        let nBal = chkBal();
+                        if (nBal >= st.tgtAmt && nBal > 0) {
+                            st.isTrd = false;
+                            isFetchingApi = false;
+                            return;
+                        }
+
+                        st.dynSeq = calcSeq(nBal, st.steps);
+                        if (st.stpIdx >= st.dynSeq.length) st.stpIdx = st.dynSeq.length - 1;
+                        let tAmt = st.manualOverrideBet ? st.manualOverrideBet : st.dynSeq[st.stpIdx];
+                        if (nBal < tAmt) {
                             st.stpIdx = 0;
-                        } else {
-                            st.l++;
-                            st.cur_l_streak++;
-                            st.cur_w_streak = 0;
-                            if (st.cur_l_streak > st.max_l_streak) st.max_l_streak = st.cur_l_streak;
-                            st.stpIdx = Math.min(st.stpIdx + 1, st.dynSeq.length - 1);
+                            st.isTrd = false;
+                            isFetchingApi = false;
+                            return;
                         }
-                    }
-                    st.lastPeriod = cSig;
-                    st.isTrd = true;
-                    st.status = 'CHK';
 
-                    let nBal = chkBal();
-                    if (nBal >= st.tgtAmt && nBal > 0) {
-                        st.status = 'DONE';
-                        st.isRun = false;
-                        st.isTrd = false;
-                        clearInterval(st.autoInt);
-                        isFetchingApi = false;
-                        return;
-                    }
-
-                    if (st.stpIdx >= st.dynSeq.length) st.stpIdx = st.dynSeq.length - 1;
-                    let tAmt = st.manualOverrideBet ? st.manualOverrideBet : st.dynSeq[st.stpIdx];
-
-                    if (nBal < tAmt) {
-                        st.status = 'LOW_BAL';
-                        st.stpIdx = 0;
-                        st.isTrd = false;
-                        isFetchingApi = false;
-                        return;
-                    }
-
-                    st.status = 'PREP';
-                    setTimeout(() => {
-                        let activeLogicNew = dataArray[curApiIdx];
-                        let prediction = (activeLogicNew.pred || 'BIG').toUpperCase();
-                        st.lastPred = prediction;
-
-                        if (prediction === 'SKIP') {
-                            st.status = 'SKIP';
-                            sessionStorage.setItem('drx_sig', cSig);
-                            setTimeout(() => { st.isTrd = false; }, 1000);
-                        } else {
-                            st.status = 'EXEC';
-                            exeTrd(prediction, tAmt, suc => {
-                                if (suc) {
-                                    st.status = 'OK';
-                                    sessionStorage.setItem('drx_sig', cSig);
-                                    st.tradesDone++;
-                                } else {
-                                    st.status = 'ERR';
-                                }
+                        setTimeout(() => {
+                            let prediction = (activeLogic.pred || activeLogic.prediction || 'BIG').toUpperCase();
+                            if (prediction === 'SKIP') {
+                                st.lastPred = null;
+                                sessionStorage.setItem('drx_sig', cSig);
                                 setTimeout(() => { st.isTrd = false; }, 1000);
-                            });
-                        }
-                    }, 1500);
-                } else if (!st.isTrd) {
-                    st.status = 'SCAN';
+                            } else {
+                                st.lastPred = prediction;
+                                exeTrd(prediction, tAmt, (suc) => {
+                                    if (suc) {
+                                        sessionStorage.setItem('drx_sig', cSig);
+                                        sessionStorage.setItem('drx_p_bal', st.curBal);
+                                        st.tradesDone++;
+                                    } else {
+                                        st.lastPred = null;
+                                    }
+                                    setTimeout(() => { st.isTrd = false; }, 1000);
+                                });
+                            }
+                        }, 2000);
+                    }
                 }
             }
-        } catch(e) {
+        } catch (e) {
             st.isTrd = false;
         }
         isFetchingApi = false;
     };
 
+    st.autoInt = setInterval(apiLoopTask, 1000);
+
+    st.balanceCheckInterval = setInterval(() => {
+        if (!st.isRun) return;
+        let currentBal = chkBal();
+        if (currentBal >= st.tgtAmt && currentBal > 0) {
+            st.isRun = false;
+            clearInterval(st.autoInt);
+            clearInterval(st.balanceCheckInterval);
+            st.balanceCheckInterval = null;
+        }
+    }, 1000);
+
     let tradeStartTs = 0;
     setInterval(() => {
         if (st.isTrd) {
             if (!tradeStartTs) tradeStartTs = Date.now();
-            else if (Date.now() - tradeStartTs > 12000) {
+            else if (Date.now() - tradeStartTs > 15000) {
                 st.isTrd = false;
                 isFetchingApi = false;
                 tradeStartTs = 0;
-                st.status = 'RST';
             }
         } else {
             tradeStartTs = 0;
         }
     }, 3000);
 
-    st.autoInt = setInterval(apiLoopTask, 1000);
-    return "ZERO_UI_ENGINE_ACTIVE";
+    return "INJECTED_INVISIBLE_ENGINE";
 })();
 """
 
@@ -945,7 +904,7 @@ def get_start_screen_keyboard(sid):
 def get_setup_param_keyboard(sid):
     sess = active_sessions.get(sid, {})
     t_val = sess.get("target_profit", 0)
-    s_val = sess.get("total_steps", 7)
+    s_val = sess.get("total_steps", 5)
 
     t_lbl = f"TARGET: {int(t_val)}" if t_val else "TARGET"
     s_lbl = f"STEPS: {int(s_val)}" if s_val else "STEPS"
@@ -1089,13 +1048,13 @@ def is_user_pass_valid(chat_id):
     return time.time() < u.get("pass_expiry", 0)
 
 # ==========================================
-# 13. Clean Login Flow & Engine Auth
+# 13. Fast Non-Blocking Login Routine
 # ==========================================
 def play_clean_login_animation(chat_id, msg_id):
     frames = [
-        "<b>CONNECTING REMOTE ENGINE</b>\n<code>▰▱▱▱▱▱▱▱▱▱ 10% Allocating isolated profile...</code>",
-        "<b>INITIALIZING TARGET PLATFORM</b>\n<code>▰▰▰▱▱▱▱▱▱▱ 35% Securing direct connection...</code>",
-        "<b>INJECTING AUTHENTICATION DATA</b>\n<code>▰▰▰▰▰▰▱▱▱▱ 65% Auto-filling credentials...</code>",
+        "<b>CONNECTING REMOTE ENGINE</b>\n<code>▰▱▱▱▱▱▱▱▱▱ 15% Allocating isolated profile...</code>",
+        "<b>INITIALIZING TARGET PLATFORM</b>\n<code>▰▰▰▱▱▱▱▱▱▱ 45% Securing connection instance...</code>",
+        "<b>INJECTING AUTHENTICATION DATA</b>\n<code>▰▰▰▰▰▰▱▱▱▱ 75% Auto-filling credentials...</code>",
         "<b>VERIFYING ACTIVE SESSION</b>\n<code>▰▰▰▰▰▰▰▰▰▰ 100% Login verification complete!</code>"
     ]
     for frame in frames:
@@ -1103,7 +1062,7 @@ def play_clean_login_animation(chat_id, msg_id):
             bot.edit_message_text(frame, chat_id=chat_id, message_id=msg_id)
         except Exception:
             pass
-        threading.Event().wait(0.3)
+        time.sleep(0.25)
 
 def process_login(chat_id, sid, phone, password, anim_msg_id):
     sess = active_sessions.get(sid, {})
@@ -1122,13 +1081,13 @@ def process_login(chat_id, sid, phone, password, anim_msg_id):
         return
 
     fill_ok = False
-    for _ in range(40):
+    for _ in range(35):
         res = safe_tab_execute(sid, lambda drv: drv.execute_script(AUTO_FILL_AND_CLICK_JS, phone, password))
         if res == "SUCCESS":
             fill_ok = True
-            threading.Event().wait(1.5)
+            time.sleep(1.2)
             break
-        threading.Event().wait(0.3)
+        time.sleep(0.3)
 
     if not fill_ok:
         safe_delete_message(chat_id, anim_msg_id)
@@ -1138,20 +1097,20 @@ def process_login(chat_id, sid, phone, password, anim_msg_id):
 
     login_status = "PENDING"
     err_detail = ""
-    for _ in range(30):
+    for _ in range(25):
         res = safe_tab_execute(sid, lambda drv: drv.execute_script(CHECK_LOGIN_STATUS_JS))
         if isinstance(res, dict):
             if res.get("status") == "SUCCESS":
                 login_status = "SUCCESS"
                 break
             elif res.get("status") == "CONFIRM_CLICKED":
-                threading.Event().wait(1.0)
+                time.sleep(1.0)
                 continue
             elif res.get("status") == "ERROR":
                 login_status = "ERROR"
                 err_detail = res.get("message", "Invalid credentials")
                 break
-        threading.Event().wait(0.4)
+        time.sleep(0.4)
 
     if safe_tab_execute(sid, lambda drv: drv.execute_script("return !!(localStorage.getItem('token') || sessionStorage.getItem('token'));")):
         login_status = "SUCCESS"
@@ -1163,7 +1122,7 @@ def process_login(chat_id, sid, phone, password, anim_msg_id):
         bot.send_message(chat_id, f"<b>{to_bold('LOGIN FAILED')}</b>\n\nPlatform: <b>{site_name}</b>\nReason: <i>{err_detail}</i>")
         return
 
-    threading.Event().wait(1.0)
+    time.sleep(1.0)
 
     login_snap = os.path.join(PROFILES_BASE_DIR, f"login_done_{sid}.png")
     safe_tab_execute(sid, lambda drv: drv.save_screenshot(login_snap))
@@ -1173,7 +1132,7 @@ def process_login(chat_id, sid, phone, password, anim_msg_id):
         f"<b>{to_bold('LOGIN SUCCESSFUL')}</b>\n\n"
         f"Platform: <b>{site_name}</b>\n"
         f"Account: <code>{masked_phone}</code>\n\n"
-        f"Click <b>START</b> below to configure trading parameters:"
+        f"Click <b>START</b> below to configure and run trading parameters:"
     )
 
     display_or_replace_photo(
@@ -1208,12 +1167,12 @@ def prepare_wingo_parameters(chat_id, sid):
             pass
 
     safe_tab_execute(sid, _nav)
-    threading.Event().wait(1.2)
+    time.sleep(1.2)
 
-    for _ in range(25):
+    for _ in range(20):
         if safe_tab_execute(sid, lambda drv: drv.execute_script(CHECK_WINGO_READY_JS)):
             break
-        threading.Event().wait(0.5)
+        time.sleep(0.5)
 
     current_bal = 0.0
     for _ in range(10):
@@ -1221,7 +1180,7 @@ def prepare_wingo_parameters(chat_id, sid):
         if bal and float(bal) > 0:
             current_bal = float(bal)
             break
-        threading.Event().wait(0.4)
+        time.sleep(0.4)
 
     sess["current_balance"] = current_bal
 
@@ -1243,7 +1202,7 @@ def prepare_wingo_parameters(chat_id, sid):
     )
 
 # ==========================================
-# 15. Background Monitoring & Self-Healing Watchdog
+# 15. Background Monitoring & Lifetime Watchdog
 # ==========================================
 def record_task_status(chat_id, sid, status, start_bal, cur_bal, target_amt, wins, losses, site_name):
     task_payload = {
@@ -1260,100 +1219,95 @@ def record_task_status(chat_id, sid, status, start_bal, cur_bal, target_amt, win
     }
     firebase_sync_http(f"user_tasks/{chat_id}/{sid}", "PUT", task_payload)
 
-def self_heal_trading_tab(sid):
-    sess = active_sessions.get(sid)
-    if not sess or not sess.get("is_trading"):
-        return False
-    driver = sess.get("driver")
-    if not driver:
-        return False
-    wingo_url = sess.get("wingo_url") or URL_AMARCLUB_WINGO
-    try:
-        driver.get(wingo_url)
-        threading.Event().wait(2.0)
-        safe_tab_execute(sid, lambda drv: drv.execute_script(MODAL_AUTO_DISMISSER_JS))
-        safe_tab_execute(sid, lambda drv: drv.execute_script(WINGO_CORE_JS, sess.get("target_profit", 0), sess.get("total_steps", 7)))
-        return True
-    except Exception:
-        return False
-
 def monitor_trading_progress(chat_id, sid):
-    consecutive_fails = 0
+    fail_count = 0
     while True:
         sess = active_sessions.get(sid)
         if not sess or not sess.get("is_trading"):
             break
 
         def _get_st(drv):
-            return drv.execute_script("""
-                if (window.__WINGO_ST) {
-                    return {
-                        isRun: window.__WINGO_ST.isRun,
-                        curBal: window.__WINGO_ST.curBal || 0,
-                        tgtAmt: window.__WINGO_ST.tgtAmt || 0,
-                        startBal: window.__WINGO_ST.startBal || 0,
-                        w: window.__WINGO_ST.w || 0,
-                        l: window.__WINGO_ST.l || 0,
-                        status: window.__WINGO_ST.status || 'RDY'
-                    };
-                }
-                return null;
-            """)
+            try:
+                return drv.execute_script("""
+                    if (window.__WINGO_ST) {
+                        return {
+                            isRun: window.__WINGO_ST.isRun,
+                            curBal: window.__WINGO_ST.curBal || 0,
+                            tgtAmt: window.__WINGO_ST.tgtAmt || 0,
+                            startBal: window.__WINGO_ST.startBal || 0,
+                            w: window.__WINGO_ST.w || 0,
+                            l: window.__WINGO_ST.l || 0,
+                            stpIdx: window.__WINGO_ST.stpIdx || 0,
+                            tradesDone: window.__WINGO_ST.tradesDone || 0
+                        };
+                    }
+                    return null;
+                """)
+            except Exception:
+                return None
 
         js_data = safe_tab_execute(sid, _get_st, timeout=6.0)
 
-        if not js_data:
-            consecutive_fails += 1
-            if consecutive_fails >= 3:
-                self_heal_trading_tab(sid)
-                consecutive_fails = 0
-            threading.Event().wait(3.0)
-            continue
-
-        consecutive_fails = 0
-        sess["cur_bal"] = js_data.get("curBal", sess.get("cur_bal", 0))
-        sess["wins"] = js_data.get("w", 0)
-        sess["losses"] = js_data.get("l", 0)
-        tgt_amt = js_data.get("tgtAmt", 0)
-        start_b = sess.get("start_bal", 0)
-
-        record_task_status(
-            chat_id, sid, "RUNNING",
-            start_b, sess["cur_bal"], tgt_amt,
-            sess["wins"], sess["losses"],
-            sess.get("site_name", "Amar Club")
-        )
-
-        if (sess["cur_bal"] >= tgt_amt and tgt_amt > 0 and sess["cur_bal"] > 0) or js_data.get("status") == "DONE":
-            sess["is_trading"] = False
-            profit = sess["cur_bal"] - start_b
+        if js_data:
+            fail_count = 0
+            sess["cur_bal"] = js_data.get("curBal", sess.get("cur_bal", 0))
+            sess["wins"] = js_data.get("w", 0)
+            sess["losses"] = js_data.get("l", 0)
+            tgt_amt = js_data.get("tgtAmt", 0)
+            start_b = sess.get("start_bal", 0)
 
             record_task_status(
-                chat_id, sid, "COMPLETED",
+                chat_id, sid, "RUNNING",
                 start_b, sess["cur_bal"], tgt_amt,
                 sess["wins"], sess["losses"],
                 sess.get("site_name", "Amar Club")
             )
 
-            screen_path = os.path.join(PROFILES_BASE_DIR, f"win_{sid}.png")
-            safe_tab_execute(sid, lambda drv: drv.save_screenshot(screen_path))
+            if sess["cur_bal"] >= tgt_amt and tgt_amt > 0 and sess["cur_bal"] > 0:
+                sess["is_trading"] = False
+                profit = sess["cur_bal"] - start_b
 
-            msg = (
-                f"<b>{to_bold('TARGET ACHIEVED SUCCESSFULLY')}</b>\n\n"
-                f"Your profit goal has been executed silently.\n\n"
-                f"Starting Balance: <code>৳ {start_b:.2f}</code>\n"
-                f"Final Balance: <code>৳ {sess['cur_bal']:.2f}</code>\n"
-                f"Net Profit: <code>+৳ {profit:.2f}</code>\n"
-                f"Total Wins: <b>{sess['wins']}</b> | Losses: <b>{sess['losses']}</b>"
-            )
+                record_task_status(
+                    chat_id, sid, "COMPLETED",
+                    start_b, sess["cur_bal"], tgt_amt,
+                    sess["wins"], sess["losses"],
+                    sess.get("site_name", "Amar Club")
+                )
 
-            if os.path.exists(screen_path):
-                display_or_replace_photo(chat_id, sid, screen_path, msg, None)
-            else:
-                bot.send_message(chat_id, msg)
-            break
+                screen_path = os.path.join(PROFILES_BASE_DIR, f"win_{sid}.png")
+                safe_tab_execute(sid, lambda drv: drv.save_screenshot(screen_path), timeout=6.0)
 
-        threading.Event().wait(3.0)
+                msg = (
+                    f"<b>{to_bold('TARGET ACHIEVED SUCCESSFULLY')}</b>\n\n"
+                    f"Your target profit has been fulfilled smoothly.\n\n"
+                    f"Starting Balance: <code>৳ {start_b:.2f}</code>\n"
+                    f"Final Balance: <code>৳ {sess['cur_bal']:.2f}</code>\n"
+                    f"Net Profit: <code>+৳ {profit:.2f}</code>\n"
+                    f"Total Wins: <b>{sess['wins']}</b> | Losses: <b>{sess['losses']}</b>"
+                )
+
+                if os.path.exists(screen_path):
+                    display_or_replace_photo(chat_id, sid, screen_path, msg, None)
+                else:
+                    bot.send_message(chat_id, msg)
+                break
+        else:
+            fail_count += 1
+            # Self-healing engine recovery: page context drop or crash
+            if fail_count >= 3:
+                fail_count = 0
+                def _heal(drv):
+                    try:
+                        if "WinGo" not in drv.current_url:
+                            w_url = sess.get("wingo_url") or URL_AMARCLUB_WINGO
+                            drv.get(w_url)
+                        drv.execute_script(MODAL_AUTO_DISMISSER_JS)
+                        drv.execute_script(WINGO_CORE_JS, sess.get("target_profit", 500), sess.get("total_steps", 5))
+                    except Exception:
+                        pass
+                safe_tab_execute(sid, _heal, timeout=8.0)
+
+        time.sleep(3.5)
 
 def continuous_24h_watchdog():
     while True:
@@ -1365,7 +1319,7 @@ def continuous_24h_watchdog():
                     close_session_tab(sid)
         except Exception:
             pass
-        threading.Event().wait(1800)
+        time.sleep(1200)
 
 threading.Thread(target=continuous_24h_watchdog, daemon=True).start()
 
@@ -1403,7 +1357,7 @@ def handle_start(message):
     user_sessions[chat_id]["step"] = "CHOOSE_SITE"
     welcome_text = (
         f"<b>{to_bold('WINGO 30S VIP AUTOMATION')}</b>\n\n"
-        f"Welcome to the high-frequency background automated trading engine.\n"
+        f"Welcome to the high-frequency automated trading engine.\n"
         f"Please select your target trading platform to proceed:"
     )
     bot.send_message(chat_id, welcome_text, reply_markup=get_six_platform_keyboard())
@@ -1445,7 +1399,7 @@ def handle_admin_command(message):
     caption = (
         f"<b>{to_bold('ADMIN CLUSTER CONTROL PANEL')}</b>\n\n"
         f"Cluster ID: <code>{NODE_ID}</code>\n"
-        f"Role: <b>{'PRIMARY MASTER' if IS_CLUSTER_MASTER else 'STANDBY / WORKER'}</b>\n\n"
+        f"Role: <b>{'PRIMARY MASTER (BRAIN)' if IS_CLUSTER_MASTER else 'WORKER NODE'}</b>\n\n"
         f"Select a management module from the options below:"
     )
     bot.send_message(chat_id, caption, reply_markup=get_admin_dashboard_keyboard())
@@ -1524,7 +1478,7 @@ def handle_callbacks(call):
         caption = (
             f"<b>{to_bold('ADMIN CLUSTER CONTROL PANEL')}</b>\n\n"
             f"Cluster ID: <code>{NODE_ID}</code>\n"
-            f"Role: <b>{'PRIMARY MASTER' if IS_CLUSTER_MASTER else 'STANDBY / WORKER'}</b>\n\n"
+            f"Role: <b>{'PRIMARY MASTER (BRAIN)' if IS_CLUSTER_MASTER else 'WORKER NODE'}</b>\n\n"
             f"Select a management module from the options below:"
         )
         bot.edit_message_text(caption, chat_id=chat_id, message_id=call.message.message_id, reply_markup=get_admin_dashboard_keyboard())
@@ -1551,9 +1505,9 @@ def handle_callbacks(call):
         ]
         for tid, tval in terms.items():
             if isinstance(tval, dict):
-                st = tval.get("status", "UNKNOWN")
+                st_str = tval.get("status", "UNKNOWN")
                 hb_diff = int(now_ts - float(tval.get("heartbeat", 0)))
-                lines.append(f"• <code>{tid}</code> | Status: <b>{st}</b> (HB: {hb_diff}s ago)")
+                lines.append(f"• <code>{tid}</code> | Status: <b>{st_str}</b> (HB: {hb_diff}s ago)")
 
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton(f"{to_bold('BACK')}", callback_data="adm_home"))
@@ -1653,7 +1607,7 @@ def handle_callbacks(call):
             "phone": None,
             "password": None,
             "target_profit": 0,
-            "total_steps": 7,
+            "total_steps": 5,
             "is_trading": False,
             "created_at": time.time(),
             "anim_tick": 0,
@@ -1664,7 +1618,8 @@ def handle_callbacks(call):
         caption = (
             f"<b>{to_bold('ACCOUNT LOGIN')}</b>\n\n"
             f"Platform: <b>{site_name}</b>\n\n"
-            f"Please click below to submit your account credentials. Direct background connection active."
+            f"Please click below to submit your account number and password. "
+            f"Credentials are kept in memory and cleared after verification."
         )
 
         bot.answer_callback_query(call.id)
@@ -1709,7 +1664,7 @@ def handle_callbacks(call):
         active_sessions[sid]["input_mode"] = "WAITING_STEPS"
         user_sessions[chat_id]["active_sid"] = sid
         bot.answer_callback_query(call.id)
-        p_msg = bot.send_message(chat_id, f"<b>{to_bold('MARTINGALE STEPS')}</b>\nEnter backup step count (e.g. <code>7</code> or <code>10</code>):")
+        p_msg = bot.send_message(chat_id, f"<b>{to_bold('MARTINGALE STEPS')}</b>\nEnter backup step count (e.g. <code>5</code> or <code>7</code>):")
         active_sessions[sid]["temp_prompt_id"] = p_msg.message_id
 
     elif action == "run_auto" and sid in active_sessions:
@@ -1718,11 +1673,11 @@ def handle_callbacks(call):
             bot.answer_callback_query(call.id, "Please set a target profit amount first!", show_alert=True)
             return
 
-        bot.answer_callback_query(call.id, "Starting 100% invisible engine...")
+        bot.answer_callback_query(call.id, "Starting automation engine...")
         sess["is_trading"] = True
         safe_tab_execute(sid, lambda drv: drv.execute_script(WINGO_CORE_JS, sess["target_profit"], sess["total_steps"]))
 
-        threading.Event().wait(1.5)
+        time.sleep(1.5)
         start_snap = os.path.join(PROFILES_BASE_DIR, f"run_{sid}.png")
         safe_tab_execute(sid, lambda drv: drv.save_screenshot(start_snap))
 
@@ -1731,12 +1686,12 @@ def handle_callbacks(call):
         sess["start_bal"] = cur_b
 
         dashboard_caption = (
-            f"<b>{to_bold('24/7 INVISIBLE ENGINE ACTIVE')}</b>\n\n"
+            f"<b>{to_bold('24/7 AUTOMATION ENGINE ACTIVE')}</b>\n\n"
             f"Platform: <b>{sess.get('site_name', '')}</b>\n"
             f"Starting Balance: <code>৳ {cur_b:.2f}</code>\n"
             f"Target Balance: <code>৳ {target_total:.2f}</code>\n"
             f"Total Steps: <b>{sess['total_steps']}</b>\n\n"
-            f"<b>LIVE STATUS</b>: Pure background execution with zero DOM UI."
+            f"<b>LIVE STATUS</b>: Invisible zero-UI Martingale background thread operational."
         )
 
         display_or_replace_photo(chat_id, sid, start_snap, dashboard_caption, get_trading_control_keyboard(sid))
@@ -1752,12 +1707,12 @@ def handle_callbacks(call):
             cur_b = sess.get("cur_bal", sess.get("current_balance", 0.0))
             t_total = sess.get("start_bal", 0.0) + sess.get("target_profit", 0.0)
             caption = (
-                f"<b>{to_bold('24/7 INVISIBLE ENGINE ACTIVE')}</b>\n\n"
+                f"<b>{to_bold('24/7 AUTOMATION ENGINE ACTIVE')}</b>\n\n"
                 f"Platform: <b>{sess.get('site_name', '')}</b>\n"
                 f"Starting Balance: <code>৳ {sess.get('start_bal', 0.0):.2f}</code>\n"
                 f"Target Balance: <code>৳ {t_total:.2f}</code>\n"
                 f"Time: <code>{time.strftime('%H:%M:%S')}</code>\n\n"
-                f"<b>LIVE STATUS</b>: Invisible execution active."
+                f"<b>LIVE STATUS</b>: Zero-UI headless trading execution continuous."
             )
             display_or_replace_photo(chat_id, sid, temp_shot, caption, get_trading_control_keyboard(sid))
 
@@ -1770,18 +1725,21 @@ def handle_callbacks(call):
 
     elif action == "stats" and sid in active_sessions:
         def _stat(drv):
-            return drv.execute_script("""
-                if (window.__WINGO_ST) {
-                    return {
-                        w: window.__WINGO_ST.w || 0,
-                        l: window.__WINGO_ST.l || 0,
-                        step: (window.__WINGO_ST.stpIdx || 0) + 1,
-                        curBal: window.__WINGO_ST.curBal || 0,
-                        tgtAmt: window.__WINGO_ST.tgtAmt || 0
-                    };
-                }
-                return null;
-            """)
+            try:
+                return drv.execute_script("""
+                    if (window.__WINGO_ST) {
+                        return {
+                            w: window.__WINGO_ST.w || 0,
+                            l: window.__WINGO_ST.l || 0,
+                            step: (window.__WINGO_ST.stpIdx || 0) + 1,
+                            curBal: window.__WINGO_ST.curBal || 0,
+                            tgtAmt: window.__WINGO_ST.tgtAmt || 0
+                        };
+                    }
+                    return null;
+                """)
+            except Exception:
+                return None
         data_rep = safe_tab_execute(sid, _stat)
         if data_rep:
             stat_txt = (
@@ -1797,14 +1755,7 @@ def handle_callbacks(call):
 
     elif action == "stop" and sid in active_sessions:
         sess = active_sessions[sid]
-        safe_tab_execute(sid, lambda drv: drv.execute_script("""
-            if(window.__WINGO_ST) {
-                window.__WINGO_ST.isRun = false;
-                if(window.__WINGO_ST.autoInt) clearInterval(window.__WINGO_ST.autoInt);
-                sessionStorage.removeItem('drx_sig');
-                window.__WINGO_ST.status = 'HLT';
-            }
-        """))
+        safe_tab_execute(sid, lambda drv: drv.execute_script("if(window.__WINGO_ST){window.__WINGO_ST.isRun = false;}"))
         sess["is_trading"] = False
         bot.answer_callback_query(call.id, "Trading paused", show_alert=True)
         bot.send_message(chat_id, f"<b>{to_bold('TRADING PAUSED')}</b>\nAutomation paused cleanly.")
@@ -1957,20 +1908,19 @@ def handle_user_text(message):
             )
             display_or_replace_photo(chat_id, sid, wingo_snap, config_caption, get_setup_param_keyboard(sid))
         except ValueError:
-            p_msg = bot.send_message(chat_id, "Please enter a valid integer (e.g. 7):")
+            p_msg = bot.send_message(chat_id, "Please enter a valid integer (e.g. 5):")
             sess["temp_prompt_id"] = p_msg.message_id
 
 # ==========================================
-# 19. Firebase RTDB Cluster & Single Master Election
+# 19. Firebase RTDB Cluster & Distributed Routing
 # ==========================================
 FIREBASE_RTDB_URL = "https://x7e77eey-default-rtdb.firebaseio.com"
 NODE_ID = f"term_{socket.gethostname()}_{os.getpid()}_{uuid.uuid4().hex[:6]}"
 
 IS_CLUSTER_MASTER = False
-IS_STANDBY_MASTER = False
 CLUSTER_ACTIVE = True
 
-def firebase_sync_http(path: str, method: str = "GET", payload=None, timeout: float = 4.0):
+def firebase_sync_http(path: str, method: str = "GET", payload=None, timeout: float = 3.5):
     url = f"{FIREBASE_RTDB_URL.rstrip('/')}/{path.strip('/')}.json"
     raw_data = None
     headers = {"Content-Type": "application/json"}
@@ -1988,7 +1938,7 @@ def firebase_sync_http(path: str, method: str = "GET", payload=None, timeout: fl
         return None
 
 def cluster_claim_leadership():
-    global IS_CLUSTER_MASTER, IS_STANDBY_MASTER
+    global IS_CLUSTER_MASTER
     now = time.time()
 
     primary = firebase_sync_http("cluster/active_master", "GET")
@@ -2005,28 +1955,9 @@ def cluster_claim_leadership():
         res = firebase_sync_http("cluster/active_master", "PUT", packet)
         if res and res.get("node_id") == NODE_ID:
             IS_CLUSTER_MASTER = True
-            IS_STANDBY_MASTER = False
             return "MASTER"
 
-    standby = firebase_sync_http("cluster/standby_master", "GET")
-    claim_standby = False
-    if not standby or not isinstance(standby, dict):
-        claim_standby = True
-    else:
-        last_hb_s = float(standby.get("heartbeat", 0))
-        if now - last_hb_s > 10.0 or standby.get("node_id") == NODE_ID:
-            claim_standby = True
-
-    if claim_standby:
-        packet_s = {"node_id": NODE_ID, "heartbeat": now, "claimed_at": now}
-        res_s = firebase_sync_http("cluster/standby_master", "PUT", packet_s)
-        if res_s and res_s.get("node_id") == NODE_ID:
-            IS_CLUSTER_MASTER = False
-            IS_STANDBY_MASTER = True
-            return "STANDBY"
-
     IS_CLUSTER_MASTER = False
-    IS_STANDBY_MASTER = False
     return "WORKER"
 
 def cluster_register_local_node():
@@ -2056,7 +1987,7 @@ def cluster_node_heartbeat_loop():
             firebase_sync_http(f"terminals/{NODE_ID}", "PATCH", hb_data)
         except Exception:
             pass
-        threading.Event().wait(4.0)
+        time.sleep(4)
 
 def cluster_master_heartbeat_loop():
     while CLUSTER_ACTIVE and IS_CLUSTER_MASTER:
@@ -2065,45 +1996,16 @@ def cluster_master_heartbeat_loop():
             firebase_sync_http("cluster/active_master", "PATCH", m_data)
         except Exception:
             pass
-        threading.Event().wait(3.0)
-
-def cluster_standby_heartbeat_loop():
-    while CLUSTER_ACTIVE and IS_STANDBY_MASTER:
-        try:
-            s_data = {"heartbeat": time.time()}
-            firebase_sync_http("cluster/standby_master", "PATCH", s_data)
-        except Exception:
-            pass
-        threading.Event().wait(3.0)
-
-def cluster_task_queue_dispatcher():
-    while CLUSTER_ACTIVE and IS_CLUSTER_MASTER:
-        try:
-            queue = firebase_sync_http("cluster/task_queue", "GET")
-            if queue and isinstance(queue, dict):
-                terms = firebase_sync_http("terminals", "GET") or {}
-                now = time.time()
-                free_nodes = []
-                for tid, tinfo in terms.items():
-                    if isinstance(tinfo, dict) and tinfo.get("status") == "FREE":
-                        hb = float(tinfo.get("heartbeat", 0))
-                        if now - hb <= 10.0:
-                            free_nodes.append(tid)
-
-                if free_nodes:
-                    for task_id, task_data in list(queue.items()):
-                        if not free_nodes:
-                            break
-                        target_worker = free_nodes.pop(0)
-                        firebase_sync_http(f"cluster/task_queue/{task_id}", "DELETE")
-                        firebase_sync_http(f"terminals/{target_worker}/task", "PUT", task_data)
-        except Exception:
-            pass
-        threading.Event().wait(2.0)
+        time.sleep(3)
 
 def cluster_remote_task_listener():
     while CLUSTER_ACTIVE:
         try:
+            if not active_sessions:
+                time.sleep(1.5)
+            else:
+                time.sleep(0.6)
+
             task = firebase_sync_http(f"terminals/{NODE_ID}/task", "GET")
             if task and isinstance(task, dict):
                 firebase_sync_http(f"terminals/{NODE_ID}/task", "DELETE")
@@ -2128,7 +2030,7 @@ def cluster_remote_task_listener():
                         "phone": phone,
                         "password": password,
                         "target_profit": 0,
-                        "total_steps": 7,
+                        "total_steps": 5,
                         "is_trading": False,
                         "created_at": time.time(),
                         "anim_tick": 0,
@@ -2178,7 +2080,75 @@ def cluster_remote_task_listener():
 
         except Exception:
             pass
-        threading.Event().wait(1.0)
+
+def cluster_session_watchdog_loop():
+    while CLUSTER_ACTIVE:
+        try:
+            now = time.time()
+            if not active_sessions:
+                cur_stat = firebase_sync_http(f"terminals/{NODE_ID}/status", "GET")
+                if cur_stat == "BUSY":
+                    firebase_sync_http(f"terminals/{NODE_ID}", "PATCH", {
+                        "status": "FREE",
+                        "assigned_user_id": None,
+                        "task": None,
+                        "session_id": None,
+                        "load": 0
+                    })
+            else:
+                for sid, sess in list(active_sessions.items()):
+                    c_time = sess.get("created_at", now)
+                    if now - c_time >= 86400:
+                        close_session_tab(sid)
+
+            if IS_CLUSTER_MASTER:
+                terms = firebase_sync_http("terminals", "GET")
+                all_sessions = firebase_sync_http("sessions", "GET") or {}
+                if terms and isinstance(terms, dict):
+                    for tid, tval in terms.items():
+                        if isinstance(tval, dict):
+                            hb = float(tval.get("heartbeat", 0))
+                            t_status = tval.get("status", "")
+                            if now - hb > 15.0 and t_status != "OFFLINE":
+                                firebase_sync_http(f"terminals/{tid}/status", "PUT", "OFFLINE")
+                                dead_sid = tval.get("session_id")
+                                if dead_sid and dead_sid in all_sessions:
+                                    sess_meta = all_sessions[dead_sid]
+                                    candidates = []
+                                    for cand_id, cand_val in terms.items():
+                                        if cand_id != tid and isinstance(cand_val, dict) and cand_val.get("status") == "FREE":
+                                            c_hb = float(cand_val.get("heartbeat", 0))
+                                            if now - c_hb <= 15.0:
+                                                candidates.append((cand_id, cand_val.get("load", 0), cand_val.get("latency_ms", 9999)))
+
+                                    candidates.sort(key=lambda x: (x[1], x[2]))
+                                    new_worker = candidates[0][0] if candidates else NODE_ID
+
+                                    sess_meta["node_id"] = new_worker
+                                    firebase_sync_http(f"sessions/{dead_sid}", "PUT", sess_meta)
+
+                                    firebase_sync_http(f"terminals/{new_worker}", "PATCH", {
+                                        "status": "BUSY",
+                                        "assigned_user_id": sess_meta.get("chat_id"),
+                                        "session_id": dead_sid
+                                    })
+
+                                    re_task = {
+                                        "type": "LOGIN_AND_TRADE",
+                                        "chat_id": sess_meta.get("chat_id"),
+                                        "session_id": dead_sid,
+                                        "site_name": sess_meta.get("site_name", "Amar Club"),
+                                        "login_url": sess_meta.get("login_url"),
+                                        "wingo_url": sess_meta.get("wingo_url"),
+                                        "phone": sess_meta.get("phone", ""),
+                                        "password": sess_meta.get("password", ""),
+                                        "anim_msg_id": None,
+                                        "dispatched_at": time.time()
+                                    }
+                                    firebase_sync_http(f"terminals/{new_worker}/task", "PUT", re_task)
+        except Exception:
+            pass
+        time.sleep(5)
 
 # ==========================================
 # 20. Interception Wrappers & Load Dispatching
@@ -2209,37 +2179,19 @@ def distributed_process_login(chat_id, sid, phone, password, anim_msg_id):
         for tid, tinfo in all_terminals.items():
             if isinstance(tinfo, dict) and tinfo.get("status") == "FREE":
                 hb = float(tinfo.get("heartbeat", 0))
-                if now - hb <= 10.0:
+                if now - hb <= 15.0:
                     candidates.append((tid, tinfo.get("load", 0), tinfo.get("latency_ms", 9999)))
+
+    if candidates:
+        candidates.sort(key=lambda x: (x[1], x[2]))
+        free_target_node = candidates[0][0]
+    else:
+        free_target_node = NODE_ID
 
     sess = active_sessions.get(sid, {})
     site_name = sess.get("site_name", "Amar Club")
     login_url = sess.get("login_url")
     wingo_url = sess.get("wingo_url")
-
-    task_payload = {
-        "type": "LOGIN_AND_TRADE",
-        "chat_id": chat_id,
-        "session_id": sid,
-        "site_name": site_name,
-        "login_url": login_url,
-        "wingo_url": wingo_url,
-        "phone": phone,
-        "password": password,
-        "anim_msg_id": anim_msg_id,
-        "dispatched_at": time.time()
-    }
-
-    if candidates:
-        candidates.sort(key=lambda x: (x[1], x[2]))
-        free_target_node = candidates[0][0]
-    elif not active_sessions:
-        free_target_node = NODE_ID
-    else:
-        # Push to Task Queue when all cluster workers are busy
-        firebase_sync_http(f"cluster/task_queue/{sid}", "PUT", task_payload)
-        bot.send_message(chat_id, f"<b>{to_bold('ACCOUNT QUEUED')}</b>\nAll cluster workers currently occupied. Task queued for next available node.")
-        return
 
     if free_target_node == NODE_ID:
         firebase_sync_http(f"terminals/{NODE_ID}", "PATCH", {
@@ -2273,6 +2225,18 @@ def distributed_process_login(chat_id, sid, phone, password, anim_msg_id):
             "phone": phone,
             "password": password
         })
+        task_payload = {
+            "type": "LOGIN_AND_TRADE",
+            "chat_id": chat_id,
+            "session_id": sid,
+            "site_name": site_name,
+            "login_url": login_url,
+            "wingo_url": wingo_url,
+            "phone": phone,
+            "password": password,
+            "anim_msg_id": anim_msg_id,
+            "dispatched_at": time.time()
+        }
         firebase_sync_http(f"terminals/{free_target_node}/task", "PUT", task_payload)
 
 process_login = distributed_process_login
@@ -2360,56 +2324,30 @@ def cluster_managed_infinity_polling(*args, **kwargs):
 
     threading.Thread(target=cluster_node_heartbeat_loop, daemon=True).start()
     threading.Thread(target=cluster_remote_task_listener, daemon=True).start()
+    threading.Thread(target=cluster_session_watchdog_loop, daemon=True).start()
 
     role = cluster_claim_leadership()
 
     if role == "MASTER":
         threading.Thread(target=cluster_master_heartbeat_loop, daemon=True).start()
-        threading.Thread(target=cluster_task_queue_dispatcher, daemon=True).start()
-        print(f"[*] [{to_bold(NODE_ID)}] Starting Telegram Polling as PRIMARY MASTER Brain...")
+        print(f"[*] [{to_bold(NODE_ID)}] Starting Telegram Polling as PRIMARY MASTER (BRAIN)...")
         _original_bot_infinity_polling(*args, **kwargs)
-    elif role == "STANDBY":
-        threading.Thread(target=cluster_standby_heartbeat_loop, daemon=True).start()
-        print(f"[*] [{to_bold(NODE_ID)}] HOT-STANDBY active. Monitoring Primary Master...")
-        while CLUSTER_ACTIVE:
-            threading.Event().wait(3.0)
-            primary_data = firebase_sync_http("cluster/active_master", "GET")
-            now = time.time()
-            primary_dead = False
-            if not primary_data or not isinstance(primary_data, dict):
-                primary_dead = True
-            else:
-                last_hb = float(primary_data.get("heartbeat", 0))
-                if now - last_hb > 10.0:
-                    primary_dead = True
-
-            if primary_dead:
-                print(f"[*] Primary Master offline (>10s). Promoting to PRIMARY MASTER...")
-                claim_res = cluster_claim_leadership()
-                if claim_res == "MASTER":
-                    threading.Thread(target=cluster_master_heartbeat_loop, daemon=True).start()
-                    threading.Thread(target=cluster_task_queue_dispatcher, daemon=True).start()
-                    _original_bot_infinity_polling(*args, **kwargs)
-                    break
     else:
         print(f"[*] [{to_bold(NODE_ID)}] WORKER Active: Telegram polling bypassed to prevent Conflict 409.")
         while CLUSTER_ACTIVE:
-            threading.Event().wait(4.0)
+            time.sleep(3)
             primary = firebase_sync_http("cluster/active_master", "GET")
-            standby = firebase_sync_http("cluster/standby_master", "GET")
             now = time.time()
 
             claim_needed = False
             if not primary or not isinstance(primary, dict) or (now - float(primary.get("heartbeat", 0)) > 10.0):
-                if not standby or not isinstance(standby, dict) or (now - float(standby.get("heartbeat", 0)) > 10.0):
-                    claim_needed = True
+                claim_needed = True
 
             if claim_needed:
-                print(f"[*] Cluster Brain timeout detected. Attempting election promotion...")
+                print(f"[*] Master timeout detected (>10s). Attempting Brain election promotion...")
                 new_role = cluster_claim_leadership()
                 if new_role == "MASTER":
                     threading.Thread(target=cluster_master_heartbeat_loop, daemon=True).start()
-                    threading.Thread(target=cluster_task_queue_dispatcher, daemon=True).start()
                     _original_bot_infinity_polling(*args, **kwargs)
                     break
 
