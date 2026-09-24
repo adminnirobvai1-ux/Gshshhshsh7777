@@ -107,7 +107,7 @@ def cleanup_zombie_browsers():
 # ==========================================
 # 4. Configuration & State Management
 # ==========================================
-TOKEN = os.environ.get("BOT_TOKEN", "8808949150:AAGJXBVM_18xxAHPFMtH-TnGQbtaXAcb9p8")
+TOKEN = os.environ.get("BOT_TOKEN", "8808949150:AAG98yKPaD-1Np6BKeCKQM3KBbism8hHPIo")
 bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
 
 # Set HEADLESS=true via environment to run fully headless on servers
