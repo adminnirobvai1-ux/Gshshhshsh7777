@@ -192,6 +192,9 @@ def allocate_session_tab(session_id, target_url):
     os.makedirs(profile_dir, exist_ok=True)
 
     options = Options()
+    # Hardened page load strategy: Eager avoids indefinite blocking by asset requests
+    options.page_load_strategy = 'eager'
+
     if HEADLESS_MODE:
         options.add_argument("--headless")
 
@@ -232,7 +235,8 @@ def safe_tab_execute(sid, task_fn, timeout=20.0):
     if not driver or not lock:
         return None
 
-    acquired = lock.acquire(timeout=5.0)
+    # Elevated lock timeout to 15.0s to withstand distributed network jitter safely
+    acquired = lock.acquire(timeout=15.0)
     if not acquired:
         return None
 
@@ -350,7 +354,7 @@ MODAL_AUTO_DISMISSER_JS = """
         ];
         selectors.forEach(sel => {
             document.querySelectorAll(sel).forEach(el => {
-                if (el && el.offsetParent !== null && !el.closest('#sys-core-fin') && !el.closest('#_run_box')) {
+                if (el && el.offsetParent !== null && !el.closest('#sys-core-fin')) {
                     try { el.click(); } catch(e){}
                 }
             });
@@ -474,57 +478,100 @@ if (toast && toast.innerText && toast.innerText.trim().length > 0) {
 return { status: "PENDING" };
 """
 
-NEW_WINGO_RUNBOX_JS = """
-(function(){
-    if(document.getElementById('_run_box')) return "ALREADY_PRESENT";
-    var s = [
-        'body > div > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(7) > div:nth-of-type(3) > div > div:nth-of-type(2) > div > div > div > img',
-        'body > div > div:nth-of-type(3) > div:nth-of-type(5) > div:nth-of-type(2) > div:nth-of-type(3) > div > div > div > img',
-        'body > div > div:nth-of-type(2) > div:nth-of-type(5) > div:nth-of-type(2) > div > div',
-        'body > div > div:nth-of-type(3) > div:nth-of-type(5) > div:nth-of-type(4) > div:nth-of-type(2) > img',
-        'img[src*="wingo" i]',
-        'img[alt*="wingo" i]'
-    ];
-    function findTarget(){
-        for(var i = 0; i < s.length; i++){
-            var el = document.querySelector(s[i]);
-            if(el) return el;
+# ==============================================================================
+# PERSISTENT DUAL-ENTRANCE DISPATCH & VALIDATION JAVASCRIPT
+# ==============================================================================
+PERSISTENT_WINGO_DISPATCH_JS = """
+const targetUrl = arguments[0];
+const targetHash = arguments[1] || '#/saasLottery/WinGo?gameCode=WinGo_30S&lottery=WinGo';
+
+// Step A: Sweep overlays, popup wrappers, recharge banners, dialog buttons
+const sweepSelectors = [
+    '.van-dialog__confirm', '.dialog-confirm', '.van-popup__close-icon',
+    'button[class*="close"]', 'button[class*="confirm"]', '.van-button--primary',
+    '.van-overlay', '.dialog-close', '.close-btn'
+];
+sweepSelectors.forEach(sel => {
+    document.querySelectorAll(sel).forEach(el => {
+        if (el && el.offsetParent !== null && !el.closest('#sys-core-fin')) {
+            try { el.click(); } catch(e){}
         }
-        var imgs = document.getElementsByTagName('img');
-        for(var j = 0; j < imgs.length; j++){
-            if(/wingo/i.test((imgs[j].src || '') + (imgs[j].alt || ''))) return imgs[j];
-        }
-        var all = document.querySelectorAll('div,span,button,a');
-        for(var k = 0; k < all.length; k++){
-            if(all[k].children.length < 3 && /wingo/i.test(all[k].textContent || '')) return all[k];
-        }
-        return null;
+    });
+});
+
+// Step B1: Vue Router direct hash navigation
+try {
+    if (window.location.hash !== targetHash) {
+        window.location.hash = targetHash;
     }
-    function trigger(el){
-        if(!el) return false;
-        ['pointerdown','mousedown','pointerup','mouseup','click'].forEach(function(ev){
-            try{ el.dispatchEvent(new MouseEvent(ev, {bubbles:true, cancelable:true, view:window})); }catch(e){}
-        });
-        if(typeof el.click === 'function') el.click();
-        return true;
+} catch(e) {}
+
+// Step B2: Simulated synthetic pointer clicks on WinGo banners/cards
+const selectors = [
+    'body > div > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(7) > div:nth-of-type(3) > div > div:nth-of-type(2) > div > div > div > img',
+    'body > div > div:nth-of-type(3) > div:nth-of-type(5) > div:nth-of-type(2) > div:nth-of-type(3) > div > div > div > img',
+    'body > div > div:nth-of-type(2) > div:nth-of-type(5) > div:nth-of-type(2) > div > div',
+    'body > div > div:nth-of-type(3) > div:nth-of-type(5) > div:nth-of-type(4) > div:nth-of-type(2) > img',
+    'img[src*="wingo" i]',
+    'img[alt*="wingo" i]'
+];
+
+let targetEl = null;
+for (let i = 0; i < selectors.length; i++) {
+    let el = document.querySelector(selectors[i]);
+    if (el && el.offsetParent !== null) { targetEl = el; break; }
+}
+
+if (!targetEl) {
+    let imgs = document.getElementsByTagName('img');
+    for (let j = 0; j < imgs.length; j++) {
+        if (/wingo/i.test((imgs[j].src || '') + (imgs[j].alt || '')) && imgs[j].offsetParent !== null) {
+            targetEl = imgs[j];
+            break;
+        }
     }
-    var targetEl = findTarget();
-    if(targetEl){ trigger(targetEl); return "CLICKED_TARGET"; }
-    return "BOX_INJECTED";
-})();
+}
+
+if (!targetEl) {
+    let all = document.querySelectorAll('div,span,button,a');
+    for (let k = 0; k < all.length; k++) {
+        if (all[k].children.length < 3 && /wingo/i.test(all[k].textContent || '') && all[k].offsetParent !== null) {
+            targetEl = all[k];
+            break;
+        }
+    }
+}
+
+if (targetEl) {
+    ['pointerdown','mousedown','pointerup','mouseup','click'].forEach(ev => {
+        try { targetEl.dispatchEvent(new MouseEvent(ev, { bubbles: true, cancelable: true, view: window })); } catch(e){}
+    });
+    if (typeof targetEl.click === 'function') {
+        try { targetEl.click(); } catch(e){}
+    }
+}
+
+return true;
 """
 
-WINGO_RUNBOX_AND_CLICK_JS = NEW_WINGO_RUNBOX_JS
-
-CHECK_WINGO_READY_JS = """
+VERIFY_WINGO_READY_JS = """
 const hash = window.location.hash || '';
 const href = window.location.href || '';
 const bodyText = document.body ? document.body.innerText : '';
 
-const dismissBtns = document.querySelectorAll('.van-dialog__confirm, .dialog-close, .van-popup__close-icon, button[class*="close"], .van-dialog button');
+const dismissBtns = document.querySelectorAll('.van-dialog__confirm, .dialog-close, .van-popup__close-icon, button[class*="close"]');
 dismissBtns.forEach(btn => { try { btn.click(); } catch(e){} });
 
-if (hash.includes('WinGo') || href.includes('WinGo') || bodyText.includes('Win Go') || bodyText.includes('30S') || bodyText.includes('Time remaining')) {
+// Marker 1: URL/Hash alignment
+const isUrlMatch = hash.includes('WinGo') || href.includes('WinGo') || hash.includes('saasLottery');
+
+// Marker 2: Text presence
+const isTextMatch = bodyText.includes('Win Go') || bodyText.includes('30S') || bodyText.includes('Time remaining');
+
+// Marker 3: Interactive Betting DOM elements
+const hasBetControls = !!document.querySelector('.Betting__C-foot-b, .Betting__C-foot-s, .bet-btn-big, .bet-btn-small, button[class*="big" i], .van-count-down, [class*="countdown" i], [class*="time" i]');
+
+if (isUrlMatch && (isTextMatch || hasBetControls)) {
     return true;
 }
 return false;
@@ -550,7 +597,7 @@ return 0;
 """
 
 # ==============================================================================
-# UPGRADED GHOST AUTOMATION EXECUTION ENGINE (WINGO_CORE_JS)
+# UPGRADED 100% INVISIBLE GHOST TRADING PAYLOAD (WINGO_CORE_JS)
 # ==============================================================================
 WINGO_CORE_JS = r"""
 const autoTargetProfit = arguments[0];
@@ -1161,49 +1208,56 @@ def process_login(chat_id, sid, phone, password, anim_msg_id):
         get_start_screen_keyboard(sid)
     )
 
-# ==========================================
-# 14. WinGo Navigation & Configuration Flow
-# ==========================================
+# ==============================================================================
+# 14. WinGo Navigation: Adaptive Auto-Retry Loop (Zero Freeze, Resilient Polling)
+# ==============================================================================
 def prepare_wingo_parameters(chat_id, sid):
     sess = active_sessions.get(sid, {})
     site_name = sess.get("site_name", "Amar Club")
+    wingo_url = sess.get("wingo_url") or (URL_AMARCLUB_WINGO if "AMAR" in site_name.upper() else URL_DKWIN_WINGO)
+    wingo_hash = "#/saasLottery/WinGo?gameCode=WinGo_30S&lottery=WinGo"
 
-    def _nav(drv):
-        try:
-            drv.execute_script(MODAL_AUTO_DISMISSER_JS)
-            drv.execute_script(WINGO_RUNBOX_AND_CLICK_JS)
-        except Exception:
-            pass
-        wingo_url = sess.get("wingo_url") or (URL_AMARCLUB_WINGO if "AMAR" in site_name.upper() else URL_DKWIN_WINGO)
-        try:
-            drv.execute_script("""
-                const target = arguments[0];
-                if (!window.location.href.includes('WinGo')) {
-                    window.location.href = target;
-                }
-            """, wingo_url)
-        except Exception:
-            pass
+    # Execution Routine: Persistent Auto-Retry Loop (Step A -> Step E)
+    is_verified = False
+    nav_attempts = 0
 
-    safe_tab_execute(sid, _nav)
-    time.sleep(1.5)
+    while not is_verified:
+        nav_attempts += 1
 
-    for _ in range(30):
-        if safe_tab_execute(sid, lambda drv: drv.execute_script(CHECK_WINGO_READY_JS)):
+        # Step A & Step B: Sweep modals and trigger dual hash navigation & synthetic clicks
+        safe_tab_execute(
+            sid,
+            lambda drv: drv.execute_script(PERSISTENT_WINGO_DISPATCH_JS, wingo_url, wingo_hash)
+        )
+
+        # Step C & Step D: 3-Second tight verification poll without locking/stalling
+        check_start = time.time()
+        while time.time() - check_start < 3.0:
+            ready = safe_tab_execute(sid, lambda drv: drv.execute_script(VERIFY_WINGO_READY_JS))
+            if ready:
+                is_verified = True
+                break
+            time.sleep(0.3)
+
+        if is_verified:
             break
-        time.sleep(0.8)
 
+        # Immediate clearing of blocking dialogs before immediate cycle re-attempt
+        safe_tab_execute(sid, lambda drv: drv.execute_script(MODAL_AUTO_DISMISSER_JS))
+        time.sleep(0.2)
+
+    # Step E: Exit Condition reached - WinGo 30S market is 100% verified
     current_bal = 0.0
-    for _ in range(12):
+    for _ in range(15):
         bal = safe_tab_execute(sid, lambda drv: drv.execute_script(FETCH_BALANCE_JS))
         if bal and float(bal) > 0:
             current_bal = float(bal)
             break
-        time.sleep(0.5)
+        time.sleep(0.4)
 
     sess["current_balance"] = current_bal
 
-    # Screenshot #2 (Strict Policy): Captured strictly upon successful arrival on WinGo screen
+    # Screenshot #2 (Strict Policy): Captured strictly upon arrival on WinGo market
     wingo_snap = os.path.join(PROFILES_BASE_DIR, f"wingo_{sid}.png")
     safe_tab_execute(sid, lambda drv: drv.save_screenshot(wingo_snap))
 
@@ -1292,7 +1346,6 @@ def monitor_trading_progress(chat_id, sid):
                         sess.get("site_name", "Amar Club")
                     )
 
-                    # Strictly No automatic screenshot here
                     msg = (
                         f"<b>{to_bold('TARGET ACHIEVED SUCCESSFULLY')}</b>\n\n"
                         f"Your target profit has been fulfilled smoothly.\n\n"
@@ -1510,7 +1563,8 @@ def handle_callbacks(call):
             if isinstance(tval, dict):
                 st = tval.get("status", "UNKNOWN")
                 hb_diff = int(now_ts - float(tval.get("heartbeat", 0)))
-                lines.append(f"• <code>{tid}</code> | Status: <b>{st}</b> (HB: {hb_diff}s ago)")
+                lat = tval.get("latency_ms", "N/A")
+                lines.append(f"• <code>{tid}</code> | Status: <b>{st}</b> | Latency: <b>{lat} ms</b> (HB: {hb_diff}s ago)")
 
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton(f"{to_bold('BACK')}", callback_data="adm_home"))
@@ -1695,7 +1749,6 @@ def handle_callbacks(call):
             f"<b>LIVE STATUS</b>: Martingale engine running in ghost background mode."
         )
 
-        # Strictly No automatic screenshot: Update existing panel caption or send clean control message
         last_msg_id = sess.get("live_photo_message_id")
         if last_msg_id:
             try:
@@ -1907,7 +1960,6 @@ def handle_user_text(message):
                 f"Parameters updated. Click <b>START</b> to initiate trading:"
             )
 
-            # Strictly No screenshot here: update message caption directly
             last_msg_id = sess.get("live_photo_message_id")
             if last_msg_id:
                 try:
@@ -1941,7 +1993,6 @@ def handle_user_text(message):
                 f"Parameters updated. Click <b>START</b> to initiate trading:"
             )
 
-            # Strictly No screenshot here: update message caption directly
             last_msg_id = sess.get("live_photo_message_id")
             if last_msg_id:
                 try:
@@ -1959,9 +2010,9 @@ def handle_user_text(message):
             p_msg = bot.send_message(chat_id, "Please enter a valid integer (e.g. 7):")
             sess["temp_prompt_id"] = p_msg.message_id
 
-# ==========================================
-# 19. Firebase RTDB Cluster & Distributed Routing
-# ==========================================
+# ==============================================================================
+# 19. Firebase RTDB Cluster & Distributed Routing (Fastest-Node Dispatcher)
+# ==============================================================================
 FIREBASE_RTDB_URL = "https://x7e77eey-default-rtdb.firebaseio.com"
 NODE_ID = f"term_{socket.gethostname()}_{os.getpid()}_{uuid.uuid4().hex[:6]}"
 
@@ -2045,6 +2096,7 @@ def cluster_node_heartbeat_loop():
     while CLUSTER_ACTIVE:
         try:
             status_val = "BUSY" if active_sessions else "FREE"
+            # Periodic network health & ping polling against active trading gateways
             lat = measure_network_latency(URL_AMARCLUB_LOGIN)
             hb_data = {
                 "heartbeat": time.time(),
@@ -2195,9 +2247,10 @@ def cluster_session_watchdog_loop():
                                     for cand_id, cand_val in terms.items():
                                         if cand_id != tid and isinstance(cand_val, dict) and cand_val.get("status") == "FREE":
                                             c_hb = float(cand_val.get("heartbeat", 0))
-                                            if now - c_hb <= 15.0:
-                                                candidates.append((cand_id, cand_val.get("load", 0), cand_val.get("latency_ms", 9999)))
+                                            if now - c_hb < 10.0:
+                                                candidates.append((cand_id, cand_val.get("latency_ms", 9999.0), cand_val.get("load", 0)))
 
+                                    # Prioritize lowest network latency
                                     candidates.sort(key=lambda x: (x[1], x[2]))
                                     new_worker = candidates[0][0] if candidates else NODE_ID
 
@@ -2227,9 +2280,9 @@ def cluster_session_watchdog_loop():
             pass
         time.sleep(6)
 
-# ==========================================
-# 20. Interception Wrappers & Load Dispatching
-# ==========================================
+# ==============================================================================
+# 20. Interception Wrappers & Fastest-Node Load Dispatching
+# ==============================================================================
 _original_close_session_tab = close_session_tab
 def close_session_tab(session_id):
     _original_close_session_tab(session_id)
@@ -2249,28 +2302,31 @@ _original_process_login = process_login
 def distributed_process_login(chat_id, sid, phone, password, anim_msg_id):
     all_terminals = firebase_sync_http("terminals", "GET")
     now = time.time()
-    free_target_node = None
-
     candidates = []
+
+    # Dynamic Fastest-Node Routing: Filter status == "FREE" and heartbeat < 10.0s old
     if all_terminals and isinstance(all_terminals, dict):
         for tid, tinfo in all_terminals.items():
             if isinstance(tinfo, dict) and tinfo.get("status") == "FREE":
                 hb = float(tinfo.get("heartbeat", 0))
-                if now - hb <= 15.0:
-                    candidates.append((tid, tinfo.get("load", 0), tinfo.get("latency_ms", 9999)))
+                if now - hb < 10.0:
+                    lat = float(tinfo.get("latency_ms", 9999.0))
+                    candidates.append((tid, lat, tinfo.get("load", 0)))
 
+    # Smart Allocation: Route immediately to node with lowest latency (fastest network speed)
     if candidates:
         candidates.sort(key=lambda x: (x[1], x[2]))
-        free_target_node = candidates[0][0]
+        fastest_target_node = candidates[0][0]
     else:
-        free_target_node = NODE_ID
+        # Fallback: Assign to local node safely without crashing
+        fastest_target_node = NODE_ID
 
     sess = active_sessions.get(sid, {})
     site_name = sess.get("site_name", "Amar Club")
     login_url = sess.get("login_url")
     wingo_url = sess.get("wingo_url")
 
-    if free_target_node == NODE_ID:
+    if fastest_target_node == NODE_ID:
         firebase_sync_http(f"terminals/{NODE_ID}", "PATCH", {
             "status": "BUSY",
             "assigned_user_id": chat_id,
@@ -2288,13 +2344,13 @@ def distributed_process_login(chat_id, sid, phone, password, anim_msg_id):
         })
         _original_process_login(chat_id, sid, phone, password, anim_msg_id)
     else:
-        firebase_sync_http(f"terminals/{free_target_node}", "PATCH", {
+        firebase_sync_http(f"terminals/{fastest_target_node}", "PATCH", {
             "status": "BUSY",
             "assigned_user_id": chat_id,
             "session_id": sid
         })
         firebase_sync_http(f"sessions/{sid}", "PUT", {
-            "node_id": free_target_node,
+            "node_id": fastest_target_node,
             "chat_id": chat_id,
             "site_name": site_name,
             "login_url": login_url,
@@ -2314,7 +2370,7 @@ def distributed_process_login(chat_id, sid, phone, password, anim_msg_id):
             "anim_msg_id": anim_msg_id,
             "dispatched_at": time.time()
         }
-        firebase_sync_http(f"terminals/{free_target_node}/task", "PUT", task_payload)
+        firebase_sync_http(f"terminals/{fastest_target_node}/task", "PUT", task_payload)
 
 process_login = distributed_process_login
 
