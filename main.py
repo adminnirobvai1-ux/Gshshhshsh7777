@@ -110,7 +110,7 @@ def cleanup_zombie_browsers():
 # ==========================================
 # 4. Configuration & Multi-Platform Registry
 # ==========================================
-TOKEN = "8808949150:AAFwAIsPbB2XZdKdizPIc8k42yVKvQJkH-s"
+TOKEN = "8808949150:AAGodx9oQRqrj3ATP-mdTyLP4X8HFGmh4jY"
 bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
 
 HEADLESS_MODE = os.environ.get("HEADLESS", "false").lower() == "true"
