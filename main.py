@@ -110,7 +110,7 @@ def cleanup_zombie_browsers():
 # ==========================================
 # 4. Configuration & State Management
 # ==========================================
-TOKEN = "8808949150:AAH6sTkoljibL3gsQIQ3MtUTYNPjI8F9ihQ"
+TOKEN = os.environ.get("BOT_TOKEN", "8808949150:AAH6sTkoljibL3gsQIQ3MtUTYNPjI8F9ihQ")
 bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
 
 HEADLESS_MODE = os.environ.get("HEADLESS", "false").lower() == "true"
@@ -2598,4 +2598,4 @@ if __name__ == "__main__":
         bot.remove_webhook()
     except Exception:
         pass
-    bot.infinity_polling(skip_pending=True)bmn 
+    bot.infinity_polling(skip_pending=True)
