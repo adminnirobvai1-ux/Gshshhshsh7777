@@ -10,17 +10,18 @@ import gc
 import urllib.request
 import urllib.error
 import uuid
+import re
 
-# ==========================================
-# 1. Automatic Package Installer & Resilient Importer
-# ==========================================
+# ==============================================================================
+# ১. ডিপেনডেন্সি ও প্যাকেজ অটোমেশন ম্যানেজার
+# ==============================================================================
 def install_and_import(package_name, import_name=None):
     if import_name is None:
         import_name = package_name
     try:
         __import__(import_name)
     except ImportError:
-        print(f"[*] Installing required package: {package_name}...")
+        print(f"[*] প্যাকেজ ইন্সটল করা হচ্ছে: {package_name}...")
         try:
             subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", package_name])
         except Exception as e:
@@ -37,9 +38,9 @@ from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.firefox.service import Service as FirefoxService
 import psutil
 
-# ==========================================
-# 2. Mathematical Bold Unicode & Text Decorators
-# ==========================================
+# ==============================================================================
+# ২. গাণিতিক বোল্ড ইউনিকোড ও ইউটিলিটি ফাংশন
+# ==============================================================================
 def to_bold(text: str) -> str:
     res = []
     for c in str(text):
@@ -62,9 +63,9 @@ def safe_delete_message(chat_id, message_id):
     except Exception:
         pass
 
-# ==========================================
-# 3. Aggressive Zombie Process & Memory Hygiene
-# ==========================================
+# ==============================================================================
+# ৩. সিস্টেম মেমোরি সুরক্ষা ও প্রসেস ক্লিনার (Zombie Browser Killer)
+# ==============================================================================
 def kill_process_tree(pid):
     try:
         parent = psutil.Process(pid)
@@ -74,7 +75,7 @@ def kill_process_tree(pid):
                 child.terminate()
             except Exception:
                 pass
-        gone, still_alive = psutil.wait_procs(children, timeout=2.0)
+        gone, still_alive = psutil.wait_procs(children, timeout=2.5)
         for p in still_alive:
             try:
                 p.kill()
@@ -107,10 +108,10 @@ def cleanup_zombie_browsers():
     except Exception:
         pass
 
-# ==========================================
-# 4. Configuration & Multi-Platform Registry
-# ==========================================
-TOKEN = "8808949150:AAGodx9oQRqrj3ATP-mdTyLP4X8HFGmh4jY"
+# ==============================================================================
+# ৪. গ্লোবাল কনফিগারেশন ও ক্লাস্টার সেটিংস
+# ==============================================================================
+TOKEN = "8808949150:AAFaQ1X0TdwmepXuEpQihtHbdfD9V_UQgyM"
 bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
 
 HEADLESS_MODE = os.environ.get("HEADLESS", "false").lower() == "true"
@@ -173,9 +174,9 @@ URL_DKWIN_LOGIN = PLATFORMS["site_dkwin"]["login"]
 URL_AMARCLUB_WINGO = PLATFORMS["site_amarclub"]["wingo"]
 URL_DKWIN_WINGO = PLATFORMS["site_dkwin"]["wingo"]
 
-# ==========================================
-# 5. Network Speed & Firebase Synchronizer
-# ==========================================
+# ==============================================================================
+# ৫. নেটওয়ার্ক ল্যাটেন্সি মনিটরিং ও ফায়ারবেস সিঙ্ক ইঞ্জিন
+# ==============================================================================
 def measure_network_latency(url: str, timeout: float = 3.5) -> float:
     try:
         start_ts = time.time()
@@ -205,13 +206,13 @@ def firebase_sync_http(path: str, method: str = "GET", payload=None, timeout: fl
     except Exception:
         return None
 
-# ==========================================
-# 6. Hardened Browser Session Isolation
-# ==========================================
+# ==============================================================================
+# ৬. ব্রাউজার সেশন সিকিউরিটি ও আইসোলেশন ইঞ্জিন
+# ==============================================================================
 def allocate_session_tab(session_id, target_url):
     sess = active_sessions.get(session_id)
     if not sess:
-        raise Exception("Session data not found.")
+        raise Exception("সেশন ডাটা পাওয়া যায়নি।")
 
     cleanup_zombie_browsers()
 
@@ -226,10 +227,10 @@ def allocate_session_tab(session_id, target_url):
     options.add_argument("-profile")
     options.add_argument(profile_dir)
 
-    options.set_preference("browser.sessionhistory.max_entries", 1)
+    options.set_preference("browser.sessionhistory.max_entries", 2)
     options.set_preference("browser.sessionhistory.max_total_viewers", 0)
-    options.set_preference("image.mem.surfacecache.max_size_kb", 1024)
-    options.set_preference("javascript.options.mem.max", 32768)
+    options.set_preference("image.mem.surfacecache.max_size_kb", 2048)
+    options.set_preference("javascript.options.mem.max", 65536)
     options.set_preference("browser.cache.disk.enable", False)
     options.set_preference("browser.cache.memory.enable", True)
     options.set_preference("network.http.use-cache", False)
@@ -239,9 +240,9 @@ def allocate_session_tab(session_id, target_url):
     service = FirefoxService(log_output=os.devnull)
     driver = webdriver.Firefox(service=service, options=options)
 
-    driver.set_page_load_timeout(30)
-    driver.set_script_timeout(15)
-    driver.implicitly_wait(3)
+    driver.set_page_load_timeout(35)
+    driver.set_script_timeout(20)
+    driver.implicitly_wait(4)
     driver.set_window_size(412, 915)
 
     try:
@@ -253,7 +254,7 @@ def allocate_session_tab(session_id, target_url):
     sess["window_handle"] = driver.current_window_handle
     return driver, sess["window_handle"]
 
-def safe_tab_execute(sid, task_fn, timeout=20.0):
+def safe_tab_execute(sid, task_fn, timeout=22.0):
     sess = active_sessions.get(sid)
     if not sess:
         return None
@@ -264,7 +265,7 @@ def safe_tab_execute(sid, task_fn, timeout=20.0):
     if not driver or not lock:
         return None
 
-    acquired = lock.acquire(timeout=5.0)
+    acquired = lock.acquire(timeout=6.0)
     if not acquired:
         return None
 
@@ -324,9 +325,9 @@ def close_session_tab(session_id):
     cleanup_zombie_browsers()
     gc.collect()
 
-# ==========================================
-# 7. Telegram Media & Clean Screen Replacement
-# ==========================================
+# ==============================================================================
+# ৭. টেলিগ্রাম ফটো ও ক্লিন স্ক্রিন রিপ্লেসার
+# ==============================================================================
 def display_or_replace_photo(chat_id, session_id, image_path, caption_text, reply_markup=None):
     sess = active_sessions.get(session_id, {})
     last_photo_msg_id = sess.get("live_photo_message_id")
@@ -366,61 +367,69 @@ def display_or_replace_photo(chat_id, session_id, image_path, caption_text, repl
         pass
     gc.collect()
 
-# ==========================================
-# 8. Upgraded JavaScript Automation & Sweeper
-# ==========================================
-# Super Aggressive Modal & Announcement Dismisser
-MODAL_AUTO_DISMISSER_JS = """
+# ==============================================================================
+# ৮. ভিডিও ভিত্তিক আপগ্রেডেড জাভাস্ক্রিপ্ট অটোমেশন ইঞ্জেকশন
+# ==============================================================================
+
+# ১. মাল্টি-ডিভাইস কনফ্লিক্ট (Error 22) ও ডাবল ব্যানার অটো-ডিসমিসার
+SUPER_MODAL_SWEEPER_JS = """
 (function(){
-    const sweepModals = () => {
-        const directSelectors = [
-            '.van-dialog__confirm', '.dialog-confirm', '.van-button--primary',
-            '.van-popup__close-icon', '.van-overlay', '.dialog-close', '.close-btn',
-            'button[class*="close" i]', 'button[class*="confirm" i]', 'div[class*="close" i]',
-            '.announcement-box .close', '.modal-mask', '.reward-receive-btn',
-            'button.van-dialog__cancel'
-        ];
-        directSelectors.forEach(sel => {
-            document.querySelectorAll(sel).forEach(el => {
-                if (el && el.offsetParent !== null && !el.closest('#sys-core-fin')) {
-                    try { 
+    const clearPopups = () => {
+        // ১. Error 22: Your account is already logged in somewhere else সমাধান
+        const dialogs = document.querySelectorAll('.van-dialog, .dialog-box, [class*="dialog" i]');
+        dialogs.forEach(d => {
+            const txt = (d.innerText || '');
+            if (txt.includes('already logged in') || txt.includes('somewhere else') || txt.includes('Error: 22') || txt.includes('22')) {
+                const btn = d.querySelector('.van-dialog__confirm, button, .van-button--primary, .van-button--danger');
+                if (btn) {
+                    try {
                         ['pointerdown','mousedown','mouseup','click'].forEach(evt => {
-                            el.dispatchEvent(new MouseEvent(evt, {bubbles:true, cancelable:true, view:window}));
+                            btn.dispatchEvent(new MouseEvent(evt, {bubbles:true, cancelable:true, view:window}));
                         });
-                        el.click(); 
+                        btn.click();
                     } catch(e){}
                 }
-            });
+            }
         });
 
-        // Scan button and span text for promotional banners seen in video (Confirm, Receive, Got it, etc.)
-        const clickableNodes = document.querySelectorAll('button, div[role="button"], span, p, a');
-        clickableNodes.forEach(node => {
-            if (node && node.offsetParent !== null && !node.closest('#sys-core-fin')) {
-                const txt = (node.innerText || '').trim().toLowerCase();
-                if (txt === 'confirm' || txt === 'receive' || txt === 'got it' || txt === '確定' || txt === '领取' || txt === 'close') {
-                    if (node.closest('.van-dialog') || node.closest('.van-popup') || node.closest('[class*="dialog"]') || node.closest('[class*="modal"]') || node.closest('[class*="notice"]') || node.closest('[class*="reward"]')) {
-                        try { node.click(); } catch(e){}
+        // ২. ভিডিওর USDT ও 100K Invite প্রমোশন ব্যানার ক্লিকার
+        const actionButtons = document.querySelectorAll('.van-dialog__confirm, .dialog-confirm, .van-button--primary, .reward-receive-btn, button');
+        actionButtons.forEach(btn => {
+            if (btn && btn.offsetParent !== null && !btn.closest('#sys-core-fin')) {
+                const bTxt = (btn.innerText || '').trim().toLowerCase();
+                if (bTxt === 'confirm' || bTxt === 'got it' || bTxt === 'receive' || bTxt === '確定' || bTxt === 'close') {
+                    if (btn.closest('.van-dialog') || btn.closest('.van-popup') || btn.closest('[class*="notice"]') || btn.closest('[class*="modal"]')) {
+                        try {
+                            btn.click();
+                        } catch(e){}
                     }
                 }
             }
         });
 
-        // Cleanup stale overlays
-        document.querySelectorAll('.van-overlay').forEach(overlay => {
-            if (overlay && overlay.offsetParent !== null) {
-                try { overlay.remove(); } catch(e){}
+        // ৩. ওভারলে এবং ক্লোজ আইকন ক্লিনার
+        document.querySelectorAll('.van-popup__close-icon, .close-btn, .dialog-close, button[class*="close" i]').forEach(c => {
+            if (c && c.offsetParent !== null) {
+                try { c.click(); } catch(e){}
+            }
+        });
+
+        // ৪. স্টেল van-overlay ব্লকার অপসারণ
+        document.querySelectorAll('.van-overlay').forEach(ov => {
+            if (ov && ov.offsetParent !== null && !document.querySelector('.van-dialog:not([style*="display: none"])')) {
+                try { ov.remove(); } catch(e){}
             }
         });
     };
 
-    sweepModals();
-    if (!window.__SWEEPER_INTERVAL) {
-        window.__SWEEPER_INTERVAL = setInterval(sweepModals, 800);
+    clearPopups();
+    if (!window.__SUPER_SWEEPER_INT) {
+        window.__SUPER_SWEEPER_INT = setInterval(clearPopups, 500);
     }
 })();
 """
 
+# ২. অটো-ফিল এবং স্মার্ট সাবমিশন
 AUTO_FILL_AND_CLICK_JS = """
 const phone = arguments[0];
 const pass = arguments[1];
@@ -429,12 +438,10 @@ if (!window.location.hash.includes('login')) {
     window.location.hash = '#/login';
 }
 
-const dismissInitial = () => {
-    document.querySelectorAll('.van-dialog__confirm, .dialog-confirm, button[class*="confirm" i], .van-button--primary, .van-popup__close-icon').forEach(btn => {
-        try { btn.click(); } catch(e){}
-    });
-};
-dismissInitial();
+// ক্লিয়ার প্রাথমিক পপ-আপ
+document.querySelectorAll('.van-dialog__confirm, .dialog-confirm, button[class*="confirm" i], .van-popup__close-icon').forEach(btn => {
+    try { btn.click(); } catch(e){}
+});
 
 let elN = document.querySelector('input[type="tel"], input[placeholder*="phone" i], input[placeholder*="Phone" i]') || 
           document.querySelector('body > div > div:nth-of-type(2) > div:nth-of-type(4) > div > div > div > div:nth-of-type(2) > input');
@@ -443,6 +450,7 @@ let elP = document.querySelector('input[type="password"]') ||
           document.querySelector('body > div > div:nth-of-type(2) > div:nth-of-type(4) > div > div > div:nth-of-type(2) > div:nth-of-type(2) > input');
 
 let elL = document.querySelector('button[type="submit"]') || 
+          document.querySelector('button.login-btn, .van-button--block') ||
           document.querySelector('body > div > div:nth-of-type(2) > div:nth-of-type(4) > div > div > div:nth-of-type(4) > button');
 
 if (!elN || !elP || !elL) {
@@ -471,35 +479,31 @@ setTimeout(() => {
             try { elL.dispatchEvent(new MouseEvent(evt, {bubbles:true, cancelable:true, view:window})); } catch(e){}
         });
         elL.click();
-    }, 600);
-}, 600);
+    }, 500);
+}, 500);
 
 return "SUCCESS";
 """
 
+# ৩. লগইন স্থিতি ও Error 22 টেক-ওভার চেকার
 CHECK_LOGIN_STATUS_JS = """
 const hash = window.location.hash || '';
 const href = window.location.href || '';
 const bodyText = document.body ? document.body.innerText : '';
 
+// সেশন কনফ্লিক্ট হ্যান্ডলিং
 const dialog = document.querySelector('.van-dialog');
 if (dialog) {
     const dText = dialog.innerText || '';
     if (dText.includes('already logged in') || dText.includes('somewhere else') || 
-        dText.includes('logged in') || dText.includes('22') || dText.includes('other device') ||
-        dText.includes('Confirm') || dText.includes('Determine') || dText.includes('continue')) {
-        const confirmBtn = dialog.querySelector('.van-dialog__confirm, button[class*="confirm" i], .van-button--danger, .van-button--primary, button');
+        dText.includes('Error: 22') || dText.includes('22') || dText.includes('Confirm')) {
+        const confirmBtn = dialog.querySelector('.van-dialog__confirm, button');
         if (confirmBtn) {
             try { confirmBtn.click(); } catch(e){}
-            return { status: "CONFIRM_CLICKED", message: "Auto-confirmed device prompt" };
+            return { status: "CONFIRM_CLICKED", message: "Error 22 Overridden" };
         }
     }
 }
-
-// Promotional banner auto-dismissal
-document.querySelectorAll('.van-dialog__confirm, .dialog-confirm, button[class*="confirm" i], button[class*="close" i], .van-popup__close-icon').forEach(b => {
-    try { b.click(); } catch(e){}
-});
 
 try {
     const t1 = localStorage.getItem('token') || localStorage.getItem('token_str') || localStorage.getItem('auth');
@@ -514,14 +518,12 @@ if (!href.includes('/login') && (!hash.includes('login') || hash.length > 8)) {
 const toast = document.querySelector('.van-toast--text, .van-toast--fail, .van-toast');
 if (toast && toast.innerText && toast.innerText.trim().length > 0) {
     const t = toast.innerText.trim();
-    if (t.includes('already logged in') || t.includes('somewhere else') || t.includes('22')) {
-        const loginBtn = document.querySelector('button[type="submit"], body > div > div:nth-of-type(2) > div:nth-of-type(4) > div > div > div:nth-of-type(4) > button');
-        if (loginBtn) {
-            try { loginBtn.click(); } catch(e){}
-        }
-        return { status: "PENDING", message: "Takeover session handling..." };
+    if (t.includes('already logged in') || t.includes('22')) {
+        const loginBtn = document.querySelector('button[type="submit"]');
+        if (loginBtn) { try { loginBtn.click(); } catch(e){} }
+        return { status: "PENDING", message: "Retrying session takeover..." };
     }
-    if (t.includes('password') || t.includes('incorrect') || t.includes('wrong') || t.includes('Account does not exist') || t.includes('frozen')) {
+    if (t.includes('password') || t.includes('incorrect') || t.includes('Account does not exist') || t.includes('frozen')) {
         return { status: "ERROR", message: t };
     }
 }
@@ -529,13 +531,12 @@ if (toast && toast.innerText && toast.innerText.trim().length > 0) {
 return { status: "PENDING" };
 """
 
-# Adaptive Persistent Navigation & Fallback DOM Click Engine
+# ৪. WinGo 30S নেভিগেশন ও ব্যানার রিমুভার
 WINGO_PERSISTENT_NAV_JS = """
 const targetUrl = arguments[0];
 
 (function(){
-    // Step A: Sweep all dialogs and banners
-    document.querySelectorAll('.van-dialog__confirm, .dialog-confirm, button[class*="confirm" i], button[class*="close" i], .van-popup__close-icon, .reward-receive-btn').forEach(b => {
+    document.querySelectorAll('.van-dialog__confirm, .dialog-confirm, button[class*="confirm" i], .van-popup__close-icon').forEach(b => {
         try { b.click(); } catch(e){}
     });
 
@@ -547,19 +548,16 @@ const targetUrl = arguments[0];
         return "ALREADY_VERIFIED";
     }
 
-    // Step B: Direct router redirect
     try {
         if (!window.location.href.includes('WinGo')) {
             window.location.href = targetUrl;
         }
     } catch(e){}
 
-    // Step C: Fallback DOM Selector click
     const s = [
         'img[src*="wingo" i]', 'img[alt*="wingo" i]',
-        'body > div > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(7) > div:nth-of-type(3) > div > div:nth-of-type(2) > div > div > div > img',
-        'body > div > div:nth-of-type(3) > div:nth-of-type(5) > div:nth-of-type(2) > div:nth-of-type(3) > div > div > div > img',
-        'body > div > div:nth-of-type(2) > div:nth-of-type(5) > div:nth-of-type(2) > div > div'
+        '.van-tab--active', 'div[class*="wingo" i]',
+        'body > div > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(7) > div:nth-of-type(3) > div > div:nth-of-type(2) > div > div > div > img'
     ];
     for (let i = 0; i < s.length; i++) {
         let el = document.querySelector(s[i]);
@@ -581,7 +579,7 @@ const hash = window.location.hash || '';
 const href = window.location.href || '';
 const bodyText = document.body ? document.body.innerText : '';
 
-document.querySelectorAll('.van-dialog__confirm, .dialog-close, .van-popup__close-icon, button[class*="close" i], .van-dialog button').forEach(btn => {
+document.querySelectorAll('.van-dialog__confirm, .dialog-close, .van-popup__close-icon').forEach(btn => {
     try { btn.click(); } catch(e){}
 });
 
@@ -611,7 +609,7 @@ return 0;
 """
 
 # ==============================================================================
-# UPGRADED GHOST AUTOMATION EXECUTION ENGINE (WINGO_CORE_JS)
+# ৫. সম্পূর্ণ আপগ্রেডেড ঘোস্ট ট্রেডিং ও রেজাল্ট সিঙ্ক ইঞ্জিন (WINGO_CORE_JS)
 # ==============================================================================
 WINGO_CORE_JS = r"""
 const autoTargetProfit = arguments[0];
@@ -622,14 +620,14 @@ const autoTotalSteps = arguments[1];
     if (!ghostContainer) {
         ghostContainer = document.createElement('div');
         ghostContainer.id = 'sys-core-fin';
-        ghostContainer.setAttribute('style', 'display: none !important; opacity: 0 !important; pointer-events: none !important; position: fixed !important; top: -9999px !important; left: -9999px !important; width: 0 !important; height: 0 !important; z-index: -9999 !important; overflow: hidden !important;');
+        ghostContainer.setAttribute('style', 'display: none !important; opacity: 0 !important; pointer-events: none !important; position: fixed !important; top: -9999px !important; left: -9999px !important;');
         document.body.appendChild(ghostContainer);
     }
 
     if (window.__WINGO_ST && window.__WINGO_ST.isRun) {
-        window.__WINGO_ST.totalSteps = Math.max(1, parseInt(autoTotalSteps) || 7);
+        window.__WINGO_ST.totalSteps = Math.max(1, parseInt(autoTotalSteps) || 5);
         if (autoTargetProfit && autoTargetProfit > 0) {
-            let liveBal = (typeof chkBal === 'function') ? chkBal() : window.__WINGO_ST.curBal;
+            let liveBal = chkBal();
             window.__WINGO_ST.tgtAmt = (autoTargetProfit <= liveBal && liveBal > 0) ? (liveBal + autoTargetProfit) : autoTargetProfit;
         }
         return "ALREADY_RUNNING_UPDATED";
@@ -648,7 +646,7 @@ const autoTotalSteps = arguments[1];
         isTrd: false,
         stpIdx: 0,
         dynSeq: [],
-        totalSteps: Math.max(1, parseInt(autoTotalSteps) || 7),
+        totalSteps: Math.max(1, parseInt(autoTotalSteps) || 5),
         tradesDone: 0,
         lastPred: null,
         lastPeriod: null,
@@ -686,8 +684,9 @@ const autoTotalSteps = arguments[1];
         return st.curBal || 0;
     }
 
+    // ৫ বা ৭ স্টেপের নিখুঁত মার্টিঙ্গেল হিসাব
     function calculateMartingaleSequence(balance, steps) {
-        steps = Math.max(1, parseInt(steps) || 7);
+        steps = Math.max(1, parseInt(steps) || 5);
         let b = Math.max(1, Math.floor(balance) || 1);
         let units = Math.pow(2, steps) - 1;
         let s1 = Math.floor(b / units);
@@ -699,19 +698,30 @@ const autoTotalSteps = arguments[1];
             seq.push(cur);
             cur = cur * 2;
         }
-        return seq.length > 0 ? seq : [1];
+        return seq.length > 0 ? seq : [1, 2, 4, 8, 16];
     }
 
-    function getNextLivePeriod(str) {
-        let chars = String(str).split('');
-        for (let i = chars.length - 1; i >= 0; i--) {
-            if (chars[i] !== '9') {
-                chars[i] = String.fromCharCode(chars[i].charCodeAt(0) + 1);
-                return chars.join('');
+    // লাইভ স্ক্রিন কাউন্টডাউন রিডার (ভিডিও অনুযায়ী শেষ ৫ সেকেন্ড লক-আউট প্রটেকশন)
+    function getRemainingSeconds() {
+        try {
+            let timeBox = document.querySelector('.time-box, .Time__C-time, [class*="time" i]');
+            if (timeBox) {
+                let txt = timeBox.innerText.replace(/\s+/g, '');
+                let m = txt.match(/(\d{1,2}):(\d{1,2})$/);
+                if (m) {
+                    return parseInt(m[1]) * 60 + parseInt(m[2]);
+                }
             }
-            chars[i] = '0';
-        }
-        return '1' + chars.join('');
+            let allSpans = document.querySelectorAll('span, div');
+            for (let s of allSpans) {
+                let t = (s.innerText || '').trim();
+                if (/^00:\d{2}$/.test(t) || /^0\d:\d{2}$/.test(t)) {
+                    let parts = t.split(':');
+                    return parseInt(parts[0]) * 60 + parseInt(parts[1]);
+                }
+            }
+        } catch(e){}
+        return 30;
     }
 
     function fireSyntheticEvents(el) {
@@ -726,6 +736,7 @@ const autoTotalSteps = arguments[1];
         }
     }
 
+    // নিখুঁত বেটিং এক্সিকিউটর (Big, Small, Red, Green এবং কাস্টম মার্টিঙ্গেল অ্যামাউন্ট)
     function executeBetTrade(pred, amt, cb) {
         try {
             let target = String(pred).trim().toUpperCase();
@@ -744,9 +755,8 @@ const autoTotalSteps = arguments[1];
             }
 
             if (!btn) {
-                let candidateElements = document.querySelectorAll('button, div[role="button"], span');
-                for (let i = 0; i < candidateElements.length; i++) {
-                    let el = candidateElements[i];
+                let candidates = document.querySelectorAll('button, div[role="button"], span');
+                for (let el of candidates) {
                     let t = (el.innerText || '').trim().toUpperCase();
                     if (t === target && el.offsetParent !== null && el.children.length === 0) {
                         btn = el;
@@ -787,7 +797,7 @@ const autoTotalSteps = arguments[1];
                                 let buttons = document.querySelectorAll('button');
                                 for (let b of buttons) {
                                     let txt = (b.innerText || '').toLowerCase();
-                                    if ((txt.includes('total amount') || txt.includes('confirm') || txt.includes('bet')) && b.offsetParent !== null) {
+                                    if ((txt.includes('total') || txt.includes('confirm') || txt.includes('bet')) && b.offsetParent !== null) {
                                         confirmBtn = b;
                                         break;
                                     }
@@ -795,16 +805,16 @@ const autoTotalSteps = arguments[1];
                             }
                             if (confirmBtn) {
                                 fireSyntheticEvents(confirmBtn);
-                                setTimeout(() => { if (cb) cb(true); }, 1500);
+                                setTimeout(() => { if (cb) cb(true); }, 1400);
                             } else {
                                 if (cb) cb(false);
                             }
-                        }, 600);
+                        }, 500);
                     } else {
                         if (cb) cb(false);
                     }
                 }
-            }, 150);
+            }, 120);
         } catch(e) {
             if (cb) cb(false);
         }
@@ -819,32 +829,41 @@ const autoTotalSteps = arguments[1];
     st.stpIdx = 0;
     sessionStorage.removeItem('drx_sig');
 
-    let isFetchingApi = false;
+    let isFetching = false;
 
     const ghostExecutionLoop = async () => {
-        if (!st.isRun || st.isTrd || isFetchingApi) return;
-        isFetchingApi = true;
+        if (!st.isRun || st.isTrd || isFetching) return;
+        isFetching = true;
 
         try {
+            // ১. টার্গেট প্রফিট চেক
             let currentBal = chkBal();
             if (currentBal >= st.tgtAmt && st.tgtAmt > 0 && currentBal > 0) {
                 st.isRun = false;
                 st.isTrd = false;
                 if (st.autoInt) clearInterval(st.autoInt);
-                isFetchingApi = false;
+                isFetching = false;
                 return;
             }
 
+            // ২. কাউন্টডাউন প্রটেকশন (শেষ ৫ সেকেন্ডে বেট নেওয়া হবে না)
+            let remSec = getRemainingSeconds();
+            if (remSec <= 5) {
+                isFetching = false;
+                return;
+            }
+
+            // ৩. প্রেডিকশন এবং হিস্ট্রি ফেচিং
             let ts = Math.floor(Date.now() / 1000);
             let dataArray = null;
             try {
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 3500);
+                const tId = setTimeout(() => controller.abort(), 3000);
                 let response = await fetch("https://data-vip-247-hack.ai.studio/apipid.json?ts=" + ts, { signal: controller.signal });
-                clearTimeout(timeoutId);
+                clearTimeout(tId);
                 dataArray = await response.json();
             } catch(e) {
-                isFetchingApi = false;
+                isFetching = false;
                 return;
             }
 
@@ -852,16 +871,17 @@ const autoTotalSteps = arguments[1];
                 let activeLogic = dataArray[0];
                 let history = activeLogic.history;
                 if (!history || history.length === 0) {
-                    isFetchingApi = false;
+                    isFetching = false;
                     return;
                 }
 
-                let cSig = getNextLivePeriod(String(history[0].pid));
+                let cSig = String(history[0].pid);
                 let sSig = sessionStorage.getItem('drx_sig');
 
                 if (cSig !== sSig) {
                     sessionStorage.setItem('drx_sig', cSig);
 
+                    // আগের রাউন্ডের উইন/লস চেক
                     if (st.lastPred && st.lastPeriod) {
                         let actualOutcome = String(history[0].actual || '').trim().toUpperCase();
                         if (actualOutcome === 'BIG' || actualOutcome === 'SMALL') {
@@ -889,7 +909,7 @@ const autoTotalSteps = arguments[1];
                         st.isRun = false;
                         st.isTrd = false;
                         if (st.autoInt) clearInterval(st.autoInt);
-                        isFetchingApi = false;
+                        isFetching = false;
                         return;
                     }
 
@@ -899,7 +919,7 @@ const autoTotalSteps = arguments[1];
                     if (liveB < targetStake) {
                         st.stpIdx = 0;
                         st.isTrd = false;
-                        isFetchingApi = false;
+                        isFetching = false;
                         return;
                     }
 
@@ -921,16 +941,16 @@ const autoTotalSteps = arguments[1];
         } catch(e) {
             st.isTrd = false;
         }
-        isFetchingApi = false;
+        isFetching = false;
     };
 
     let tradeStartTs = 0;
     setInterval(() => {
         if (st.isTrd) {
             if (!tradeStartTs) tradeStartTs = Date.now();
-            else if (Date.now() - tradeStartTs > 15000) {
+            else if (Date.now() - tradeStartTs > 16000) {
                 st.isTrd = false;
-                isFetchingApi = false;
+                isFetching = false;
                 tradeStartTs = 0;
             }
         } else {
@@ -943,9 +963,9 @@ const autoTotalSteps = arguments[1];
 })();
 """
 
-# ==========================================
-# 9. Interactive English Keyboard Matrices
-# ==========================================
+# ==============================================================================
+# ৯. টেলিগ্রাম কিবোর্ড ও ইউজার ইন্টারফেস ম্যাট্রিক্স
+# ==============================================================================
 def get_credentials_keyboard(sid):
     sess = active_sessions.get(sid, {})
     markup = InlineKeyboardMarkup(row_width=2)
@@ -974,7 +994,7 @@ def get_start_screen_keyboard(sid):
 def get_setup_param_keyboard(sid):
     sess = active_sessions.get(sid, {})
     t_val = sess.get("target_profit", 0)
-    s_val = sess.get("total_steps", 7)
+    s_val = sess.get("total_steps", 5)
 
     t_lbl = f"TARGET: {int(t_val)}" if t_val else "TARGET"
     s_lbl = f"STEPS: {int(s_val)}" if s_val else "STEPS"
@@ -1063,9 +1083,9 @@ def get_admin_dashboard_keyboard():
     )
     return markup
 
-# ==========================================
-# 10. Passkey Storage & Management Helpers
-# ==========================================
+# ==============================================================================
+# ১০. পাস-কী এবং সিকিউরিটি মেকানিজম
+# ==============================================================================
 def generate_24h_passkey() -> str:
     token_str = "KEY-" + uuid.uuid4().hex[:6].upper()
     now_ts = time.time()
@@ -1111,15 +1131,15 @@ def is_user_pass_valid(chat_id):
     u = user_sessions.get(chat_id, {})
     return time.time() < u.get("pass_expiry", 0)
 
-# ==========================================
-# 11. Authentication & Clean Login Flow
-# ==========================================
+# ==============================================================================
+# ১১. অটো-লগইন এবং এরর ২২ সমাধান ওয়ার্কফ্লো
+# ==============================================================================
 def play_clean_login_animation(chat_id, msg_id):
     frames = [
-        "<b>CONNECTING REMOTE ENGINE</b>\n<code>▰▱▱▱▱▱▱▱▱▱ 10% Allocating isolated profile...</code>",
-        "<b>INITIALIZING TARGET PLATFORM</b>\n<code>▰▰▰▱▱▱▱▱▱▱ 35% Establishing connection instance...</code>",
-        "<b>INJECTING AUTHENTICATION DATA</b>\n<code>▰▰▰▰▰▰▱▱▱▱ 65% Submitting credentials securely...</code>",
-        "<b>VERIFYING ACTIVE SESSION</b>\n<code>▰▰▰▰▰▰▰▰▰▰ 100% Authentication successful!</code>"
+        "<b>CONNECTING REMOTE ENGINE</b>\n<code>▰▱▱▱▱▱▱▱▱▱ 15% Allocating secure browser...</code>",
+        "<b>BYPASSING POPUPS & OVERLAYS</b>\n<code>▰▰▰▱▱▱▱▱▱▱ 40% Clearing announcement banners...</code>",
+        "<b>INJECTING AUTHENTICATION DATA</b>\n<code>▰▰▰▰▰▰▱▱▱▱ 70% Submitting phone & password...</code>",
+        "<b>RESOLVING ERROR 22 CONFLICT</b>\n<code>▰▰▰▰▰▰▰▰▰▰ 100% Authentication successful!</code>"
     ]
     for frame in frames:
         try:
@@ -1138,14 +1158,14 @@ def process_login(chat_id, sid, phone, password, anim_msg_id):
 
     try:
         driver, handle = allocate_session_tab(sid, login_url)
-        safe_tab_execute(sid, lambda drv: drv.execute_script(MODAL_AUTO_DISMISSER_JS))
+        safe_tab_execute(sid, lambda drv: drv.execute_script(SUPER_MODAL_SWEEPER_JS))
     except Exception as e:
         safe_delete_message(chat_id, anim_msg_id)
         bot.send_message(chat_id, f"<b>{to_bold('LOGIN FAILED')}</b>\n\nPlatform: <b>{site_name}</b>\nReason: <i>{e}</i>")
         return
 
     fill_ok = False
-    for _ in range(70):
+    for _ in range(75):
         res = safe_tab_execute(sid, lambda drv: drv.execute_script(AUTO_FILL_AND_CLICK_JS, phone, password))
         if res == "SUCCESS":
             fill_ok = True
@@ -1161,7 +1181,7 @@ def process_login(chat_id, sid, phone, password, anim_msg_id):
 
     login_status = "PENDING"
     err_detail = ""
-    for _ in range(40):
+    for _ in range(45):
         res = safe_tab_execute(sid, lambda drv: drv.execute_script(CHECK_LOGIN_STATUS_JS))
         if isinstance(res, dict):
             if res.get("status") == "SUCCESS":
@@ -1186,11 +1206,11 @@ def process_login(chat_id, sid, phone, password, anim_msg_id):
         bot.send_message(chat_id, f"<b>{to_bold('LOGIN FAILED')}</b>\n\nPlatform: <b>{site_name}</b>\nReason: <i>{err_detail}</i>")
         return
 
-    # Extra sweep to ensure no promotion modal covers the login screen
-    safe_tab_execute(sid, lambda drv: drv.execute_script(MODAL_AUTO_DISMISSER_JS))
+    # ব্যানার বা পপ-আপ সম্পূর্ণ অপসারণ নিশ্চিতকরণ
+    safe_tab_execute(sid, lambda drv: drv.execute_script(SUPER_MODAL_SWEEPER_JS))
     time.sleep(1.2)
 
-    # MILESTONE 1 SCREENSHOT: Captured strictly upon successful login
+    # মাইলস্টোন ১ স্ক্রিনশট (লগইন সম্পন্ন)
     login_snap = os.path.join(PROFILES_BASE_DIR, f"login_done_{sid}.png")
     safe_tab_execute(sid, lambda drv: drv.save_screenshot(login_snap))
 
@@ -1209,25 +1229,22 @@ def process_login(chat_id, sid, phone, password, anim_msg_id):
         get_start_screen_keyboard(sid)
     )
 
-# ==========================================
-# 12. Persistent WinGo 30S Auto-Retry Loop
-# ==========================================
+# ==============================================================================
+# ১২. WinGo 30S মার্কেট প্রিপারেশন ও নেভিগেশন
+# ==============================================================================
 def prepare_wingo_parameters(chat_id, sid):
     sess = active_sessions.get(sid, {})
     site_name = sess.get("site_name", "Amar Club")
     wingo_url = sess.get("wingo_url") or (URL_AMARCLUB_WINGO if "AMAR" in site_name.upper() else URL_DKWIN_WINGO)
 
-    # Persistent loop: Sweep modals, redirect via Vue router or click card, and verify
     verified = False
     max_nav_cycles = 15
 
     for cycle in range(max_nav_cycles):
-        # Step A, B & C: Sweep modals and trigger entrance
-        safe_tab_execute(sid, lambda drv: drv.execute_script(MODAL_AUTO_DISMISSER_JS))
+        safe_tab_execute(sid, lambda drv: drv.execute_script(SUPER_MODAL_SWEEPER_JS))
         safe_tab_execute(sid, lambda drv: drv.execute_script(WINGO_PERSISTENT_NAV_JS, wingo_url))
         time.sleep(2.0)
 
-        # Step D: Verification check
         is_ready = safe_tab_execute(sid, lambda drv: drv.execute_script(CHECK_WINGO_READY_JS))
         if is_ready:
             verified = True
@@ -1235,10 +1252,9 @@ def prepare_wingo_parameters(chat_id, sid):
         time.sleep(1.0)
 
     if not verified:
-        # Final direct force fallback
         safe_tab_execute(sid, lambda drv: drv.get(wingo_url))
         time.sleep(3.0)
-        safe_tab_execute(sid, lambda drv: drv.execute_script(MODAL_AUTO_DISMISSER_JS))
+        safe_tab_execute(sid, lambda drv: drv.execute_script(SUPER_MODAL_SWEEPER_JS))
 
     current_bal = 0.0
     for _ in range(15):
@@ -1250,11 +1266,10 @@ def prepare_wingo_parameters(chat_id, sid):
 
     sess["current_balance"] = current_bal
 
-    # Sweep once more before capturing MILESTONE 2 SCREENSHOT
-    safe_tab_execute(sid, lambda drv: drv.execute_script(MODAL_AUTO_DISMISSER_JS))
+    safe_tab_execute(sid, lambda drv: drv.execute_script(SUPER_MODAL_SWEEPER_JS))
     time.sleep(1.0)
 
-    # MILESTONE 2 SCREENSHOT: Captured strictly upon successful arrival on WinGo screen
+    # মাইলস্টোন ২ স্ক্রিনশট (WinGo 30s স্ক্রিন)
     wingo_snap = os.path.join(PROFILES_BASE_DIR, f"wingo_{sid}.png")
     safe_tab_execute(sid, lambda drv: drv.save_screenshot(wingo_snap))
 
@@ -1272,9 +1287,9 @@ def prepare_wingo_parameters(chat_id, sid):
         get_setup_param_keyboard(sid)
     )
 
-# ==========================================
-# 13. Trading Monitor & Background Watchdog
-# ==========================================
+# ==============================================================================
+# ১৩. ট্রেডিং মনিটরিং ও ব্যাকগ্রাউন্ড ওয়াচডগ
+# ==============================================================================
 def record_task_status(chat_id, sid, status, start_bal, cur_bal, target_amt, wins, losses, site_name):
     task_payload = {
         "chat_id": chat_id,
@@ -1372,9 +1387,9 @@ def continuous_24h_watchdog():
 
 threading.Thread(target=continuous_24h_watchdog, daemon=True).start()
 
-# ==========================================
-# 14. Telegram Command Handlers
-# ==========================================
+# ==============================================================================
+# ১৪. কমান্ড এবং কলব্যাক হ্যান্ডলার
+# ==============================================================================
 @bot.message_handler(commands=['start'])
 def handle_start(message):
     chat_id = message.chat.id
@@ -1453,9 +1468,6 @@ def handle_admin_command(message):
     )
     bot.send_message(chat_id, caption, reply_markup=get_admin_dashboard_keyboard())
 
-# ==========================================
-# 15. Telegram Callback Routing
-# ==========================================
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callbacks(call):
     chat_id = call.message.chat.id
@@ -1657,7 +1669,7 @@ def handle_callbacks(call):
             "phone": None,
             "password": None,
             "target_profit": 0,
-            "total_steps": 7,
+            "total_steps": 5,
             "is_trading": False,
             "created_at": time.time(),
             "anim_tick": 0,
@@ -1707,14 +1719,14 @@ def handle_callbacks(call):
         user_sessions[chat_id]["active_sid"] = sid
         bot.answer_callback_query(call.id)
         cur_bal = active_sessions[sid].get("current_balance", 0.0)
-        p_msg = bot.send_message(chat_id, f"<b>{to_bold('TARGET PROFIT')}</b>\nLive Balance: <code>৳ {cur_bal:.2f}</code>\nEnter profit amount (e.g. <code>500</code>):")
+        p_msg = bot.send_message(chat_id, f"<b>{to_bold('TARGET PROFIT')}</b>\nLive Balance: <code>৳ {cur_bal:.2f}</code>\nEnter profit amount (e.g. <code>250</code>):")
         active_sessions[sid]["temp_prompt_id"] = p_msg.message_id
 
     elif action == "set_stp" and sid in active_sessions:
         active_sessions[sid]["input_mode"] = "WAITING_STEPS"
         user_sessions[chat_id]["active_sid"] = sid
         bot.answer_callback_query(call.id)
-        p_msg = bot.send_message(chat_id, f"<b>{to_bold('MARTINGALE STEPS')}</b>\nEnter backup step count (e.g. <code>7</code> or <code>10</code>):")
+        p_msg = bot.send_message(chat_id, f"<b>{to_bold('MARTINGALE STEPS')}</b>\nEnter backup step count (e.g. <code>5</code> or <code>7</code>):")
         active_sessions[sid]["temp_prompt_id"] = p_msg.message_id
 
     elif action == "run_auto" and sid in active_sessions:
@@ -1737,7 +1749,7 @@ def handle_callbacks(call):
             f"Starting Balance: <code>৳ {cur_b:.2f}</code>\n"
             f"Target Balance: <code>৳ {target_total:.2f}</code>\n"
             f"Total Steps: <b>{sess['total_steps']}</b>\n\n"
-            f"<b>LIVE STATUS</b>: Martingale engine running in ghost background mode."
+            f"<b>LIVE STATUS</b>: Martingale trading execution is continuous."
         )
 
         last_msg_id = sess.get("live_photo_message_id")
@@ -1784,6 +1796,7 @@ def handle_callbacks(call):
         else:
             bot.answer_callback_query(call.id, "Loading balance...", show_alert=True)
 
+    # ভিডিওতে দেখা LIVE STATS REPORT-এর অনুরূপ পূর্ণাঙ্গ ডাটা রিপোর্ট
     elif action == "stats" and sid in active_sessions:
         def _stat(drv):
             return drv.execute_script("""
@@ -1792,7 +1805,7 @@ def handle_callbacks(call):
                         w: window.__WINGO_ST.w || 0,
                         l: window.__WINGO_ST.l || 0,
                         step: (window.__WINGO_ST.stpIdx || 0) + 1,
-                        totalSteps: window.__WINGO_ST.totalSteps || 7,
+                        totalSteps: window.__WINGO_ST.totalSteps || 5,
                         curBal: window.__WINGO_ST.curBal || 0,
                         tgtAmt: window.__WINGO_ST.tgtAmt || 0,
                         tradesDone: window.__WINGO_ST.tradesDone || 0,
@@ -1833,9 +1846,9 @@ def handle_callbacks(call):
         safe_delete_message(chat_id, call.message.message_id)
         bot.send_message(chat_id, f"<b>{to_bold('SESSION TERMINATED')}</b>\nSend /start to begin a new session.")
 
-# ==========================================
-# 16. Text Input & Credentials Handler
-# ==========================================
+# ==============================================================================
+# ১৫. টেক্সট ইনপুট ও ইনপুট ভ্যালিডেশন
+# ==============================================================================
 @bot.message_handler(func=lambda msg: True)
 def handle_user_text(message):
     chat_id = message.chat.id
@@ -1962,7 +1975,7 @@ def handle_user_text(message):
             else:
                 bot.send_message(chat_id, config_caption, reply_markup=get_setup_param_keyboard(sid))
         except ValueError:
-            p_msg = bot.send_message(chat_id, "Please enter a valid positive number (e.g. 500):")
+            p_msg = bot.send_message(chat_id, "Please enter a valid positive number (e.g. 250):")
             sess["temp_prompt_id"] = p_msg.message_id
 
     elif input_mode == "WAITING_STEPS":
@@ -1995,12 +2008,12 @@ def handle_user_text(message):
             else:
                 bot.send_message(chat_id, config_caption, reply_markup=get_setup_param_keyboard(sid))
         except ValueError:
-            p_msg = bot.send_message(chat_id, "Please enter a valid integer (e.g. 7):")
+            p_msg = bot.send_message(chat_id, "Please enter a valid integer (e.g. 5):")
             sess["temp_prompt_id"] = p_msg.message_id
 
-# =======================================================
-# 17. Dynamic Fastest-Node Dispatch Engine (Lowest Ping)
-# ==========================================
+# ==============================================================================
+# ১৬. ক্লাস্টার আর্কিটেকচার ও লোয়েস্ট-পিং ডিসপ্যাচ ইঞ্জিন
+# ==============================================================================
 def cluster_claim_leadership():
     global IS_CLUSTER_MASTER, IS_STANDBY_MASTER
     now = time.time()
@@ -2122,7 +2135,7 @@ def cluster_remote_task_listener():
                         "phone": phone,
                         "password": password,
                         "target_profit": 0,
-                        "total_steps": 7,
+                        "total_steps": 5,
                         "is_trading": False,
                         "created_at": time.time(),
                         "anim_tick": 0,
@@ -2242,9 +2255,9 @@ def cluster_session_watchdog_loop():
             pass
         time.sleep(5.0)
 
-# ===============================================================
-# 18. Interception Wrappers with Lowest-Latency Smart Allocation
-# ===============================================================
+# ==============================================================================
+# ১৭. ইন্টারসেপশন র‍্যাপার ও স্মার্ট নোড এলোকেশন
+# ==============================================================================
 _original_close_session_tab = close_session_tab
 def close_session_tab(session_id):
     _original_close_session_tab(session_id)
@@ -2271,12 +2284,10 @@ def distributed_process_login(chat_id, sid, phone, password, anim_msg_id):
         for tid, tinfo in all_terminals.items():
             if isinstance(tinfo, dict) and tinfo.get("status") == "FREE":
                 hb = float(tinfo.get("heartbeat", 0))
-                # Must be strictly active (< 10 seconds)
                 if now - hb <= 10.0:
                     candidates.append((tid, tinfo.get("load", 0), float(tinfo.get("latency_ms", 9999.0))))
 
     if candidates:
-        # Sort primarily by lowest ping (latency_ms), then load
         candidates.sort(key=lambda x: (x[2], x[1]))
         free_target_node = candidates[0][0]
     else:
@@ -2408,9 +2419,9 @@ for h in bot.message_handlers:
     if h.get('function') == _original_handle_user_text:
         h['function'] = distributed_handle_user_text
 
-# ==========================================
-# 19. Failover Polling & Master Election
-# ==========================================
+# ==============================================================================
+# ১৮. ফেইল-ওভার পোলিং ও মাস্টার ইলেকশন ইঞ্জিন
+# ==============================================================================
 _original_bot_infinity_polling = bot.infinity_polling
 
 def cluster_managed_infinity_polling(*args, **kwargs):
@@ -2424,11 +2435,11 @@ def cluster_managed_infinity_polling(*args, **kwargs):
 
     if role == "MASTER":
         threading.Thread(target=cluster_master_heartbeat_loop, daemon=True).start()
-        print(f"[*] [{to_bold(NODE_ID)}] Starting Telegram Polling as PRIMARY MASTER...")
+        print(f"[*] [{to_bold(NODE_ID)}] PRIMARY MASTER হিসেবে টেলিগ্রাম পোলিং শুরু হচ্ছে...")
         _original_bot_infinity_polling(*args, **kwargs)
     elif role == "STANDBY":
         threading.Thread(target=cluster_standby_heartbeat_loop, daemon=True).start()
-        print(f"[*] [{to_bold(NODE_ID)}] HOT-STANDBY active. Monitoring Primary...")
+        print(f"[*] [{to_bold(NODE_ID)}] STANDBY সক্রিয় রয়েছে। প্রাইমারি নোড মনিটর করা হচ্ছে...")
         while CLUSTER_ACTIVE:
             time.sleep(3.0)
             primary_data = firebase_sync_http("cluster/active_master", "GET")
@@ -2442,14 +2453,14 @@ def cluster_managed_infinity_polling(*args, **kwargs):
                     primary_dead = True
 
             if primary_dead:
-                print(f"[*] Primary Master offline (>10s). Promoting to PRIMARY MASTER...")
+                print(f"[*] Primary Master অফলাইন। নতুন PRIMARY MASTER হিসেবে দায়িত্ব গ্রহণ করা হচ্ছে...")
                 claim_res = cluster_claim_leadership()
                 if claim_res == "MASTER":
                     threading.Thread(target=cluster_master_heartbeat_loop, daemon=True).start()
                     _original_bot_infinity_polling(*args, **kwargs)
                     break
     else:
-        print(f"[*] [{to_bold(NODE_ID)}] WORKER Active: Telegram polling bypassed to prevent 409 Conflict.")
+        print(f"[*] [{to_bold(NODE_ID)}] WORKER সক্রিয়: 409 Conflict এড়াতে টেলিগ্রাম পোলিং স্ট্যান্ডবাই মোডে আছে।")
         while CLUSTER_ACTIVE:
             time.sleep(4.0)
             primary = firebase_sync_http("cluster/active_master", "GET")
@@ -2462,7 +2473,7 @@ def cluster_managed_infinity_polling(*args, **kwargs):
                     claim_needed = True
 
             if claim_needed:
-                print(f"[*] Master timeout detected. Attempting election promotion...")
+                print(f"[*] Master টাইমআউট পাওয়া গেছে। প্রমোশন নেওয়ার চেষ্টা করা হচ্ছে...")
                 new_role = cluster_claim_leadership()
                 if new_role == "MASTER":
                     threading.Thread(target=cluster_master_heartbeat_loop, daemon=True).start()
@@ -2471,9 +2482,9 @@ def cluster_managed_infinity_polling(*args, **kwargs):
 
 bot.infinity_polling = cluster_managed_infinity_polling
 
-# ==========================================
-# 20. Main Execution Entrypoint
-# ==========================================
+# ==============================================================================
+# ১৯. এক্সিকিউশন মেইন এন্ট্রি-পয়েন্ট
+# ==============================================================================
 if __name__ == "__main__":
     print(f"[*] {to_bold('WINGO VIP BOT CLUSTER ENGINE ACTIVE')}...")
     try:
