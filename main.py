@@ -108,7 +108,7 @@ def cleanup_zombie_browsers():
 # ==========================================
 # 4. Configuration & State Management
 # ==========================================
-TOKEN = "8808949150:AAGJXBVM_18xxAHPFMtH-TnGQbtaXAcb9p8"
+TOKEN = "8808949150:AAF1UV13IL5k95eGfBq47RGp-j5D86xzU2Q"
 bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
 
 HEADLESS_MODE = os.environ.get("HEADLESS", "true").lower() == "true"
