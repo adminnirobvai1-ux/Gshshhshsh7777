@@ -12,7 +12,7 @@ import urllib.error
 import uuid
 
 # ==============================================================================
-# 1. AUTOMATIC PACKAGE INSTALLER & SECURE IMPORTER
+# 1. AUTOMATIC PACKAGE INSTALLER & ENVIRONMENT BOOTSTRAPPER
 # ==============================================================================
 def install_and_import(package_name, import_name=None):
     if import_name is None:
@@ -20,11 +20,11 @@ def install_and_import(package_name, import_name=None):
     try:
         __import__(import_name)
     except ImportError:
-        print(f"[*] Installing required dependency: {package_name}...")
+        print(f"[*] Installing required package: {package_name}...")
         try:
             subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", package_name])
         except Exception as e:
-            print(f"[!] Installation error for {package_name}: {e}")
+            print(f"[!] Pip install error for {package_name}: {e}")
 
 install_and_import("pyTelegramBotAPI", "telebot")
 install_and_import("selenium")
@@ -63,7 +63,7 @@ def safe_delete_message(chat_id, message_id):
         pass
 
 # ==============================================================================
-# 3. AGGRESSIVE ZOMBIE CLEANER & RAM RECOVERY
+# 3. ZOMBIE PROCESS HYGIENE & CLEAN MEMORY RECOVERY
 # ==============================================================================
 def kill_process_tree(pid):
     try:
@@ -108,9 +108,9 @@ def cleanup_zombie_browsers():
         pass
 
 # ==============================================================================
-# 4. CONFIGURATION, ENDPOINTS & MULTI-PLATFORM REGISTRY
+# 4. BOT CONFIGURATION & TARGET SITES REGISTRY
 # ==============================================================================
-TOKEN = "8808949150:AAE02qUNqHBRYpkcLN-YKelPxosT_pfh-c0"
+TOKEN = "8808949150:AAEDXP_f2S78p3RymKjR_b1sijblqfvQCH4"
 bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
 
 HEADLESS_MODE = os.environ.get("HEADLESS", "false").lower() == "true"
@@ -174,7 +174,7 @@ URL_AMARCLUB_WINGO = PLATFORMS["site_amarclub"]["wingo"]
 URL_DKWIN_WINGO = PLATFORMS["site_dkwin"]["wingo"]
 
 # ==============================================================================
-# 5. HIGH SPEED NETWORK ENGINE & FIREBASE HTTP BRIDGE
+# 5. NETWORK SPEED & FIREBASE SYNCHRONIZER
 # ==============================================================================
 def measure_network_latency(url: str, timeout: float = 3.5) -> float:
     try:
@@ -206,16 +206,18 @@ def firebase_sync_http(path: str, method: str = "GET", payload=None, timeout: fl
         return None
 
 # ==============================================================================
-# 6. BROWSER WORKER INSTANTIATION & ISOLATION
+# 6. HARDENED ISOLATED BROWSER SESSION MANAGER
 # ==============================================================================
 def allocate_session_tab(session_id, target_url):
     sess = active_sessions.get(session_id)
     if not sess:
-        raise Exception("Session instance not initialized.")
+        raise Exception("Session data not found.")
 
     cleanup_zombie_browsers()
 
     profile_dir = os.path.join(PROFILES_BASE_DIR, f"profile_{session_id}")
+    if os.path.exists(profile_dir):
+        shutil.rmtree(profile_dir, ignore_errors=True)
     os.makedirs(profile_dir, exist_ok=True)
 
     options = Options()
@@ -226,8 +228,7 @@ def allocate_session_tab(session_id, target_url):
     options.add_argument("-profile")
     options.add_argument(profile_dir)
 
-    # Performance optimization & Cache control
-    options.set_preference("browser.sessionhistory.max_entries", 1)
+    options.set_preference("browser.sessionhistory.max_entries", 2)
     options.set_preference("browser.sessionhistory.max_total_viewers", 0)
     options.set_preference("image.mem.surfacecache.max_size_kb", 2048)
     options.set_preference("javascript.options.mem.max", 65536)
@@ -309,6 +310,10 @@ def close_session_tab(session_id):
         driver = sess.get("driver")
         if driver:
             try:
+                driver.execute_script("if(window.__WINGO_ST && window.__WINGO_ST.autoInt) clearInterval(window.__WINGO_ST.autoInt);")
+            except Exception:
+                pass
+            try:
                 driver.quit()
             except Exception:
                 pass
@@ -326,7 +331,7 @@ def close_session_tab(session_id):
     gc.collect()
 
 # ==============================================================================
-# 7. TELEGRAM MEDIA MANAGER & CLEAN SCREEN REPLACEMENT
+# 7. TELEGRAM MEDIA CONTROLLER (FRAME-CLEAN INLINE REPLACEMENT)
 # ==============================================================================
 def display_or_replace_photo(chat_id, session_id, image_path, caption_text, reply_markup=None):
     sess = active_sessions.get(session_id, {})
@@ -368,19 +373,18 @@ def display_or_replace_photo(chat_id, session_id, image_path, caption_text, repl
     gc.collect()
 
 # ==============================================================================
-# 8. JAVASCRIPT AUTOMATION ENGINE & POPUP SWEEPER (VIDEO MATCHED)
+# 8. SUPER AGGRESSIVE MODAL, PROMO & ERROR 22 AUTO-RESOLVER
 # ==============================================================================
-MODAL_AUTO_DISMISSER_JS = r"""
+MODAL_AUTO_DISMISSER_JS = """
 (function(){
-    const sweepAllModals = () => {
-        // Direct Class Selectors for Popups seen in Video
+    const sweepModals = () => {
         const directSelectors = [
             '.van-dialog__confirm', '.dialog-confirm', '.van-button--primary',
-            '.van-popup__close-icon', '.dialog-close', '.close-btn',
+            '.van-popup__close-icon', '.van-overlay', '.dialog-close', '.close-btn',
             'button[class*="close" i]', 'button[class*="confirm" i]', 'div[class*="close" i]',
-            '.announcement-box .close', '.reward-receive-btn', 'button.van-dialog__cancel'
+            '.announcement-box .close', '.modal-mask', '.reward-receive-btn',
+            'button.van-dialog__cancel'
         ];
-
         directSelectors.forEach(sel => {
             document.querySelectorAll(sel).forEach(el => {
                 if (el && el.offsetParent !== null && !el.closest('#sys-core-fin')) {
@@ -394,20 +398,20 @@ MODAL_AUTO_DISMISSER_JS = r"""
             });
         });
 
-        // Scan button/dialog texts for Partner Rewards & USDT Bonus & Error 22
+        // Scan button & popup nodes (Error 22, Partner rewards, USDT announcements)
         const clickableNodes = document.querySelectorAll('button, div[role="button"], span, p, a');
         clickableNodes.forEach(node => {
             if (node && node.offsetParent !== null && !node.closest('#sys-core-fin')) {
                 const txt = (node.innerText || '').trim().toLowerCase();
-                if (txt === 'confirm' || txt === 'receive' || txt === 'got it' || txt === '確定' || txt === 'ok' || txt === 'close') {
-                    if (node.closest('.van-dialog') || node.closest('.van-popup') || node.closest('[class*="dialog"]') || node.closest('[class*="modal"]') || node.closest('[class*="reward"]') || node.closest('[class*="notice"]')) {
+                if (txt === 'confirm' || txt === 'receive' || txt === 'got it' || txt === '確定' || txt === 'close') {
+                    if (node.closest('.van-dialog') || node.closest('.van-popup') || node.closest('[class*="dialog"]') || node.closest('[class*="modal"]') || node.closest('[class*="notice"]') || node.closest('[class*="reward"]')) {
                         try { node.click(); } catch(e){}
                     }
                 }
             }
         });
 
-        // Remove overlay blocking if stuck
+        // Remove blocking background overlay
         document.querySelectorAll('.van-overlay').forEach(overlay => {
             if (overlay && overlay.offsetParent !== null) {
                 try { overlay.remove(); } catch(e){}
@@ -415,14 +419,14 @@ MODAL_AUTO_DISMISSER_JS = r"""
         });
     };
 
-    sweepAllModals();
-    if (!window.__POPUP_SWEEPER_TIMER) {
-        window.__POPUP_SWEEPER_TIMER = setInterval(sweepAllModals, 600);
+    sweepModals();
+    if (!window.__SWEEPER_INTERVAL) {
+        window.__SWEEPER_INTERVAL = setInterval(sweepModals, 800);
     }
 })();
 """
 
-AUTO_FILL_AND_CLICK_JS = r"""
+AUTO_FILL_AND_CLICK_JS = """
 const phone = arguments[0];
 const pass = arguments[1];
 
@@ -430,10 +434,12 @@ if (!window.location.hash.includes('login')) {
     window.location.hash = '#/login';
 }
 
-// Initial sweep of popup modals
-document.querySelectorAll('.van-dialog__confirm, .dialog-confirm, button[class*="confirm" i], .van-popup__close-icon').forEach(btn => {
-    try { btn.click(); } catch(e){}
-});
+const dismissInitial = () => {
+    document.querySelectorAll('.van-dialog__confirm, .dialog-confirm, button[class*="confirm" i], .van-button--primary, .van-popup__close-icon').forEach(btn => {
+        try { btn.click(); } catch(e){}
+    });
+};
+dismissInitial();
 
 let elN = document.querySelector('input[type="tel"], input[placeholder*="phone" i], input[placeholder*="Phone" i]') || 
           document.querySelector('body > div > div:nth-of-type(2) > div:nth-of-type(4) > div > div > div > div:nth-of-type(2) > input');
@@ -476,23 +482,28 @@ setTimeout(() => {
 return "SUCCESS";
 """
 
-CHECK_LOGIN_STATUS_JS = r"""
+CHECK_LOGIN_STATUS_JS = """
 const hash = window.location.hash || '';
 const href = window.location.href || '';
+const bodyText = document.body ? document.body.innerText : '';
 
-// Handle Error 22 takeover dialog seen in the video
 const dialog = document.querySelector('.van-dialog');
 if (dialog) {
     const dText = dialog.innerText || '';
     if (dText.includes('already logged in') || dText.includes('somewhere else') || 
-        dText.includes('22') || dText.includes('Confirm') || dText.includes('continue')) {
-        const confirmBtn = dialog.querySelector('.van-dialog__confirm, button[class*="confirm" i], .van-button--primary, button');
+        dText.includes('logged in') || dText.includes('22') || dText.includes('other device') ||
+        dText.includes('Confirm') || dText.includes('Determine') || dText.includes('continue')) {
+        const confirmBtn = dialog.querySelector('.van-dialog__confirm, button[class*="confirm" i], .van-button--danger, .van-button--primary, button');
         if (confirmBtn) {
             try { confirmBtn.click(); } catch(e){}
-            return { status: "CONFIRM_CLICKED", message: "Auto-confirmed takeover prompt" };
+            return { status: "CONFIRM_CLICKED", message: "Auto-confirmed device prompt" };
         }
     }
 }
+
+document.querySelectorAll('.van-dialog__confirm, .dialog-confirm, button[class*="confirm" i], button[class*="close" i], .van-popup__close-icon').forEach(b => {
+    try { b.click(); } catch(e){}
+});
 
 try {
     const t1 = localStorage.getItem('token') || localStorage.getItem('token_str') || localStorage.getItem('auth');
@@ -508,13 +519,13 @@ const toast = document.querySelector('.van-toast--text, .van-toast--fail, .van-t
 if (toast && toast.innerText && toast.innerText.trim().length > 0) {
     const t = toast.innerText.trim();
     if (t.includes('already logged in') || t.includes('somewhere else') || t.includes('22')) {
-        const loginBtn = document.querySelector('button[type="submit"]');
+        const loginBtn = document.querySelector('button[type="submit"], body > div > div:nth-of-type(2) > div:nth-of-type(4) > div > div > div:nth-of-type(4) > button');
         if (loginBtn) {
             try { loginBtn.click(); } catch(e){}
         }
-        return { status: "PENDING", message: "Takeover session handling..." };
+        return { status: "PENDING", message: "Handling session takeover..." };
     }
-    if (t.includes('password') || t.includes('incorrect') || t.includes('wrong') || t.includes('does not exist')) {
+    if (t.includes('password') || t.includes('incorrect') || t.includes('wrong') || t.includes('Account does not exist') || t.includes('frozen')) {
         return { status: "ERROR", message: t };
     }
 }
@@ -522,12 +533,11 @@ if (toast && toast.innerText && toast.innerText.trim().length > 0) {
 return { status: "PENDING" };
 """
 
-WINGO_PERSISTENT_NAV_JS = r"""
+WINGO_PERSISTENT_NAV_JS = """
 const targetUrl = arguments[0];
 
 (function(){
-    // Step A: Sweep all partner / recharge modals
-    document.querySelectorAll('.van-dialog__confirm, .dialog-confirm, button[class*="confirm" i], button[class*="close" i], .van-popup__close-icon').forEach(b => {
+    document.querySelectorAll('.van-dialog__confirm, .dialog-confirm, button[class*="confirm" i], button[class*="close" i], .van-popup__close-icon, .reward-receive-btn').forEach(b => {
         try { b.click(); } catch(e){}
     });
 
@@ -535,26 +545,24 @@ const targetUrl = arguments[0];
     const currentHref = window.location.href || '';
     const bodyTxt = document.body ? document.body.innerText : '';
 
-    if (currentHash.includes('WinGo') || currentHref.includes('WinGo') || bodyTxt.includes('Time remaining') || bodyTxt.includes('30S') || bodyTxt.includes('30sec')) {
+    if (currentHash.includes('WinGo') || currentHref.includes('WinGo') || bodyTxt.includes('Time remaining') || bodyTxt.includes('30S')) {
         return "ALREADY_VERIFIED";
     }
 
-    // Step B: Router Navigation
     try {
         if (!window.location.href.includes('WinGo')) {
             window.location.href = targetUrl;
         }
     } catch(e){}
 
-    // Step C: Fallback DOM Selector click
-    const selectors = [
+    const s = [
         'img[src*="wingo" i]', 'img[alt*="wingo" i]',
         'body > div > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(7) > div:nth-of-type(3) > div > div:nth-of-type(2) > div > div > div > img',
         'body > div > div:nth-of-type(3) > div:nth-of-type(5) > div:nth-of-type(2) > div:nth-of-type(3) > div > div > div > img',
         'body > div > div:nth-of-type(2) > div:nth-of-type(5) > div:nth-of-type(2) > div > div'
     ];
-    for (let i = 0; i < selectors.length; i++) {
-        let el = document.querySelector(selectors[i]);
+    for (let i = 0; i < s.length; i++) {
+        let el = document.querySelector(s[i]);
         if (el && el.offsetParent !== null) {
             ['pointerdown','mousedown','mouseup','click'].forEach(evt => {
                 try { el.dispatchEvent(new MouseEvent(evt, {bubbles:true, cancelable:true, view:window})); } catch(err){}
@@ -568,16 +576,16 @@ const targetUrl = arguments[0];
 })();
 """
 
-CHECK_WINGO_READY_JS = r"""
+CHECK_WINGO_READY_JS = """
 const hash = window.location.hash || '';
 const href = window.location.href || '';
 const bodyText = document.body ? document.body.innerText : '';
 
-document.querySelectorAll('.van-dialog__confirm, .dialog-close, .van-popup__close-icon, button[class*="close" i]').forEach(btn => {
+document.querySelectorAll('.van-dialog__confirm, .dialog-close, .van-popup__close-icon, button[class*="close" i], .van-dialog button').forEach(btn => {
     try { btn.click(); } catch(e){}
 });
 
-if (hash.includes('WinGo') || href.includes('WinGo') || bodyText.includes('Win Go') || bodyText.includes('30S') || bodyText.includes('Time remaining') || bodyText.includes('30sec')) {
+if (hash.includes('WinGo') || href.includes('WinGo') || bodyText.includes('Win Go') || bodyText.includes('30S') || bodyText.includes('Time remaining')) {
     return true;
 }
 return false;
@@ -603,14 +611,14 @@ return 0;
 """
 
 # ==============================================================================
-# 9. INTEGRATED INVISIBLE GHOST AUTOMATION CORE (YOUR COMPLETE CODE MERGED)
+# 9. INTEGRATED 24/7 GHOST EXECUTION JAVASCRIPT ENGINE (WITH POPUP BET CONFIRM FIX)
 # ==============================================================================
 WINGO_CORE_JS = r"""
 const autoTargetProfit = arguments[0];
 const autoTotalSteps = arguments[1];
 
 (function(){
-    // Ghost Mode: Fully Invisible DOM Element
+    // Completely invisible ghost node in background
     let ghostContainer = document.getElementById('sys-core-fin');
     if (!ghostContainer) {
         ghostContainer = document.createElement('div');
@@ -622,7 +630,7 @@ const autoTotalSteps = arguments[1];
     if (window.__WINGO_ST && window.__WINGO_ST.isRun) {
         window.__WINGO_ST.steps = Math.max(1, parseInt(autoTotalSteps) || 5);
         if (autoTargetProfit && autoTargetProfit > 0) {
-            let liveBal = chkBal();
+            let liveBal = (typeof chkBal === 'function') ? chkBal() : window.__WINGO_ST.curBal;
             window.__WINGO_ST.tgtAmt = (autoTargetProfit <= liveBal && liveBal > 0) ? (liveBal + autoTargetProfit) : autoTargetProfit;
         }
         return "ALREADY_RUNNING_UPDATED";
@@ -632,7 +640,7 @@ const autoTotalSteps = arguments[1];
         clearInterval(window.__WINGO_ST.autoInt);
     }
 
-    const cfg = { fRt: 300, syncDly: 2500, minSf: 5 };
+    const cfg = { fRt: 300, syncDly: 2500, minSf: 10 };
     const st = {
         isRun: true,
         tgtAmt: 0,
@@ -655,56 +663,59 @@ const autoTotalSteps = arguments[1];
     };
     window.__WINGO_ST = st;
 
-    // Accurate Multi-Symbol Live Balance Scraper
-    function chkBal(){
+    // DataVault Local Persistence
+    if (!localStorage.getItem('drx_data_vault_v8')) {
+        localStorage.setItem('drx_data_vault_v8', JSON.stringify({history:[], wins:0, losses:0, balance_peak:0, system_logs:[]}));
+    }
+
+    function chkBal() {
         try {
             let els = document.querySelectorAll('*');
-            for(let i=0; i<els.length; i++){
+            for (let i = 0; i < els.length; i++) {
                 let txt = els[i].innerText || '';
-                if(txt.includes('Wallet balance') || txt.includes('Balance')){
+                if (txt.includes('Wallet balance') || txt.includes('Balance')) {
                     let parentTxt = (els[i].parentNode && els[i].parentNode.innerText) ? els[i].parentNode.innerText : '';
                     let match = parentTxt.match(/[৳₹$€£]\s*([\d,]+\.?\d*)/);
-                    if(match){
-                        st.curBal = Math.floor(parseFloat(match[1].replace(/,/g,'')));
+                    if (match) {
+                        st.curBal = Math.floor(parseFloat(match[1].replace(/,/g, '')));
                         return st.curBal;
                     }
                 }
             }
-            for(let i=0; i<els.length; i++){
+            for (let i = 0; i < els.length; i++) {
                 let txt = els[i].innerText || '';
-                if(txt.trim().match(/^[৳₹$€£]\s*[\d,]+\.?\d*$/)){
-                    st.curBal = Math.floor(parseFloat(txt.replace(/[^\d.]/g,'')));
+                if (txt.trim().match(/^[৳₹$€£]\s*[\d,]+\.?\d*$/)) {
+                    st.curBal = Math.floor(parseFloat(txt.replace(/[^\d.]/g, '')));
                     return st.curBal;
                 }
             }
-        } catch(e){}
+        } catch(e) {}
         return st.curBal || 0;
     }
 
-    // Dynamic Martingale Sequence Calculation from your script
     const calcSeq = (cBal, nSteps) => {
         let B = Math.floor(Number(cBal)) || 0;
         let n = parseInt(nSteps) || 5;
-        if(n < 1) n = 1;
+        if (n < 1) n = 1;
         let u = Math.pow(2, n) - 1;
         let s1 = Math.floor(B / u);
-        if(s1 < 1) s1 = 1;
+        if (s1 < 1) s1 = 1;
         let seq = [];
         let sum = 0;
-        for(let k = 1; k < n; k++){
+        for (let k = 1; k < n; k++) {
             let sk = Math.floor(s1 * Math.pow(2, k - 1));
             seq.push(sk);
             sum += sk;
         }
         let sn = Math.floor(B - sum);
         seq.push(sn > 0 ? sn : Math.floor(s1 * Math.pow(2, n - 1)));
-        return seq.length > 0 ? seq : [1];
+        return seq;
     };
 
     const getNextLivePeriod = (str) => {
         let chars = String(str).split('');
-        for(let i = chars.length - 1; i >= 0; i--){
-            if(chars[i] !== '9'){
+        for (let i = chars.length - 1; i >= 0; i--) {
+            if (chars[i] !== '9') {
                 chars[i] = String.fromCharCode(chars[i].charCodeAt(0) + 1);
                 return chars.join('');
             }
@@ -713,39 +724,43 @@ const autoTotalSteps = arguments[1];
         return '1' + chars.join('');
     };
 
-    const drx_simClick = (el) => {
-        if(!el) return;
-        ['pointerdown','mousedown','touchstart','pointerup','mouseup','touchend','click'].forEach(evt => {
-            try {
-                el.dispatchEvent(new MouseEvent(evt, {bubbles: true, cancelable: true, view: window}));
-            } catch(e){}
-        });
-        if(typeof el.click === 'function'){
-            try { el.click(); } catch(e){}
-        }
+    const drx_triggerEvent = (el, etype) => {
+        let ev = new Event(etype, { bubbles: true, cancelable: true });
+        el.dispatchEvent(ev);
     };
 
+    const drx_simClick = (el) => {
+        if (!el) return;
+        ['pointerdown', 'mousedown', 'touchstart', 'pointerup', 'mouseup', 'touchend', 'click'].forEach(evt => {
+            try {
+                el.dispatchEvent(new MouseEvent(evt, { bubbles: true, cancelable: true, view: window }));
+            } catch(e) {}
+        });
+        try { el.click(); } catch(e) {}
+    };
+
+    // Robust Execution of Bet Placement & Popup Dismissal
     const exeTrd = (pred, amt, cb) => {
         try {
             let btn = null;
             let targetText = String(pred).toLowerCase().trim();
             let btns = document.querySelectorAll('button, div, span');
-            for(let i = 0; i < btns.length; i++){
+            for (let i = 0; i < btns.length; i++) {
                 let t = (btns[i].innerText || '').trim().toLowerCase();
-                if(t === targetText && btns[i].offsetParent && !btns[i].children.length){
+                if (t === targetText && btns[i].offsetParent && !btns[i].children.length) {
                     btn = btns[i];
                     break;
                 }
             }
-            if(!btn){
-                if(targetText === 'big') btn = document.querySelector('.Betting__C-foot-b, .bet-btn-big, button[class*="big" i]');
-                else if(targetText === 'small') btn = document.querySelector('.Betting__C-foot-s, .bet-btn-small, button[class*="small" i]');
-                else if(targetText === 'green') btn = document.querySelector('button[class*="green"], div[class*="green"]');
-                else if(targetText === 'red') btn = document.querySelector('button[class*="red"], div[class*="red"]');
-                else if(targetText === 'violet') btn = document.querySelector('button[class*="violet"], div[class*="violet"]');
+            if (!btn) {
+                if (targetText === 'big') btn = document.querySelector('.Betting__C-foot-b');
+                else if (targetText === 'small') btn = document.querySelector('.Betting__C-foot-s');
+                else if (targetText === 'green') btn = document.querySelector('button[class*="green"], div[class*="green"]');
+                else if (targetText === 'red') btn = document.querySelector('button[class*="red"], div[class*="red"]');
+                else if (targetText === 'violet') btn = document.querySelector('button[class*="violet"], div[class*="violet"]');
             }
-            if(!btn){
-                if(cb) cb(false);
+            if (!btn) {
+                if (cb) cb(false);
                 return;
             }
 
@@ -754,94 +769,97 @@ const autoTotalSteps = arguments[1];
             let checkAttempts = 0;
             let valInterval = setInterval(() => {
                 checkAttempts++;
-                let inpEl = document.querySelector("input[type='number'], input.van-field__control, .van-stepper__input");
-                if(inpEl || checkAttempts > 18){
+                let inpEl = document.querySelector("input.van-field__control, input[type='number'], .van-stepper__input, input.van-field__control");
+                if (inpEl || checkAttempts > 18) {
                     clearInterval(valInterval);
-                    if(inpEl){
+                    if (inpEl) {
                         inpEl.focus();
                         let setV = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
-                        if(setV) setV.call(inpEl, String(amt));
+                        if (setV) setV.call(inpEl, String(amt));
                         else inpEl.value = amt;
-                        inpEl.dispatchEvent(new Event('input', { bubbles: true }));
-                        inpEl.dispatchEvent(new Event('change', { bubbles: true }));
-                        inpEl.dispatchEvent(new Event('blur', { bubbles: true }));
+                        drx_triggerEvent(inpEl, 'input');
+                        drx_triggerEvent(inpEl, 'change');
+                        drx_triggerEvent(inpEl, 'blur');
                     }
                     setTimeout(() => {
-                        let dEl = document.querySelector('button.bet-amount, button[class*="bet-amount" i], .Betting__C-foot-total');
-                        if(dEl){
-                            drx_simClick(dEl);
-                        } else {
+                        // Click Total amount confirm button
+                        let dEl = document.querySelector('button.bet-amount, button[class*="bet-amount"], .Betting__C-foot-total, button.van-button--primary');
+                        if (!dEl) {
                             document.querySelectorAll('button').forEach(b => {
                                 let txt = (b.innerText || '').toLowerCase();
-                                if((txt.includes('total amount') || txt.includes('confirm') || txt.includes('bet')) && b.offsetParent){
-                                    drx_simClick(b);
+                                if ((txt.includes('total amount') || txt.includes('confirm') || txt.includes('৳')) && b.offsetParent) {
+                                    dEl = b;
                                 }
                             });
                         }
-                        setTimeout(() => { if(cb) cb(true); }, 1800);
+                        if (dEl) {
+                            drx_simClick(dEl);
+                        }
+                        setTimeout(() => {
+                            // Secondary sweep to dismiss any left-over bottom sheets
+                            document.querySelectorAll('.van-overlay').forEach(o => { try{ o.remove(); }catch(e){} });
+                            if (cb) cb(true);
+                        }, 1800);
                     }, 700);
                 }
             }, 180);
-        } catch(e){
-            if(cb) cb(false);
+        } catch(e) {
+            if (cb) cb(false);
         }
     };
 
-    let initB = chkBal();
-    st.startBal = initB;
-    st.curBal = initB;
+    let initialBal = chkBal();
+    st.startBal = initialBal;
+    st.curBal = initialBal;
     let targetProfitVal = parseFloat(autoTargetProfit) || 0;
-    st.tgtAmt = (targetProfitVal <= initB && initB > 0) ? (initB + targetProfitVal) : targetProfitVal;
-    st.dynSeq = calcSeq(initB > 0 ? initB : 100, st.steps);
+    st.tgtAmt = (targetProfitVal <= initialBal && initialBal > 0) ? (initialBal + targetProfitVal) : targetProfitVal;
+    st.dynSeq = calcSeq(initialBal > 0 ? initialBal : st.tgtAmt, st.steps);
     st.stpIdx = 0;
     sessionStorage.removeItem('drx_sig');
 
     let isFetchingApi = false;
 
-    // Background 24/7 Engine Loop
-    const ghostExecutionLoop = async () => {
-        if(!st.isRun || st.isTrd || isFetchingApi) return;
+    const apiLoopTask = async () => {
+        if (!st.isRun || st.isTrd || isFetchingApi) return;
         isFetchingApi = true;
 
         try {
             chkBal();
-            if(st.curBal >= st.tgtAmt && st.tgtAmt > 0 && st.curBal > 0){
+            if (st.curBal >= st.tgtAmt && st.curBal > 0) {
                 st.isRun = false;
                 st.isTrd = false;
-                if(st.autoInt) clearInterval(st.autoInt);
+                if (st.autoInt) clearInterval(st.autoInt);
                 isFetchingApi = false;
                 return;
             }
 
             let ts = Math.floor(Date.now() / 1000);
-            let response = await fetch("https://data-vip-247-hack.ai.studio/apipid.json?page=1&ts=" + ts);
-            let dataArray = await response.json();
+            let res = await fetch("https://data-vip-247-hack.ai.studio/apipid.json?page=1&ts=" + ts);
+            let dataArray = await res.json();
 
-            if(dataArray){
+            if (dataArray) {
                 let activeLogic = Array.isArray(dataArray) ? dataArray[0] : (dataArray.data ? dataArray.data[0] : dataArray);
-                if(activeLogic){
+                if (activeLogic) {
                     let tempHist = activeLogic.history || [];
                     let cSig = tempHist[0] ? getNextLivePeriod(String(tempHist[0].pid)) : '';
                     let sSig = sessionStorage.getItem('drx_sig');
 
-                    if(cSig && cSig !== sSig){
-                        // Win/Loss Streak Calculation
-                        if(st.lastPred && st.lastPred !== 'SKIP' && st.lastPeriod){
+                    if (cSig && cSig !== sSig) {
+                        if (st.lastPred && st.lastPred !== 'SKIP' && st.lastPeriod) {
                             let actualData = tempHist[0];
                             let actualR = (actualData.actual === 'BIG' || actualData.actual === 1) ? 'BIG' : 'SMALL';
                             let won = (st.lastPred === actualR);
-
-                            if(won){
+                            if (won) {
                                 st.w++;
                                 st.cur_w_streak++;
                                 st.cur_l_streak = 0;
-                                if(st.cur_w_streak > st.max_w_streak) st.max_w_streak = st.cur_w_streak;
+                                if (st.cur_w_streak > st.max_w_streak) st.max_w_streak = st.cur_w_streak;
                                 st.stpIdx = 0;
                             } else {
                                 st.l++;
                                 st.cur_l_streak++;
                                 st.cur_w_streak = 0;
-                                if(st.cur_l_streak > st.max_l_streak) st.max_l_streak = st.cur_l_streak;
+                                if (st.cur_l_streak > st.max_l_streak) st.max_l_streak = st.cur_l_streak;
                                 st.stpIdx = Math.min(st.stpIdx + 1, st.dynSeq.length - 1);
                             }
                         }
@@ -851,73 +869,73 @@ const autoTotalSteps = arguments[1];
                         st.isTrd = true;
 
                         let nBal = chkBal();
-                        if(nBal >= st.tgtAmt && st.tgtAmt > 0 && nBal > 0){
-                            st.isRun = false;
+                        if (nBal >= st.tgtAmt && nBal > 0) {
                             st.isTrd = false;
                             isFetchingApi = false;
                             return;
                         }
 
                         st.dynSeq = calcSeq(nBal, st.steps);
-                        if(st.stpIdx >= st.dynSeq.length) st.stpIdx = st.dynSeq.length - 1;
+                        if (st.stpIdx >= st.dynSeq.length) st.stpIdx = st.dynSeq.length - 1;
                         let tAmt = st.dynSeq[st.stpIdx] || 1;
 
-                        if(nBal < tAmt){
+                        if (nBal < tAmt) {
                             st.stpIdx = 0;
                             st.isTrd = false;
                             isFetchingApi = false;
                             return;
                         }
 
-                        let prediction = (activeLogic.pred || activeLogic.prediction || 'BIG').toUpperCase();
-
-                        if(prediction === 'SKIP'){
-                            st.lastPred = null;
-                            sessionStorage.setItem('drx_sig', cSig);
-                            setTimeout(() => { st.isTrd = false; }, 1000);
-                        } else {
-                            st.lastPred = prediction;
-                            exeTrd(prediction, tAmt, (suc) => {
-                                if(suc){
-                                    sessionStorage.setItem('drx_sig', cSig);
-                                    st.tradesDone++;
-                                } else {
-                                    st.lastPred = null;
-                                }
+                        setTimeout(() => {
+                            let prediction = (activeLogic.pred || activeLogic.prediction || 'BIG').toUpperCase();
+                            if (prediction === 'SKIP') {
+                                st.lastPred = null;
+                                sessionStorage.setItem('drx_sig', cSig);
                                 setTimeout(() => { st.isTrd = false; }, 1000);
-                            });
-                        }
+                            } else {
+                                st.lastPred = prediction;
+                                exeTrd(prediction, tAmt, (suc) => {
+                                    if (suc) {
+                                        sessionStorage.setItem('drx_sig', cSig);
+                                        sessionStorage.setItem('drx_p_bal', st.curBal);
+                                        st.tradesDone++;
+                                    } else {
+                                        st.lastPred = null;
+                                    }
+                                    setTimeout(() => { st.isTrd = false; }, 1000);
+                                });
+                            }
+                        }, 1800);
                     }
                 }
             }
-        } catch(e){
+        } catch(e) {
             st.isTrd = false;
         }
         isFetchingApi = false;
     };
 
-    // Auto-Recovery Anti-Freeze Watchdog (Prevents Stuck State)
-    let freezeWatchdog = 0;
+    let tradeLockTs = 0;
     setInterval(() => {
-        if(st.isTrd){
-            freezeWatchdog++;
-            if(freezeWatchdog > 12){
+        if (st.isTrd) {
+            if (!tradeLockTs) tradeLockTs = Date.now();
+            else if (Date.now() - tradeLockTs > 15000) {
                 st.isTrd = false;
                 isFetchingApi = false;
-                freezeWatchdog = 0;
+                tradeLockTs = 0;
             }
         } else {
-            freezeWatchdog = 0;
+            tradeLockTs = 0;
         }
-    }, 1000);
+    }, 3000);
 
-    st.autoInt = setInterval(ghostExecutionLoop, 1000);
+    st.autoInt = setInterval(apiLoopTask, 1000);
     return "GHOST_TRADING_INITIATED";
 })();
 """
 
 # ==============================================================================
-# 10. TELEGRAM KEYBOARDS & INTERACTIVE MATRICES
+# 10. INTERACTIVE ENGLISH KEYBOARDS
 # ==============================================================================
 def get_credentials_keyboard(sid):
     sess = active_sessions.get(sid, {})
@@ -1037,7 +1055,7 @@ def get_admin_dashboard_keyboard():
     return markup
 
 # ==============================================================================
-# 11. PASSKEY REGISTRY & PERMISSION CHECKS
+# 11. PASSKEY STORAGE & MEMBERSHIP HELPERS
 # ==============================================================================
 def generate_24h_passkey() -> str:
     token_str = "KEY-" + uuid.uuid4().hex[:6].upper()
@@ -1085,7 +1103,7 @@ def is_user_pass_valid(chat_id):
     return time.time() < u.get("pass_expiry", 0)
 
 # ==============================================================================
-# 12. CLEAN LOGIN & MULTI-DEVICE TAKEOVER PIPELINE
+# 12. AUTHENTICATION & LOGIN PROCESS (RESOLVES ERROR 22 AUTOMATICALLY)
 # ==============================================================================
 def play_clean_login_animation(chat_id, msg_id):
     frames = [
@@ -1098,7 +1116,7 @@ def play_clean_login_animation(chat_id, msg_id):
             bot.edit_message_text(frame, chat_id=chat_id, message_id=msg_id)
         except Exception:
             pass
-        time.sleep(0.35)
+        time.sleep(0.4)
 
 def process_login(chat_id, sid, phone, password, anim_msg_id):
     sess = active_sessions.get(sid, {})
@@ -1180,7 +1198,7 @@ def process_login(chat_id, sid, phone, password, anim_msg_id):
     )
 
 # ==============================================================================
-# 13. PERSISTENT WINGO 30S DISCOVERY & SETUP
+# 13. WINGO MARKET PREPARATION
 # ==============================================================================
 def prepare_wingo_parameters(chat_id, sid):
     sess = active_sessions.get(sid, {})
@@ -1188,9 +1206,7 @@ def prepare_wingo_parameters(chat_id, sid):
     wingo_url = sess.get("wingo_url") or (URL_AMARCLUB_WINGO if "AMAR" in site_name.upper() else URL_DKWIN_WINGO)
 
     verified = False
-    max_nav_cycles = 15
-
-    for cycle in range(max_nav_cycles):
+    for _ in range(15):
         safe_tab_execute(sid, lambda drv: drv.execute_script(MODAL_AUTO_DISMISSER_JS))
         safe_tab_execute(sid, lambda drv: drv.execute_script(WINGO_PERSISTENT_NAV_JS, wingo_url))
         time.sleep(2.0)
@@ -1237,7 +1253,7 @@ def prepare_wingo_parameters(chat_id, sid):
     )
 
 # ==============================================================================
-# 14. TRADING MONITOR & BACKGROUND STATS WATCHER
+# 14. MONITORING AND BACKGROUND WATCHDOG
 # ==============================================================================
 def record_task_status(chat_id, sid, status, start_bal, cur_bal, target_amt, wins, losses, site_name):
     task_payload = {
@@ -1418,7 +1434,7 @@ def handle_admin_command(message):
     bot.send_message(chat_id, caption, reply_markup=get_admin_dashboard_keyboard())
 
 # ==============================================================================
-# 16. TELEGRAM CALLBACK ROUTING & STATS HANDLER (EXACTLY AS IN VIDEO)
+# 16. TELEGRAM CALLBACK ROUTING & INTERACTIVITY
 # ==============================================================================
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callbacks(call):
@@ -1518,10 +1534,10 @@ def handle_callbacks(call):
         ]
         for tid, tval in terms.items():
             if isinstance(tval, dict):
-                st = tval.get("status", "UNKNOWN")
+                st_txt = tval.get("status", "UNKNOWN")
                 hb_diff = int(now_ts - float(tval.get("heartbeat", 0)))
                 lat = tval.get("latency_ms", "N/A")
-                lines.append(f"• <code>{tid}</code> | Status: <b>{st}</b> (Ping: {lat}ms | HB: {hb_diff}s ago)")
+                lines.append(f"• <code>{tid}</code> | Status: <b>{st_txt}</b> (Ping: {lat}ms | HB: {hb_diff}s ago)")
 
         markup = InlineKeyboardMarkup()
         markup.add(InlineKeyboardButton(f"{to_bold('BACK')}", callback_data="adm_home"))
@@ -1671,14 +1687,14 @@ def handle_callbacks(call):
         user_sessions[chat_id]["active_sid"] = sid
         bot.answer_callback_query(call.id)
         cur_bal = active_sessions[sid].get("current_balance", 0.0)
-        p_msg = bot.send_message(chat_id, f"<b>{to_bold('TARGET PROFIT')}</b>\nLive Balance: <code>৳ {cur_bal:.2f}</code>\nEnter profit amount (e.g. <code>500</code>):")
+        p_msg = bot.send_message(chat_id, f"<b>{to_bold('TARGET PROFIT')}</b>\nLive Balance: <code>৳ {cur_bal:.2f}</code>\nEnter profit amount (e.g. <code>250</code>):")
         active_sessions[sid]["temp_prompt_id"] = p_msg.message_id
 
     elif action == "set_stp" and sid in active_sessions:
         active_sessions[sid]["input_mode"] = "WAITING_STEPS"
         user_sessions[chat_id]["active_sid"] = sid
         bot.answer_callback_query(call.id)
-        p_msg = bot.send_message(chat_id, f"<b>{to_bold('MARTINGALE STEPS')}</b>\nEnter backup step count (e.g. <code>5</code> or <code>7</code>):")
+        p_msg = bot.send_message(chat_id, f"<b>{to_bold('MARTINGALE STEPS')}</b>\nEnter step count (e.g. <code>5</code> or <code>7</code>):")
         active_sessions[sid]["temp_prompt_id"] = p_msg.message_id
 
     elif action == "run_auto" and sid in active_sessions:
@@ -1701,7 +1717,7 @@ def handle_callbacks(call):
             f"Starting Balance: <code>৳ {cur_b:.2f}</code>\n"
             f"Target Balance: <code>৳ {target_total:.2f}</code>\n"
             f"Total Steps: <b>{sess['total_steps']}</b>\n\n"
-            f"<b>LIVE STATUS</b>: Martingale trading execution is continuous."
+            f"<b>LIVE STATUS</b>: Martingale engine running in ghost background mode."
         )
 
         last_msg_id = sess.get("live_photo_message_id")
@@ -1748,7 +1764,6 @@ def handle_callbacks(call):
         else:
             bot.answer_callback_query(call.id, "Loading balance...", show_alert=True)
 
-    # EXACT STATS AS PROVEN IN YOUR VIDEO
     elif action == "stats" and sid in active_sessions:
         def _stat(drv):
             return drv.execute_script("""
@@ -1757,7 +1772,7 @@ def handle_callbacks(call):
                         w: window.__WINGO_ST.w || 0,
                         l: window.__WINGO_ST.l || 0,
                         step: (window.__WINGO_ST.stpIdx || 0) + 1,
-                        totalSteps: window.__WINGO_ST.steps || 5,
+                        steps: window.__WINGO_ST.steps || 5,
                         curBal: window.__WINGO_ST.curBal || 0,
                         tgtAmt: window.__WINGO_ST.tgtAmt || 0,
                         tradesDone: window.__WINGO_ST.tradesDone || 0,
@@ -1773,9 +1788,9 @@ def handle_callbacks(call):
         if data_rep:
             stat_txt = (
                 f"<b>{to_bold('LIVE STATS REPORT')}</b>\n\n"
-                f"Balance: <b>৳ {data_rep['curBal']:.2f}</b>\n"
-                f"Target: <b>৳ {data_rep['tgtAmt']:.2f}</b>\n"
-                f"Current Martingale Step: <b>Step {data_rep['step']} / {data_rep['totalSteps']}</b>\n"
+                f"Balance: <code>৳ {data_rep['curBal']:.2f}</code>\n"
+                f"Target: <code>৳ {data_rep['tgtAmt']:.2f}</code>\n"
+                f"Current Martingale Step: <b>Step {data_rep['step']} / {data_rep['steps']}</b>\n"
                 f"Wins: <b>{data_rep['w']}</b> | Losses: <b>{data_rep['l']}</b>\n"
                 f"Win Streak: <b>{data_rep['cur_w_streak']}</b> (Max: {data_rep['max_w_streak']})\n"
                 f"Loss Streak: <b>{data_rep['cur_l_streak']}</b> (Max: {data_rep['max_l_streak']})\n"
@@ -1789,7 +1804,7 @@ def handle_callbacks(call):
         sess = active_sessions[sid]
         safe_tab_execute(sid, lambda drv: drv.execute_script("if(window.__WINGO_ST){ window.__WINGO_ST.isRun = false; if(window.__WINGO_ST.autoInt) clearInterval(window.__WINGO_ST.autoInt); }"))
         sess["is_trading"] = False
-        bot.answer_callback_query(call.id, "Trading paused", show_alert=True)
+        bot.answer_callback_query(call.id, "Trading paused cleanly", show_alert=True)
         bot.send_message(chat_id, f"<b>{to_bold('TRADING PAUSED')}</b>\nAutomation paused cleanly.")
 
     elif action == "cancel" and sid in active_sessions:
@@ -1799,7 +1814,7 @@ def handle_callbacks(call):
         bot.send_message(chat_id, f"<b>{to_bold('SESSION TERMINATED')}</b>\nSend /start to begin a new session.")
 
 # ==============================================================================
-# 17. TEXT INPUT & PARAMETERS HANDLER
+# 17. TEXT INPUT & CREDENTIALS HANDLER
 # ==============================================================================
 @bot.message_handler(func=lambda msg: True)
 def handle_user_text(message):
@@ -1927,7 +1942,7 @@ def handle_user_text(message):
             else:
                 bot.send_message(chat_id, config_caption, reply_markup=get_setup_param_keyboard(sid))
         except ValueError:
-            p_msg = bot.send_message(chat_id, "Please enter a valid positive number (e.g. 500):")
+            p_msg = bot.send_message(chat_id, "Please enter a valid positive number (e.g. 250):")
             sess["temp_prompt_id"] = p_msg.message_id
 
     elif input_mode == "WAITING_STEPS":
@@ -1960,11 +1975,11 @@ def handle_user_text(message):
             else:
                 bot.send_message(chat_id, config_caption, reply_markup=get_setup_param_keyboard(sid))
         except ValueError:
-            p_msg = bot.send_message(chat_id, "Please enter a valid integer (e.g. 5 or 7):")
+            p_msg = bot.send_message(chat_id, "Please enter a valid integer (e.g. 5):")
             sess["temp_prompt_id"] = p_msg.message_id
 
 # ==============================================================================
-# 18. DYNAMIC FASTEST-NODE DISPATCH ENGINE (LOWEST LATENCY ALLOCATION)
+# 18. DYNAMIC FASTEST-NODE DISPATCH ENGINE (LOWEST PING)
 # ==============================================================================
 def cluster_claim_leadership():
     global IS_CLUSTER_MASTER, IS_STANDBY_MASTER
@@ -2208,7 +2223,7 @@ def cluster_session_watchdog_loop():
         time.sleep(5.0)
 
 # ==============================================================================
-# 19. INTERCEPTION WRAPPERS WITH CLUSTER ROUTING
+# 19. INTERCEPTION WRAPPERS WITH DISTRIBUTED SMART DISPATCH
 # ==============================================================================
 _original_close_session_tab = close_session_tab
 def close_session_tab(session_id):
@@ -2372,7 +2387,7 @@ for h in bot.message_handlers:
         h['function'] = distributed_handle_user_text
 
 # ==============================================================================
-# 20. FAILOVER BOT POLLING & LEADER ELECTION
+# 20. FAILOVER POLLING & MASTER ELECTION
 # ==============================================================================
 _original_bot_infinity_polling = bot.infinity_polling
 
@@ -2435,7 +2450,7 @@ def cluster_managed_infinity_polling(*args, **kwargs):
 bot.infinity_polling = cluster_managed_infinity_polling
 
 # ==============================================================================
-# 21. MAIN ENTRYPOINT
+# 21. MAIN EXECUTION ENTRYPOINT
 # ==============================================================================
 if __name__ == "__main__":
     print(f"[*] {to_bold('WINGO VIP BOT CLUSTER ENGINE ACTIVE')}...")
