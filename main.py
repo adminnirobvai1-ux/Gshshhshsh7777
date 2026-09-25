@@ -10,6 +10,18 @@ import gc
 import urllib.request
 import urllib.error
 import uuid
+import logging
+import traceback
+
+# ==============================================================================
+# 0. ADVANCED SYSTEM LOGGING & TELEMETRY CONFIGURATION
+# ==============================================================================
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s] [%(levelname)s] [%(threadName)s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
+logger = logging.getLogger("DRX_WINGO_CLUSTER")
 
 # ==============================================================================
 # 1. AUTOMATIC DEPENDENCY INSTALLER & RESILIENT IMPORTER
@@ -20,11 +32,15 @@ def install_and_import(package_name, import_name=None):
     try:
         __import__(import_name)
     except ImportError:
-        print(f"[*] Installing required package: {package_name}...")
+        logger.warning(f"Installing missing package: {package_name}...")
         try:
-            subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", package_name])
+            subprocess.check_call([
+                sys.executable, "-m", "pip", "install", 
+                "--upgrade", "--no-cache-dir", package_name
+            ])
+            logger.info(f"Successfully installed: {package_name}")
         except Exception as e:
-            print(f"[!] Pip install error for {package_name}: {e}")
+            logger.error(f"Pip installation failed for {package_name}: {e}")
 
 install_and_import("pyTelegramBotAPI", "telebot")
 install_and_import("selenium")
@@ -35,6 +51,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, InputMedia
 from selenium import webdriver
 from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.firefox.service import Service as FirefoxService
+from selenium.common.exceptions import WebDriverException, SessionNotCreatedException
 import psutil
 
 # ==============================================================================
@@ -63,7 +80,7 @@ def safe_delete_message(chat_id, message_id):
         pass
 
 # ==============================================================================
-# 3. AGGRESSIVE ZOMBIE PROCESS & MEMORY HYGIENE
+# 3. AGGRESSIVE ZOMBIE PROCESS & MEMORY HYGIENE (ANTI STATUS-0 CRASH)
 # ==============================================================================
 def kill_process_tree(pid):
     try:
@@ -101,7 +118,10 @@ def cleanup_zombie_browsers():
                                     is_active = True
                                     break
                         if not is_active:
-                            proc.kill()
+                            try:
+                                proc.kill()
+                            except Exception:
+                                pass
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
     except Exception:
@@ -110,7 +130,7 @@ def cleanup_zombie_browsers():
 # ==============================================================================
 # 4. CONFIGURATION, REGISTRY & TARGET PLATFORMS
 # ==============================================================================
-TOKEN = "8808949150:AAEDXP_f2S78p3RymKjR_b1sijblqfvQCH4"
+TOKEN = "8808949150:AAEjRP2IBUzeOBttHlWbxu1pPhL79mBnvyY"
 bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
 
 HEADLESS_MODE = os.environ.get("HEADLESS", "false").lower() == "true"
@@ -174,7 +194,7 @@ URL_AMARCLUB_WINGO = PLATFORMS["site_amarclub"]["wingo"]
 URL_DKWIN_WINGO = PLATFORMS["site_dkwin"]["wingo"]
 
 # ==============================================================================
-# 5. NETWORK SPEED & FIREBASE SYNCHRONIZER
+# 5. NETWORK SPEED & RESILIENT FIREBASE SYNCHRONIZER
 # ==============================================================================
 def measure_network_latency(url: str, timeout: float = 3.5) -> float:
     try:
@@ -206,7 +226,7 @@ def firebase_sync_http(path: str, method: str = "GET", payload=None, timeout: fl
         return None
 
 # ==============================================================================
-# 6. HARDENED BROWSER SESSION ISOLATION
+# 6. HARDENED BROWSER SESSION ISOLATION (ANTI CRASH STATUS 0 & RAILWAY ENGINE)
 # ==============================================================================
 def allocate_session_tab(session_id, target_url):
     sess = active_sessions.get(session_id)
@@ -224,10 +244,18 @@ def allocate_session_tab(session_id, target_url):
     if HEADLESS_MODE:
         options.add_argument("--headless")
 
+    # Critical Container Stability Flags (Prevents Status 0 Crash on Railway/Docker)
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--disable-software-rasterizer")
+    options.add_argument("--width=412")
+    options.add_argument("--height=915")
     options.page_load_strategy = 'eager'
     options.add_argument("-profile")
     options.add_argument(profile_dir)
 
+    # Aggressive memory and network stabilization preferences
     options.set_preference("browser.sessionhistory.max_entries", 2)
     options.set_preference("browser.sessionhistory.max_total_viewers", 0)
     options.set_preference("image.mem.surfacecache.max_size_kb", 2048)
@@ -237,6 +265,8 @@ def allocate_session_tab(session_id, target_url):
     options.set_preference("network.http.use-cache", False)
     options.set_preference("dom.disable_open_during_load", True)
     options.set_preference("dom.popup_maximum", 0)
+    options.set_preference("media.peerconnection.enabled", False)
+    options.set_preference("media.navigator.enabled", False)
 
     service = FirefoxService(log_output=os.devnull)
     driver = webdriver.Firefox(service=service, options=options)
@@ -248,11 +278,12 @@ def allocate_session_tab(session_id, target_url):
 
     try:
         driver.get(target_url)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Initial get timeout/warning for {target_url}: {e}")
 
     sess["driver"] = driver
     sess["window_handle"] = driver.current_window_handle
+    sess["last_activity"] = time.time()
     return driver, sess["window_handle"]
 
 def safe_tab_execute(sid, task_fn, timeout=25.0):
@@ -276,6 +307,7 @@ def safe_tab_execute(sid, task_fn, timeout=25.0):
         try:
             result_container["res"] = task_fn(driver)
             result_container["completed"] = True
+            sess["last_activity"] = time.time()
         except Exception as e:
             result_container["error"] = e
 
@@ -288,6 +320,7 @@ def safe_tab_execute(sid, task_fn, timeout=25.0):
             lock.release()
         except RuntimeError:
             pass
+        logger.error(f"Tab execution timed out or hung on sid: {sid}. Triggering restart...")
         threading.Thread(target=close_session_tab, args=(sid,), daemon=True).start()
         return None
 
@@ -299,6 +332,9 @@ def safe_tab_execute(sid, task_fn, timeout=25.0):
     gc.collect()
 
     if result_container["error"]:
+        err_msg = str(result_container["error"])
+        if "unexpectedly closed" in err_msg or "Tried to run command without establishing a connection" in err_msg:
+            logger.error(f"Driver severed connection (Status 0): {err_msg}")
         return None
 
     return result_container["res"]
@@ -373,17 +409,30 @@ def display_or_replace_photo(chat_id, session_id, image_path, caption_text, repl
     gc.collect()
 
 # ==============================================================================
-# 8. SUPER AGGRESSIVE MODAL & PROMO DISMISSER (WITH ERROR 22 AUTO-RESOLVE)
+# 8. SUPER AGGRESSIVE MODAL & PROMO DISMISSER (ANNOUNCEMENT USDT BONUS ANNIHILATOR)
 # ==============================================================================
 MODAL_AUTO_DISMISSER_JS = """
 (function(){
     const sweepModals = () => {
+        // Specifically kill Announcement & USDT Bonus Popups seen on Amar Club
+        const targetBonusDialogs = document.querySelectorAll('.announcement-box, .dialog-box, .bonus-dialog, .van-popup, .van-dialog');
+        targetBonusDialogs.forEach(dialog => {
+            const txt = (dialog.innerText || '').toLowerCase();
+            if (txt.includes('announcement') || txt.includes('bonus') || txt.includes('usdt') || txt.includes('notice') || txt.includes('welcome')) {
+                const confBtn = dialog.querySelector('button, .van-button, .van-dialog__confirm, div[role="button"]');
+                if (confBtn) {
+                    try { confBtn.click(); } catch(e){}
+                }
+                try { dialog.remove(); } catch(e){}
+            }
+        });
+
         const directSelectors = [
             '.van-dialog__confirm', '.dialog-confirm', '.van-button--primary',
             '.van-popup__close-icon', '.van-overlay', '.dialog-close', '.close-btn',
             'button[class*="close" i]', 'button[class*="confirm" i]', 'div[class*="close" i]',
             '.announcement-box .close', '.modal-mask', '.reward-receive-btn',
-            'button.van-dialog__cancel'
+            'button.van-dialog__cancel', '.van-button--danger'
         ];
         directSelectors.forEach(sel => {
             document.querySelectorAll(sel).forEach(el => {
@@ -402,16 +451,14 @@ MODAL_AUTO_DISMISSER_JS = """
         clickableNodes.forEach(node => {
             if (node && node.offsetParent !== null && !node.closest('#sys-core-fin')) {
                 const txt = (node.innerText || '').trim().toLowerCase();
-                if (txt === 'confirm' || txt === 'receive' || txt === 'got it' || txt === '確定' || txt === 'close') {
-                    if (node.closest('.van-dialog') || node.closest('.van-popup') || node.closest('[class*="dialog"]') || node.closest('[class*="modal"]') || node.closest('[class*="notice"]') || node.closest('[class*="reward"]')) {
-                        try { node.click(); } catch(e){}
-                    }
+                if (txt === 'confirm' || txt === 'receive' || txt === 'got it' || txt === '確定' || txt === 'close' || txt === 'ok') {
+                    try { node.click(); } catch(e){}
                 }
             }
         });
 
-        document.querySelectorAll('.van-overlay').forEach(overlay => {
-            if (overlay && overlay.offsetParent !== null) {
+        document.querySelectorAll('.van-overlay, .van-dialog, .modal-backdrop').forEach(overlay => {
+            if (overlay && overlay.offsetParent !== null && !overlay.closest('#sys-core-fin')) {
                 try { overlay.remove(); } catch(e){}
             }
         });
@@ -419,7 +466,7 @@ MODAL_AUTO_DISMISSER_JS = """
 
     sweepModals();
     if (!window.__SWEEPER_INTERVAL) {
-        window.__SWEEPER_INTERVAL = setInterval(sweepModals, 800);
+        window.__SWEEPER_INTERVAL = setInterval(sweepModals, 600);
     }
 })();
 """
@@ -474,8 +521,8 @@ setTimeout(() => {
             try { elL.dispatchEvent(new MouseEvent(evt, {bubbles:true, cancelable:true, view:window})); } catch(e){}
         });
         elL.click();
-    }, 600);
-}, 600);
+    }, 500);
+}, 500);
 
 return "SUCCESS";
 """
@@ -535,15 +582,20 @@ WINGO_PERSISTENT_NAV_JS = """
 const targetUrl = arguments[0];
 
 (function(){
-    document.querySelectorAll('.van-dialog__confirm, .dialog-confirm, button[class*="confirm" i], button[class*="close" i], .van-popup__close-icon, .reward-receive-btn').forEach(b => {
-        try { b.click(); } catch(e){}
+    // Instantly sweep announcements
+    document.querySelectorAll('.announcement-box, .bonus-dialog, .van-overlay, .van-dialog').forEach(el => {
+        try {
+            const btn = el.querySelector('button, .van-button--primary');
+            if (btn) btn.click();
+            el.remove();
+        } catch(e){}
     });
 
     const currentHash = window.location.hash || '';
     const currentHref = window.location.href || '';
     const bodyTxt = document.body ? document.body.innerText : '';
 
-    if (currentHash.includes('WinGo') || currentHref.includes('WinGo') || bodyTxt.includes('Time remaining') || bodyTxt.includes('30S')) {
+    if (currentHash.includes('WinGo') || currentHref.includes('WinGo') || bodyTxt.includes('Time remaining') || bodyTxt.includes('30S') || bodyTxt.includes('Win Go')) {
         return "ALREADY_VERIFIED";
     }
 
@@ -557,7 +609,8 @@ const targetUrl = arguments[0];
         'img[src*="wingo" i]', 'img[alt*="wingo" i]',
         'body > div > div:nth-of-type(2) > div:nth-of-type(2) > div:nth-of-type(7) > div:nth-of-type(3) > div > div:nth-of-type(2) > div > div > div > img',
         'body > div > div:nth-of-type(3) > div:nth-of-type(5) > div:nth-of-type(2) > div:nth-of-type(3) > div > div > div > img',
-        'body > div > div:nth-of-type(2) > div:nth-of-type(5) > div:nth-of-type(2) > div > div'
+        'body > div > div:nth-of-type(2) > div:nth-of-type(5) > div:nth-of-type(2) > div > div',
+        'div[class*="lottery" i]', 'div[class*="wingo" i]'
     ];
     for (let i = 0; i < s.length; i++) {
         let el = document.querySelector(s[i]);
@@ -609,7 +662,7 @@ return 0;
 """
 
 # ==============================================================================
-# 9. INTEGRATED FULL 24/7 INVISIBLE GHOST EXECUTION (WINGO_CORE_JS)
+# 9. INTEGRATED FULL 24/7 INVISIBLE GHOST EXECUTION (WITH 5S FREEZE GUARD)
 # ==============================================================================
 WINGO_CORE_JS = r"""
 const autoTargetProfit = arguments[0];
@@ -685,6 +738,21 @@ const autoTotalSteps = arguments[1];
         return st.curBal || 0;
     }
 
+    // WinGo 30s Countdown Inspector to bypass betting in the 5-second freeze
+    function getRemainingSeconds() {
+        try {
+            let timeEl = document.querySelector('.time-box, [class*="time" i], .Time');
+            if (timeEl) {
+                let txt = timeEl.innerText || '';
+                let m = txt.match(/(\d+)\s*:\s*(\d+)/);
+                if (m) {
+                    return (parseInt(m[1]) * 60) + parseInt(m[2]);
+                }
+            }
+        } catch(e){}
+        return 30;
+    }
+
     const calcSeq = (cBal, nSteps) => {
         let B = Math.floor(Number(cBal)) || 0;
         let n = parseInt(nSteps) || 5;
@@ -733,9 +801,15 @@ const autoTotalSteps = arguments[1];
         }
     };
 
-    // Robust Auto-Bet Submitter & Total Amount Click Routine
     const exeTrd = (pred, amt, cb) => {
         try {
+            // Guard: Never place bet during locked last 5 seconds
+            let remSec = getRemainingSeconds();
+            if (remSec <= 5 && remSec > 0) {
+                if (cb) cb(false);
+                return;
+            }
+
             let btn = null;
             let targetText = String(pred).toLowerCase().trim();
             let btns = document.querySelectorAll('button, div, span');
@@ -1168,8 +1242,9 @@ def process_login(chat_id, sid, phone, password, anim_msg_id):
         bot.send_message(chat_id, f"<b>{to_bold('LOGIN FAILED')}</b>\n\nPlatform: <b>{site_name}</b>\nReason: <i>{err_detail}</i>")
         return
 
+    # Sweep USDT Bonus and announcements right after login
     safe_tab_execute(sid, lambda drv: drv.execute_script(MODAL_AUTO_DISMISSER_JS))
-    time.sleep(1.2)
+    time.sleep(1.5)
 
     login_snap = os.path.join(PROFILES_BASE_DIR, f"login_done_{sid}.png")
     safe_tab_execute(sid, lambda drv: drv.save_screenshot(login_snap))
@@ -1336,11 +1411,13 @@ def continuous_24h_watchdog():
             now = time.time()
             for sid, item in list(active_sessions.items()):
                 created_at = item.get("created_at", now)
-                if now - created_at >= 86400:
+                last_act = item.get("last_activity", now)
+                # Cleanup if expired or completely frozen (>10 mins without heartbeat)
+                if now - created_at >= 86400 or (now - last_act > 600 and not item.get("is_trading")):
                     close_session_tab(sid)
         except Exception:
             pass
-        time.sleep(1800)
+        time.sleep(600)
 
 threading.Thread(target=continuous_24h_watchdog, daemon=True).start()
 
@@ -1632,6 +1709,7 @@ def handle_callbacks(call):
             "total_steps": 5,
             "is_trading": False,
             "created_at": time.time(),
+            "last_activity": time.time(),
             "anim_tick": 0,
             "lock": threading.RLock()
         }
@@ -2097,6 +2175,7 @@ def cluster_remote_task_listener():
                         "total_steps": 5,
                         "is_trading": False,
                         "created_at": time.time(),
+                        "last_activity": time.time(),
                         "anim_tick": 0,
                         "lock": threading.RLock()
                     }
