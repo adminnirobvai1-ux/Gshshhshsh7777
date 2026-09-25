@@ -12,7 +12,7 @@ import urllib.error
 import uuid
 
 # ==============================================================================
-# 1. AUTOMATIC PACKAGE INSTALLER & ENVIRONMENT BOOTSTRAPPER
+# 1. AUTOMATIC DEPENDENCY INSTALLER & RESILIENT IMPORTER
 # ==============================================================================
 def install_and_import(package_name, import_name=None):
     if import_name is None:
@@ -38,7 +38,7 @@ from selenium.webdriver.firefox.service import Service as FirefoxService
 import psutil
 
 # ==============================================================================
-# 2. MATHEMATICAL BOLD UNICODE & FORMATTING ENGINE
+# 2. MATHEMATICAL BOLD UNICODE & STRING DECORATORS
 # ==============================================================================
 def to_bold(text: str) -> str:
     res = []
@@ -63,7 +63,7 @@ def safe_delete_message(chat_id, message_id):
         pass
 
 # ==============================================================================
-# 3. ZOMBIE PROCESS HYGIENE & CLEAN MEMORY RECOVERY
+# 3. AGGRESSIVE ZOMBIE PROCESS & MEMORY HYGIENE
 # ==============================================================================
 def kill_process_tree(pid):
     try:
@@ -108,7 +108,7 @@ def cleanup_zombie_browsers():
         pass
 
 # ==============================================================================
-# 4. BOT CONFIGURATION & TARGET SITES REGISTRY
+# 4. CONFIGURATION, REGISTRY & TARGET PLATFORMS
 # ==============================================================================
 TOKEN = "8808949150:AAEDXP_f2S78p3RymKjR_b1sijblqfvQCH4"
 bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
@@ -206,7 +206,7 @@ def firebase_sync_http(path: str, method: str = "GET", payload=None, timeout: fl
         return None
 
 # ==============================================================================
-# 6. HARDENED ISOLATED BROWSER SESSION MANAGER
+# 6. HARDENED BROWSER SESSION ISOLATION
 # ==============================================================================
 def allocate_session_tab(session_id, target_url):
     sess = active_sessions.get(session_id)
@@ -331,7 +331,7 @@ def close_session_tab(session_id):
     gc.collect()
 
 # ==============================================================================
-# 7. TELEGRAM MEDIA CONTROLLER (FRAME-CLEAN INLINE REPLACEMENT)
+# 7. TELEGRAM MEDIA & DISPLAY CONTROLLER
 # ==============================================================================
 def display_or_replace_photo(chat_id, session_id, image_path, caption_text, reply_markup=None):
     sess = active_sessions.get(session_id, {})
@@ -373,7 +373,7 @@ def display_or_replace_photo(chat_id, session_id, image_path, caption_text, repl
     gc.collect()
 
 # ==============================================================================
-# 8. SUPER AGGRESSIVE MODAL, PROMO & ERROR 22 AUTO-RESOLVER
+# 8. SUPER AGGRESSIVE MODAL & PROMO DISMISSER (WITH ERROR 22 AUTO-RESOLVE)
 # ==============================================================================
 MODAL_AUTO_DISMISSER_JS = """
 (function(){
@@ -398,7 +398,6 @@ MODAL_AUTO_DISMISSER_JS = """
             });
         });
 
-        // Scan button & popup nodes (Error 22, Partner rewards, USDT announcements)
         const clickableNodes = document.querySelectorAll('button, div[role="button"], span, p, a');
         clickableNodes.forEach(node => {
             if (node && node.offsetParent !== null && !node.closest('#sys-core-fin')) {
@@ -411,7 +410,6 @@ MODAL_AUTO_DISMISSER_JS = """
             }
         });
 
-        // Remove blocking background overlay
         document.querySelectorAll('.van-overlay').forEach(overlay => {
             if (overlay && overlay.offsetParent !== null) {
                 try { overlay.remove(); } catch(e){}
@@ -611,14 +609,13 @@ return 0;
 """
 
 # ==============================================================================
-# 9. INTEGRATED 24/7 GHOST EXECUTION JAVASCRIPT ENGINE (WITH POPUP BET CONFIRM FIX)
+# 9. INTEGRATED FULL 24/7 INVISIBLE GHOST EXECUTION (WINGO_CORE_JS)
 # ==============================================================================
 WINGO_CORE_JS = r"""
 const autoTargetProfit = arguments[0];
 const autoTotalSteps = arguments[1];
 
 (function(){
-    // Completely invisible ghost node in background
     let ghostContainer = document.getElementById('sys-core-fin');
     if (!ghostContainer) {
         ghostContainer = document.createElement('div');
@@ -662,11 +659,6 @@ const autoTotalSteps = arguments[1];
         max_l_streak: 0
     };
     window.__WINGO_ST = st;
-
-    // DataVault Local Persistence
-    if (!localStorage.getItem('drx_data_vault_v8')) {
-        localStorage.setItem('drx_data_vault_v8', JSON.stringify({history:[], wins:0, losses:0, balance_peak:0, system_logs:[]}));
-    }
 
     function chkBal() {
         try {
@@ -736,10 +728,12 @@ const autoTotalSteps = arguments[1];
                 el.dispatchEvent(new MouseEvent(evt, { bubbles: true, cancelable: true, view: window }));
             } catch(e) {}
         });
-        try { el.click(); } catch(e) {}
+        if (typeof el.click === 'function') {
+            try { el.click(); } catch(e) {}
+        }
     };
 
-    // Robust Execution of Bet Placement & Popup Dismissal
+    // Robust Auto-Bet Submitter & Total Amount Click Routine
     const exeTrd = (pred, amt, cb) => {
         try {
             let btn = null;
@@ -753,8 +747,8 @@ const autoTotalSteps = arguments[1];
                 }
             }
             if (!btn) {
-                if (targetText === 'big') btn = document.querySelector('.Betting__C-foot-b');
-                else if (targetText === 'small') btn = document.querySelector('.Betting__C-foot-s');
+                if (targetText === 'big') btn = document.querySelector('.Betting__C-foot-b, .bet-btn-big, button[class*="big" i]');
+                else if (targetText === 'small') btn = document.querySelector('.Betting__C-foot-s, .bet-btn-small, button[class*="small" i]');
                 else if (targetText === 'green') btn = document.querySelector('button[class*="green"], div[class*="green"]');
                 else if (targetText === 'red') btn = document.querySelector('button[class*="red"], div[class*="red"]');
                 else if (targetText === 'violet') btn = document.querySelector('button[class*="violet"], div[class*="violet"]');
@@ -763,13 +757,12 @@ const autoTotalSteps = arguments[1];
                 if (cb) cb(false);
                 return;
             }
-
             drx_simClick(btn);
 
             let checkAttempts = 0;
             let valInterval = setInterval(() => {
                 checkAttempts++;
-                let inpEl = document.querySelector("input.van-field__control, input[type='number'], .van-stepper__input, input.van-field__control");
+                let inpEl = document.querySelector("input[type='number'], input.van-field__control, .van-stepper__input");
                 if (inpEl || checkAttempts > 18) {
                     clearInterval(valInterval);
                     if (inpEl) {
@@ -782,22 +775,21 @@ const autoTotalSteps = arguments[1];
                         drx_triggerEvent(inpEl, 'blur');
                     }
                     setTimeout(() => {
-                        // Click Total amount confirm button
-                        let dEl = document.querySelector('button.bet-amount, button[class*="bet-amount"], .Betting__C-foot-total, button.van-button--primary');
+                        let dEl = document.querySelector('button.bet-amount, button[class*="bet-amount"], .Betting__C-foot-total, .van-button--danger, .van-button--warning, .van-button--primary');
                         if (!dEl) {
-                            document.querySelectorAll('button').forEach(b => {
+                            let docButtons = document.querySelectorAll('button, div[role="button"]');
+                            for (let b of docButtons) {
                                 let txt = (b.innerText || '').toLowerCase();
-                                if ((txt.includes('total amount') || txt.includes('confirm') || txt.includes('৳')) && b.offsetParent) {
+                                if ((txt.includes('total amount') || txt.includes('total') || txt.includes('confirm') || txt.includes('bet')) && b.offsetParent) {
                                     dEl = b;
+                                    break;
                                 }
-                            });
+                            }
                         }
                         if (dEl) {
                             drx_simClick(dEl);
                         }
                         setTimeout(() => {
-                            // Secondary sweep to dismiss any left-over bottom sheets
-                            document.querySelectorAll('.van-overlay').forEach(o => { try{ o.remove(); }catch(e){} });
                             if (cb) cb(true);
                         }, 1800);
                     }, 700);
@@ -935,7 +927,7 @@ const autoTotalSteps = arguments[1];
 """
 
 # ==============================================================================
-# 10. INTERACTIVE ENGLISH KEYBOARDS
+# 10. INTERACTIVE ENGLISH KEYBOARD MATRICES
 # ==============================================================================
 def get_credentials_keyboard(sid):
     sess = active_sessions.get(sid, {})
@@ -1055,7 +1047,7 @@ def get_admin_dashboard_keyboard():
     return markup
 
 # ==============================================================================
-# 11. PASSKEY STORAGE & MEMBERSHIP HELPERS
+# 11. PASSKEY STORAGE & VERIFICATION HELPERS
 # ==============================================================================
 def generate_24h_passkey() -> str:
     token_str = "KEY-" + uuid.uuid4().hex[:6].upper()
@@ -1103,7 +1095,7 @@ def is_user_pass_valid(chat_id):
     return time.time() < u.get("pass_expiry", 0)
 
 # ==============================================================================
-# 12. AUTHENTICATION & LOGIN PROCESS (RESOLVES ERROR 22 AUTOMATICALLY)
+# 12. AUTHENTICATION & ERROR 22 AUTO-RESOLVE FLOW
 # ==============================================================================
 def play_clean_login_animation(chat_id, msg_id):
     frames = [
@@ -1198,7 +1190,7 @@ def process_login(chat_id, sid, phone, password, anim_msg_id):
     )
 
 # ==============================================================================
-# 13. WINGO MARKET PREPARATION
+# 13. WINGO NAVIGATION & PARAMETER CONFIGURATION
 # ==============================================================================
 def prepare_wingo_parameters(chat_id, sid):
     sess = active_sessions.get(sid, {})
@@ -1253,7 +1245,7 @@ def prepare_wingo_parameters(chat_id, sid):
     )
 
 # ==============================================================================
-# 14. MONITORING AND BACKGROUND WATCHDOG
+# 14. TRADING PROGRESS MONITOR & BACKGROUND WATCHDOG
 # ==============================================================================
 def record_task_status(chat_id, sid, status, start_bal, cur_bal, target_amt, wins, losses, site_name):
     task_payload = {
@@ -1434,7 +1426,7 @@ def handle_admin_command(message):
     bot.send_message(chat_id, caption, reply_markup=get_admin_dashboard_keyboard())
 
 # ==============================================================================
-# 16. TELEGRAM CALLBACK ROUTING & INTERACTIVITY
+# 16. TELEGRAM CALLBACK ROUTING & CONTROL
 # ==============================================================================
 @bot.callback_query_handler(func=lambda call: True)
 def handle_callbacks(call):
@@ -2387,7 +2379,7 @@ for h in bot.message_handlers:
         h['function'] = distributed_handle_user_text
 
 # ==============================================================================
-# 20. FAILOVER POLLING & MASTER ELECTION
+# 20. FAILOVER POLLING & CLUSTER MASTER ELECTION
 # ==============================================================================
 _original_bot_infinity_polling = bot.infinity_polling
 
